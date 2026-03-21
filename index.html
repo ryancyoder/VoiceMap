@@ -501,21 +501,15 @@ async function testApiKey() {
     .trim();
   if (!val || val.endsWith('…')) val = getApiKey();
   if (!val) { out.textContent = 'No key to test'; return; }
-  out.textContent = 'Testing…';
+  out.textContent = 'Fetching available models…';
   try {
-    const res = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
+    const res = await fetch('https://api.anthropic.com/v1/models', {
+      method: 'GET',
       headers: {
-        'Content-Type':                              'application/json',
         'x-api-key':                                 val,
         'anthropic-version':                         '2023-06-01',
         'anthropic-dangerous-direct-browser-access': 'true',
-      },
-      body: JSON.stringify({
-        model: 'claude-3-haiku-20240307',
-        max_tokens: 10,
-        messages: [{ role: 'user', content: 'say hi' }]
-      })
+      }
     });
     const text = await res.text();
     out.textContent = `HTTP ${res.status}:\n${text}`;
