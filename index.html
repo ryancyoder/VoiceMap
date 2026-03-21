@@ -159,6 +159,12 @@
     .pip-in-progress { background: #fef3c7; border-color: #f59e0b; }
     .pip-refined     { background: #d1fae5; border-color: #10b981; }
     .pip-locked      { background: #e0e7ff; border-color: #6366f1; }
+    .pip-done        { background: #30d158; border-color: #30d158; }
+    .card[data-status="done"] .card-title {
+      text-decoration: line-through;
+      opacity: 0.45;
+    }
+    .card[data-status="done"] .card-meta { opacity: 0.4; }
 
     .card-body   { flex: 1; min-width: 0; }
     .card-title  { font-size: 15px; font-weight: 500; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -929,7 +935,7 @@ function renderCards(animDir) {
     const isSelected = selectedIds.has(node.id);
     return `
       <div class="card${expanded ? ' expanded' : ''}${selectMode ? ' selectable' : ''}${isSelected ? ' selected' : ''}"
-           id="card-${esc(node.id)}" data-node-id="${esc(node.id)}" data-node-label="${esc(node.label)}">
+           id="card-${esc(node.id)}" data-node-id="${esc(node.id)}" data-node-label="${esc(node.label)}" data-status="${esc(node.status || 'untouched')}">
         <div class="card-front">
           ${selectMode ? `<div class="select-indicator">${isSelected ? '✓' : ''}</div>` : `<div class="pip ${pip}"></div>`}
           <div class="card-body">
@@ -1098,28 +1104,37 @@ async function handleTranscript(transcript) {
   const siblings = childrenOf(ctx.id);
   const parent   = ctx.id ? session.nodes.find(n => n.id === ctx.id) : null;
 
+  const allCards = session.nodes
+    .map(n => `id:"${n.id}" | "${n.label}"${n.summary ? ` — ${n.summary.slice(0, 80)}` : ''}`)
+    .join('\n');
+
   const systemPrompt =
 `You distill voice memos into mind map cards. Be extremely concise.
 
 Return JSON with these keys:
-  "label"        — 2 to 4 words MAX. A short title like a newspaper headline. Never a full sentence.
-  "summary"      — 1 to 2 sentences. Restate the idea clearly and completely in your own words.
-  "relationship" — one of: "${R.CHILD}", "${R.SIBLING}", "${R.ROOT}"
-  "children"     — ONLY include when the transcript is a list (e.g. "my favorites are X, Y, Z"). Array of short label strings, one per item. OMIT entirely if not a list.
+  "action"       — "create" (default) or "complete" (if transcript describes finishing an existing task)
+  "label"        — 2 to 4 words MAX. Required for action "create".
+  "summary"      — 1 to 2 sentences. Required for action "create".
+  "relationship" — one of: "${R.CHILD}", "${R.SIBLING}", "${R.ROOT}". Required for action "create".
+  "children"     — ONLY for lists. Array of short label strings. OMIT if not a list.
+  "match_id"     — Required for action "complete". The id of the matching existing card.
 
-List detection: if the speaker enumerates discrete items separated by commas, "and", "or", or ordinal words, extract each as a child label (2–4 words). The parent label becomes the list topic.
+Completion detection: if the transcript uses past tense to describe completing/finishing/doing something that matches an existing card (e.g. "I finished the backyard irrigation", "just completed the budget"), set action to "complete" and match_id to the best matching card id. Only do this when confident of a clear match.
 
-Relationship rules:
-  "${R.CHILD}"   → this idea belongs under the current context
-  "${R.SIBLING}" → parallel idea at the same level
+List detection: if the speaker enumerates discrete items, extract each as a child label. Parent label becomes the list topic.
+
+Relationship rules (action "create" only):
+  "${R.CHILD}"   → belongs under current context
+  "${R.SIBLING}" → parallel idea at same level
   "${R.ROOT}"    → entirely new top-level subject
 
-Default to "${R.CHILD}". Bad labels: "The idea is about...", "User wants to...". Good labels: "Backyard irrigation", "Budget constraints", "Weekly meal prep".`;
+Default action to "create", relationship to "${R.CHILD}". Good labels: "Backyard irrigation", "Budget constraints", "Weekly meal prep".`;
 
   const userMsg = [
     `Current context: "${ctx.label}"`,
     parent          ? `Parent: "${parent.label}"` : null,
-    siblings.length ? `Other ideas at this level: ${siblings.map(s => `"${s.label}"`).join(', ')}` : null,
+    siblings.length ? `Siblings: ${siblings.map(s => `"${s.label}"`).join(', ')}` : null,
+    allCards        ? `\nAll existing cards:\n${allCards}` : null,
     `\nTranscript: "${transcript}"`
   ].filter(Boolean).join('\n');
 
@@ -1129,17 +1144,33 @@ Default to "${R.CHILD}". Bad labels: "The idea is about...", "User wants to...".
     const raw = await callClaude(userMsg, systemPrompt, '{');
     console.log('[VoiceMap] Claude raw response:', raw);
     parsed = extractJSON(raw);
-    if (!parsed?.label) throw new Error('Bad JSON from Claude: ' + raw.slice(0, 120));
+    if (!parsed?.action) throw new Error('Bad JSON from Claude: ' + raw.slice(0, 120));
   } catch (err) {
     claudeError = err.message;
     console.error('[VoiceMap] Claude error:', claudeError);
-    parsed = { label: transcript.slice(0, 40), summary: transcript, relationship: R.CHILD };
+    parsed = { action: 'create', label: transcript.slice(0, 40), summary: transcript, relationship: R.CHILD };
   }
 
+  // Handle completion action
+  if (parsed.action === 'complete' && parsed.match_id) {
+    const matchNode = session.nodes.find(n => n.id === parsed.match_id);
+    if (matchNode) {
+      matchNode.status = 'done';
+      matchNode.last_modified = new Date().toISOString();
+      renderCards();
+      showToast(`✓ Done: ${matchNode.label}`);
+      setRecordingState(isRecording);
+      return;
+    }
+  }
+
+  // Default: create new card
+  if (!parsed.label) {
+    parsed = { action: 'create', label: transcript.slice(0, 40), summary: transcript, relationship: R.CHILD };
+  }
   addNode(parsed, transcript);
 
   if (claudeError) {
-    // Keep error visible — don't overwrite with normal status
     setStatus('⚠ ' + claudeError, 'error');
   } else {
     setRecordingState(isRecording);
