@@ -753,7 +753,12 @@ Default to "${R.CHILD}". Bad labels: "The idea is about...", "User wants to...".
   } else {
     setRecordingState(isRecording);
   }
+}
 
+// ─── ADD NODE ────────────────────────────────────────────────────────────────
+function makeId() {
+  return Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+}
 
 function addNode(parsed, transcript) {
   const now = new Date().toISOString();
