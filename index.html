@@ -183,12 +183,27 @@
     .chevron { font-size: 20px; color: #c7c7cc; font-weight: 300; line-height: 1; }
 
     /* Summary expand */
+    .refile-btn {
+      margin-top: 10px;
+      width: 100%;
+      padding: 8px;
+      background: rgba(255,255,255,0.08);
+      border: 1px solid rgba(255,255,255,0.15);
+      border-radius: 8px;
+      color: #aab;
+      font-size: 13px;
+      cursor: pointer;
+      text-align: center;
+    }
+    .refile-btn:active { background: rgba(255,255,255,0.15); }
+    .refile-btn.filing { color: #f5c842; }
+
     .card-summary-wrap {
       max-height: 0;
       overflow: hidden;
       transition: max-height 0.28s ease;
     }
-    .card.expanded .card-summary-wrap { max-height: 180px; }
+    .card.expanded .card-summary-wrap { max-height: 260px; }
 
     .card-summary {
       padding: 10px 14px 13px 33px;
@@ -558,6 +573,60 @@ function navigateBack() {
 }
 
 // ─── RENDER ─────────────────────────────────────────────────────────────────
+function getDescendants(nodeId) {
+  const result = new Set();
+  const queue = [nodeId];
+  while (queue.length) {
+    const id = queue.shift();
+    session.nodes.filter(n => n.parent_id === id).forEach(n => {
+      result.add(n.id);
+      queue.push(n.id);
+    });
+  }
+  return result;
+}
+
+async function refileNode(nodeId) {
+  const node = session.nodes.find(n => n.id === nodeId);
+  if (!node) return;
+
+  const descendants = getDescendants(nodeId);
+  const candidates  = session.nodes.filter(n => n.id !== nodeId && !descendants.has(n.id));
+
+  if (candidates.length === 0) { showToast('No other cards to file under'); return; }
+
+  // Mark button as filing
+  const btn = document.querySelector(`[data-refile-id="${nodeId}"]`);
+  if (btn) { btn.textContent = '⏳ Finding best match…'; btn.classList.add('filing'); btn.disabled = true; }
+  setStatus('Finding best match…', 'thinking');
+
+  const candidateList = candidates
+    .map(n => `id:"${n.id}" | "${n.label}" — ${(n.summary || n.transcript || '').slice(0, 80)}`)
+    .join('\n');
+
+  const userMsg = `Card to re-file:\nLabel: "${node.label}"\nSummary: "${(node.summary || node.transcript || '').slice(0, 200)}"\n\nCandidate parents:\n${candidateList}\n\nReturn JSON: {"parent_id":"<id or null for top level>","parent_label":"<label or Top Level>"}`;
+  const sys = 'You organize a mind map. Choose the single best parent for the card from the candidates, or null for top level. Return ONLY valid JSON.';
+
+  try {
+    const raw    = await callClaude(userMsg, sys, '{');
+    const parsed = extractJSON(raw);
+    if (!parsed) throw new Error('Could not parse Claude response');
+
+    const newParentId = parsed.parent_id || null;
+    const parentLabel = parsed.parent_label || 'Top Level';
+
+    const n = session.nodes.find(n => n.id === nodeId);
+    if (n) { n.parent_id = newParentId; n.last_modified = new Date().toISOString(); }
+
+    renderCards();
+    showToast(`Moved to: ${parentLabel}`);
+    setStatus('Tap ⏺ to capture an idea');
+  } catch (err) {
+    if (btn) { btn.textContent = '↗ Re-file with AI'; btn.classList.remove('filing'); btn.disabled = false; }
+    setStatus('⚠ ' + err.message, 'error');
+  }
+}
+
 function renderCards(animDir) {
   const cards = childrenOf(currentParentId());
   const list  = document.getElementById('cardList');
@@ -591,6 +660,7 @@ function renderCards(animDir) {
         ${summary ? `
         <div class="card-summary-wrap">
           <div class="card-summary">${esc(summary)}</div>
+          <button class="refile-btn" data-refile-id="${esc(node.id)}">↗ Re-file with AI</button>
         </div>` : ''}
       </div>`;
   }).join('');
@@ -968,6 +1038,9 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 
   document.getElementById('cardList').addEventListener('click', e => {
+    const refileBtn = e.target.closest('[data-refile-id]');
+    if (refileBtn) { e.stopPropagation(); refileNode(refileBtn.dataset.refileId); return; }
+
     const infoBtn = e.target.closest('[data-toggle-id]');
     if (infoBtn) { e.stopPropagation(); toggleSummary(infoBtn.dataset.toggleId); return; }
 
