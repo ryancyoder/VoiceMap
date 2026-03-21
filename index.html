@@ -799,7 +799,7 @@ function addNode(parsed, transcript) {
 
   let parentId = ctx.id;
   if      (parsed.relationship === R.SIBLING) parentId = navStack.length >= 2 ? navStack[navStack.length - 2].id : null;
-  else if (parsed.relationship === R.ROOT)    parentId = null;
+  else if (parsed.relationship === R.ROOT)    parentId = navStack.length > 1 ? ctx.id : null; // if drilled in, stay in context
 
   const nodeId = makeId();
 
