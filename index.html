@@ -523,13 +523,27 @@
 'use strict';
 
 // ─── CONSTANTS ──────────────────────────────────────────────────────────────
-const CLAUDE_MODEL  = 'claude-haiku-4-5-20251001';
-const API_KEY_STORE = 'voicemap_api_key';
+const CLAUDE_MODEL   = 'claude-haiku-4-5-20251001';
+const API_KEY_STORE  = 'voicemap_api_key';
+const SESSION_STORE  = 'voicemap_session';
 
 const R = { CHILD: 'child', SIBLING: 'sibling', ROOT: 'root' };
 
+// ─── PERSISTENCE ─────────────────────────────────────────────────────────────
+function saveSession() {
+  try { localStorage.setItem(SESSION_STORE, JSON.stringify(session)); } catch (e) {}
+}
+
+function loadSavedSession() {
+  try {
+    const raw = localStorage.getItem(SESSION_STORE);
+    if (raw) { const s = JSON.parse(raw); if (Array.isArray(s.nodes)) return s; }
+  } catch (e) {}
+  return null;
+}
+
 // ─── STATE ──────────────────────────────────────────────────────────────────
-let session = {
+let session = loadSavedSession() || {
   session: 'Untitled brainstorm',
   date:    new Date().toISOString(),
   nodes:   [],
@@ -896,6 +910,7 @@ async function simplifyNode(nodeId) {
 }
 
 function renderCards(animDir) {
+  saveSession();
   const cards = childrenOf(currentParentId());
   const list  = document.getElementById('cardList');
   const empty = document.getElementById('emptyState');
@@ -1278,6 +1293,7 @@ function renameSession() {
   if (name?.trim()) {
     session.session = name.trim();
     if (navStack.length === 1) { navStack[0].label = session.session; updateNavBar(); }
+    saveSession();
   }
   closeMenu();
 }
