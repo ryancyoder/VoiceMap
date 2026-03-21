@@ -428,6 +428,8 @@
     <input class="modal-input" id="keyInput" type="password"
            placeholder="sk-ant-api03-..." autocomplete="off" autocorrect="off" spellcheck="false" />
     <button class="modal-save" id="keySave">Save &amp; continue</button>
+    <button class="modal-save" id="keyTest" style="background:#6b7280">Test key</button>
+    <div id="keyTestResult" style="font-size:12px;color:#6b7280;word-break:break-all;white-space:pre-wrap;max-height:120px;overflow-y:auto"></div>
   </div>
 </div>
 
@@ -488,6 +490,38 @@ function showKeyModal() {
 
 function hideKeyModal() {
   document.getElementById('keyModal').classList.add('hidden');
+  document.getElementById('keyTestResult').textContent = '';
+}
+
+async function testApiKey() {
+  const out = document.getElementById('keyTestResult');
+  let val = document.getElementById('keyInput').value
+    .replace(/[\u2018\u2019\u201C\u201D]/g, '')
+    .replace(/[^\x20-\x7E]/g, '')
+    .trim();
+  if (!val || val.endsWith('…')) val = getApiKey();
+  if (!val) { out.textContent = 'No key to test'; return; }
+  out.textContent = 'Testing…';
+  try {
+    const res = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type':                              'application/json',
+        'x-api-key':                                 val,
+        'anthropic-version':                         '2023-06-01',
+        'anthropic-dangerous-direct-browser-access': 'true',
+      },
+      body: JSON.stringify({
+        model: 'claude-3-haiku-20240307',
+        max_tokens: 10,
+        messages: [{ role: 'user', content: 'say hi' }]
+      })
+    });
+    const text = await res.text();
+    out.textContent = `HTTP ${res.status}:\n${text}`;
+  } catch (e) {
+    out.textContent = 'Network error: ' + e.message;
+  }
 }
 
 function saveApiKey() {
@@ -934,6 +968,7 @@ document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('fileInput').addEventListener('change', importJSON);
 
   document.getElementById('keySave').addEventListener('click', saveApiKey);
+  document.getElementById('keyTest').addEventListener('click', testApiKey);
   document.getElementById('keyInput').addEventListener('keydown', e => {
     if (e.key === 'Enter') saveApiKey();
   });
