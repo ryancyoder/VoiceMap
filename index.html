@@ -197,6 +197,28 @@
     }
     .refile-btn:active { background: rgba(255,255,255,0.15); }
     .refile-btn.filing { color: #f5c842; }
+    .card-action-row {
+      display: flex;
+      gap: 8px;
+      margin-top: 10px;
+    }
+    .card-action-row .refile-btn,
+    .card-action-row .simplify-btn {
+      margin-top: 0;
+      flex: 1;
+    }
+    .simplify-btn {
+      padding: 8px;
+      background: rgba(255,255,255,0.08);
+      border: 1px solid rgba(255,255,255,0.15);
+      border-radius: 8px;
+      color: #aab;
+      font-size: 13px;
+      cursor: pointer;
+      text-align: center;
+    }
+    .simplify-btn:active { background: rgba(255,255,255,0.15); }
+    .simplify-btn.working { color: #f5c842; }
 
     .card-summary-wrap {
       max-height: 0;
@@ -627,6 +649,66 @@ async function refileNode(nodeId) {
   }
 }
 
+async function simplifyNode(nodeId) {
+  const node = session.nodes.find(n => n.id === nodeId);
+  if (!node) return;
+
+  const descIds = getDescendants(nodeId);
+  if (descIds.size === 0) { showToast('No child cards to simplify'); return; }
+
+  const btn = document.querySelector(`[data-simplify-id="${nodeId}"]`);
+  if (btn) { btn.textContent = '⏳ Simplifying…'; btn.classList.add('working'); btn.disabled = true; }
+  setStatus('Simplifying structure…', 'thinking');
+
+  // Build nested tree for Claude
+  function buildTree(pid) {
+    return session.nodes
+      .filter(n => n.parent_id === pid)
+      .map(n => ({ label: n.label, summary: n.summary || n.transcript || '', children: buildTree(n.id) }));
+  }
+
+  const tree = buildTree(nodeId);
+  const userMsg = `Parent card: "${node.label}"\n\nCurrent children:\n${JSON.stringify(tree, null, 2)}\n\nReturn a simplified JSON array of child nodes.`;
+  const sys = `You simplify mind map structures. Merge overlapping ideas, remove redundancies, flatten excessive nesting, keep all distinct concepts. Return ONLY a valid JSON array: [{"label":"2-5 word title","summary":"1-2 sentence summary","children":[{"label":"...","summary":"...","children":[]}]}]. Max 2 levels deep.`;
+
+  try {
+    const raw = await callClaude(userMsg, sys, '[');
+    let parsed;
+    try { parsed = JSON.parse(raw.trim()); } catch {}
+    if (!parsed) {
+      const s = raw.indexOf('['), e = raw.lastIndexOf(']');
+      if (s !== -1 && e > s) try { parsed = JSON.parse(raw.slice(s, e + 1)); } catch {}
+    }
+    if (!Array.isArray(parsed)) throw new Error('Claude returned invalid structure');
+
+    // Remove all old descendants
+    session.nodes = session.nodes.filter(n => !descIds.has(n.id));
+
+    // Create new nodes from Claude's simplified structure
+    const now = new Date().toISOString();
+    function createNodes(items, parentId) {
+      items.forEach(item => {
+        const id = makeId();
+        session.nodes.push({
+          id, parent_id: parentId, status: 'untouched', created: now, last_modified: now,
+          label:    String(item.label   || '').slice(0, 60),
+          summary:  String(item.summary || ''),
+          transcript: ''
+        });
+        if (Array.isArray(item.children) && item.children.length) createNodes(item.children, id);
+      });
+    }
+    createNodes(parsed, nodeId);
+
+    renderCards();
+    showToast('Structure simplified');
+    setStatus('Tap ⏺ to capture an idea');
+  } catch (err) {
+    if (btn) { btn.textContent = '⚡ Simplify'; btn.classList.remove('working'); btn.disabled = false; }
+    setStatus('⚠ ' + err.message, 'error');
+  }
+}
+
 function renderCards(animDir) {
   const cards = childrenOf(currentParentId());
   const list  = document.getElementById('cardList');
@@ -660,7 +742,10 @@ function renderCards(animDir) {
         ${summary ? `
         <div class="card-summary-wrap">
           <div class="card-summary">${esc(summary)}</div>
-          <button class="refile-btn" data-refile-id="${esc(node.id)}">↗ Re-file with AI</button>
+          <div class="card-action-row">
+            <button class="refile-btn" data-refile-id="${esc(node.id)}">↗ Re-file</button>
+            ${childCount > 0 ? `<button class="simplify-btn" data-simplify-id="${esc(node.id)}">⚡ Simplify</button>` : ''}
+          </div>
         </div>` : ''}
       </div>`;
   }).join('');
@@ -868,8 +953,11 @@ function addNode(parsed, transcript) {
   const ctx = currentCtx();
 
   let parentId = ctx.id;
-  if      (parsed.relationship === R.SIBLING) parentId = navStack.length >= 2 ? navStack[navStack.length - 2].id : null;
-  else if (parsed.relationship === R.ROOT)    parentId = navStack.length > 1 ? ctx.id : null; // if drilled in, stay in context
+  if (navStack.length === 1) {
+    // At home — respect Claude's relationship choice
+    if (parsed.relationship === R.SIBLING || parsed.relationship === R.ROOT) parentId = null;
+  }
+  // When drilled into any card, always add under the current context
 
   const nodeId = makeId();
 
@@ -1040,6 +1128,9 @@ document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('cardList').addEventListener('click', e => {
     const refileBtn = e.target.closest('[data-refile-id]');
     if (refileBtn) { e.stopPropagation(); refileNode(refileBtn.dataset.refileId); return; }
+
+    const simplifyBtn = e.target.closest('[data-simplify-id]');
+    if (simplifyBtn) { e.stopPropagation(); simplifyNode(simplifyBtn.dataset.simplifyId); return; }
 
     const infoBtn = e.target.closest('[data-toggle-id]');
     if (infoBtn) { e.stopPropagation(); toggleSummary(infoBtn.dataset.toggleId); return; }
