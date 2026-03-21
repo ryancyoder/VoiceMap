@@ -1,0 +1,947 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="VoiceMap" />
+  <title>VoiceMap</title>
+  <style>
+    :root {
+      --font:        -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      --bg:          #f2f2f7;
+      --surface:     #ffffff;
+      --border:      rgba(0,0,0,0.10);
+      --text:        #1c1c1e;
+      --muted:       #6b7280;
+      --accent:      #E24B4A;
+      --accent-dark: #A32D2D;
+      --radius:      13px;
+      --safe-top:    env(safe-area-inset-top,    0px);
+      --safe-bottom: env(safe-area-inset-bottom, 0px);
+    }
+
+    *, *::before, *::after {
+      box-sizing: border-box;
+      margin: 0; padding: 0;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    html, body { height: 100%; font-family: var(--font); background: var(--bg); overflow: hidden; }
+
+    .app { height: 100dvh; display: flex; flex-direction: column; }
+
+    /* ── Nav bar ──────────────────────────────────────────────── */
+    .nav-bar {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: calc(var(--safe-top) + 10px) 12px 10px;
+      background: var(--surface);
+      border-bottom: 0.5px solid var(--border);
+      flex-shrink: 0;
+      min-height: 52px;
+    }
+
+    .back-btn {
+      font-size: 17px;
+      color: var(--accent);
+      background: none;
+      border: none;
+      cursor: pointer;
+      padding: 4px 8px 4px 2px;
+      white-space: nowrap;
+      font-family: var(--font);
+      visibility: hidden;
+      flex-shrink: 0;
+    }
+    .back-btn.visible { visibility: visible; }
+
+    .nav-title {
+      flex: 1;
+      font-size: 17px;
+      font-weight: 600;
+      color: var(--text);
+      text-align: center;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    /* ── Menu ─────────────────────────────────────────────────── */
+    .menu-wrap { position: relative; flex-shrink: 0; }
+
+    .menu-btn {
+      font-size: 22px;
+      color: var(--muted);
+      background: none;
+      border: none;
+      cursor: pointer;
+      padding: 4px 6px;
+      line-height: 1;
+      letter-spacing: 1px;
+    }
+
+    .menu-dropdown {
+      position: absolute;
+      top: calc(100% + 6px);
+      right: 0;
+      background: var(--surface);
+      border: 0.5px solid var(--border);
+      border-radius: var(--radius);
+      box-shadow: 0 8px 28px rgba(0,0,0,0.13);
+      min-width: 168px;
+      overflow: hidden;
+      display: none;
+      z-index: 100;
+    }
+    .menu-dropdown.open { display: block; }
+
+    .menu-item {
+      width: 100%;
+      display: block;
+      padding: 13px 16px;
+      font-size: 15px;
+      color: var(--text);
+      background: none;
+      border: none;
+      border-bottom: 0.5px solid var(--border);
+      text-align: left;
+      cursor: pointer;
+      font-family: var(--font);
+    }
+    .menu-item:last-child { border-bottom: none; }
+    .menu-item:active     { background: #f2f2f7; }
+    .menu-item.danger     { color: var(--accent); }
+
+    /* ── Card list ────────────────────────────────────────────── */
+    .card-scroll {
+      flex: 1;
+      overflow-y: auto;
+      -webkit-overflow-scrolling: touch;
+      padding: 12px 14px 8px;
+    }
+
+    @keyframes slideFromRight { from { transform: translateX(28px); opacity: 0; } to { transform: none; opacity: 1; } }
+    @keyframes slideFromLeft  { from { transform: translateX(-28px); opacity: 0; } to { transform: none; opacity: 1; } }
+    #cardList.anim-forward { animation: slideFromRight 0.22s ease; }
+    #cardList.anim-back    { animation: slideFromLeft  0.22s ease; }
+
+    /* ── Card ─────────────────────────────────────────────────── */
+    .card {
+      background: var(--surface);
+      border-radius: var(--radius);
+      border: 0.5px solid var(--border);
+      margin-bottom: 10px;
+      overflow: hidden;
+      box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+      transition: box-shadow 0.12s;
+    }
+    .card:active { box-shadow: none; }
+
+    .card-front {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 13px 14px;
+      cursor: pointer;
+      user-select: none;
+    }
+
+    .pip {
+      width: 9px; height: 9px;
+      border-radius: 50%;
+      flex-shrink: 0;
+      border: 1.5px solid;
+    }
+    .pip-untouched   { background: #f3f4f6; border-color: #9ca3af; }
+    .pip-in-progress { background: #fef3c7; border-color: #f59e0b; }
+    .pip-refined     { background: #d1fae5; border-color: #10b981; }
+    .pip-locked      { background: #e0e7ff; border-color: #6366f1; }
+
+    .card-body   { flex: 1; min-width: 0; }
+    .card-title  { font-size: 15px; font-weight: 500; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .card-meta   { font-size: 12px; color: var(--muted); margin-top: 2px; }
+
+    .card-actions { display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
+
+    .info-btn {
+      width: 28px; height: 28px;
+      border-radius: 50%;
+      background: #f2f2f7;
+      border: none;
+      color: var(--muted);
+      font-size: 13px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .info-btn:active { background: #e5e5ea; }
+
+    .chevron { font-size: 20px; color: #c7c7cc; font-weight: 300; line-height: 1; }
+
+    /* Summary expand */
+    .card-summary-wrap {
+      max-height: 0;
+      overflow: hidden;
+      transition: max-height 0.28s ease;
+    }
+    .card.expanded .card-summary-wrap { max-height: 180px; }
+
+    .card-summary {
+      padding: 10px 14px 13px 33px;
+      font-size: 13px;
+      color: var(--muted);
+      line-height: 1.55;
+      border-top: 0.5px solid var(--border);
+    }
+
+    /* ── Empty state ──────────────────────────────────────────── */
+    .empty-state {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 52px 24px;
+      gap: 8px;
+      text-align: center;
+    }
+    .empty-icon { font-size: 34px; margin-bottom: 6px; }
+    .empty-text { font-size: 15px; color: var(--muted); }
+    .empty-hint { font-size: 13px; color: #9ca3af; }
+
+    /* ── Record bar ───────────────────────────────────────────── */
+    .record-bar {
+      background: var(--surface);
+      border-top: 0.5px solid var(--border);
+      padding: 10px 20px calc(var(--safe-bottom) + 14px);
+      flex-shrink: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .live-text {
+      font-size: 13px;
+      color: var(--muted);
+      font-style: italic;
+      min-height: 18px;
+      text-align: center;
+      width: 100%;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .record-row { display: flex; align-items: center; justify-content: center; gap: 20px; }
+
+    .record-btn {
+      width: 64px; height: 64px;
+      border-radius: 50%;
+      background: var(--accent);
+      border: none;
+      color: white;
+      font-size: 22px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      box-shadow: 0 4px 16px rgba(226,75,74,0.35);
+      transition: transform 0.1s, box-shadow 0.1s, background 0.2s;
+    }
+    .record-btn:active:not(:disabled) { transform: scale(0.93); box-shadow: 0 2px 8px rgba(226,75,74,0.25); }
+    .record-btn:disabled { background: #d1d5db; box-shadow: none; cursor: not-allowed; }
+    .record-btn.recording {
+      background: #1c1c1e;
+      box-shadow: 0 0 0 4px rgba(226,75,74,0.25);
+      animation: rec-glow 1.6s ease infinite;
+    }
+    @keyframes rec-glow {
+      0%,100% { box-shadow: 0 0 0 4px rgba(226,75,74,0.20); }
+      50%      { box-shadow: 0 0 0 8px rgba(226,75,74,0.08); }
+    }
+
+    .stop-btn {
+      width: 44px; height: 44px;
+      border-radius: 50%;
+      background: #f2f2f7;
+      border: 0.5px solid var(--border);
+      color: var(--muted);
+      font-size: 14px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .stop-btn:disabled { opacity: 0.35; cursor: not-allowed; }
+    .stop-btn:active:not(:disabled) { background: #e5e5ea; }
+
+    .status-text            { font-size: 12px; color: var(--muted); text-align: center; }
+    .status-text.processing { color: #f59e0b; }
+    .status-text.error      { color: var(--accent); }
+
+    /* ── API Key modal ────────────────────────────────────────── */
+    .modal-overlay {
+      position: fixed; inset: 0;
+      background: rgba(0,0,0,0.45);
+      backdrop-filter: blur(4px);
+      -webkit-backdrop-filter: blur(4px);
+      display: flex;
+      align-items: flex-end;
+      justify-content: center;
+      z-index: 400;
+      padding-bottom: var(--safe-bottom);
+    }
+    .modal-overlay.hidden { display: none; }
+
+    .modal-sheet {
+      background: var(--surface);
+      border-radius: 20px 20px 0 0;
+      padding: 24px 24px calc(24px + var(--safe-bottom));
+      width: 100%;
+      max-width: 480px;
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+    }
+
+    .modal-title {
+      font-size: 18px;
+      font-weight: 700;
+      color: var(--text);
+      text-align: center;
+    }
+
+    .modal-desc {
+      font-size: 14px;
+      color: var(--muted);
+      text-align: center;
+      line-height: 1.5;
+    }
+
+    .modal-desc a { color: var(--accent); text-decoration: none; }
+
+    .modal-input {
+      width: 100%;
+      padding: 12px 14px;
+      font-size: 14px;
+      font-family: monospace;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      background: var(--bg);
+      color: var(--text);
+      outline: none;
+    }
+    .modal-input:focus { border-color: var(--accent); }
+
+    .modal-save {
+      width: 100%;
+      padding: 14px;
+      background: var(--accent);
+      color: white;
+      border: none;
+      border-radius: 12px;
+      font-size: 16px;
+      font-weight: 600;
+      font-family: var(--font);
+      cursor: pointer;
+    }
+    .modal-save:active { background: var(--accent-dark); }
+
+    /* ── Toast ────────────────────────────────────────────────── */
+    .toast {
+      position: fixed;
+      bottom: calc(var(--safe-bottom) + 108px);
+      left: 50%;
+      transform: translateX(-50%) translateY(10px);
+      background: rgba(28,28,30,0.88);
+      backdrop-filter: blur(10px);
+      -webkit-backdrop-filter: blur(10px);
+      color: white;
+      font-size: 13px;
+      padding: 8px 16px;
+      border-radius: 20px;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.18s, transform 0.18s;
+      white-space: nowrap;
+      z-index: 300;
+    }
+    .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+  </style>
+</head>
+<body>
+
+<div class="app">
+
+  <!-- Nav bar -->
+  <div class="nav-bar">
+    <button class="back-btn" id="backBtn">‹ Back</button>
+    <div class="nav-title" id="navTitle">Home</div>
+    <div class="menu-wrap">
+      <button class="menu-btn" id="menuBtn">···</button>
+      <div class="menu-dropdown" id="menuDropdown">
+        <button class="menu-item" id="miImport">Import JSON</button>
+        <button class="menu-item" id="miExport">Export JSON</button>
+        <button class="menu-item" id="miCopy">Copy JSON</button>
+        <button class="menu-item" id="miRename">Rename session</button>
+        <button class="menu-item" id="miApiKey">API Key</button>
+        <button class="menu-item danger" id="miClear">Clear all</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Card list -->
+  <div class="card-scroll">
+    <div id="cardList"></div>
+    <div class="empty-state" id="emptyState" style="display:none">
+      <div class="empty-icon">💭</div>
+      <div class="empty-text">No ideas here yet</div>
+      <div class="empty-hint">Tap the red button and start speaking</div>
+    </div>
+  </div>
+
+  <!-- Record bar -->
+  <div class="record-bar">
+    <div class="live-text" id="liveText"></div>
+    <div class="record-row">
+      <button class="stop-btn" id="stopBtn" disabled>■</button>
+      <button class="record-btn" id="recordBtn">⏺</button>
+      <div style="width:44px"></div>
+    </div>
+    <div class="status-text" id="statusText">Tap ⏺ to capture an idea</div>
+  </div>
+
+</div>
+
+<!-- API Key modal -->
+<div class="modal-overlay hidden" id="keyModal">
+  <div class="modal-sheet">
+    <div class="modal-title">Connect to Claude</div>
+    <div class="modal-desc">
+      Paste your Anthropic API key below. It's stored only on this device — never in the code.<br><br>
+      Get a key at <a href="https://console.anthropic.com" target="_blank">console.anthropic.com</a>
+    </div>
+    <input class="modal-input" id="keyInput" type="password"
+           placeholder="sk-ant-api03-..." autocomplete="off" autocorrect="off" spellcheck="false" />
+    <button class="modal-save" id="keySave">Save &amp; continue</button>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+<input type="file" id="fileInput" accept=".json" style="display:none" />
+
+<script>
+'use strict';
+
+// ─── CONSTANTS ──────────────────────────────────────────────────────────────
+const CLAUDE_MODEL  = 'claude-3-5-sonnet-20241022';
+const API_KEY_STORE = 'voicemap_api_key';
+
+const R = { CHILD: 'child', SIBLING: 'sibling', ROOT: 'root' };
+
+// ─── STATE ──────────────────────────────────────────────────────────────────
+let session = {
+  session: 'Untitled brainstorm',
+  date:    new Date().toISOString(),
+  nodes:   [],
+  meta:    { tool: 'VoiceMap', version: '0.3' }
+};
+
+let navStack    = [{ id: null, label: 'Home' }];
+let expandedIds = new Set();
+let recognition = null;
+let isRecording = false;
+
+// ─── HELPERS ────────────────────────────────────────────────────────────────
+const currentCtx      = ()   => navStack[navStack.length - 1];
+const currentParentId = ()   => currentCtx().id;
+const childrenOf      = (id) => session.nodes.filter(n => n.parent_id === id);
+const esc = str =>
+  String(str ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+
+function showToast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  clearTimeout(t._t);
+  t._t = setTimeout(() => t.classList.remove('show'), 2600);
+}
+
+// ─── API KEY MANAGEMENT ──────────────────────────────────────────────────────
+function getApiKey() {
+  return localStorage.getItem(API_KEY_STORE) || '';
+}
+
+function showKeyModal() {
+  closeMenu();
+  const modal = document.getElementById('keyModal');
+  const input = document.getElementById('keyInput');
+  const existing = getApiKey();
+  input.value = existing ? existing.slice(0, 10) + '…' : '';
+  modal.classList.remove('hidden');
+  setTimeout(() => input.focus(), 100);
+}
+
+function hideKeyModal() {
+  document.getElementById('keyModal').classList.add('hidden');
+}
+
+function saveApiKey() {
+  const val = document.getElementById('keyInput').value.trim();
+  // If user didn't type a new key (still showing masked existing), keep current
+  if (!val || val.endsWith('…')) { hideKeyModal(); return; }
+  if (!val.startsWith('sk-')) {
+    showToast('Key should start with sk-ant-…');
+    return;
+  }
+  localStorage.setItem(API_KEY_STORE, val);
+  hideKeyModal();
+  showToast('API key saved');
+}
+
+// ─── NAV ────────────────────────────────────────────────────────────────────
+function updateNavBar() {
+  const ctx = currentCtx();
+  document.getElementById('backBtn').classList.toggle('visible', navStack.length > 1);
+  document.getElementById('navTitle').textContent = ctx.label;
+}
+
+function navigateInto(nodeId, label) {
+  navStack.push({ id: nodeId, label });
+  expandedIds.clear();
+  renderCards('forward');
+  updateNavBar();
+}
+
+function navigateBack() {
+  if (navStack.length <= 1) return;
+  navStack.pop();
+  expandedIds.clear();
+  renderCards('back');
+  updateNavBar();
+}
+
+// ─── RENDER ─────────────────────────────────────────────────────────────────
+function renderCards(animDir) {
+  const cards = childrenOf(currentParentId());
+  const list  = document.getElementById('cardList');
+  const empty = document.getElementById('emptyState');
+
+  empty.style.display = cards.length ? 'none' : 'flex';
+
+  list.innerHTML = cards.map(node => {
+    const childCount = childrenOf(node.id).length;
+    const pip        = 'pip-' + (node.status || 'untouched');
+    const summary    = node.summary || node.transcript || '';
+    const expanded   = expandedIds.has(node.id);
+    const meta       = childCount
+      ? `${childCount} idea${childCount !== 1 ? 's' : ''} inside`
+      : 'No sub-ideas yet';
+
+    return `
+      <div class="card${expanded ? ' expanded' : ''}" id="card-${esc(node.id)}"
+           data-node-id="${esc(node.id)}" data-node-label="${esc(node.label)}">
+        <div class="card-front">
+          <div class="pip ${pip}"></div>
+          <div class="card-body">
+            <div class="card-title">${esc(node.label)}</div>
+            <div class="card-meta">${esc(meta)}</div>
+          </div>
+          <div class="card-actions">
+            ${summary ? `<button class="info-btn" data-toggle-id="${esc(node.id)}">ⓘ</button>` : ''}
+            <span class="chevron">›</span>
+          </div>
+        </div>
+        ${summary ? `
+        <div class="card-summary-wrap">
+          <div class="card-summary">${esc(summary)}</div>
+        </div>` : ''}
+      </div>`;
+  }).join('');
+
+  if (animDir) {
+    list.classList.remove('anim-forward', 'anim-back');
+    void list.offsetWidth;
+    list.classList.add(animDir === 'forward' ? 'anim-forward' : 'anim-back');
+  }
+}
+
+function toggleSummary(nodeId) {
+  const card = document.getElementById('card-' + nodeId);
+  if (!card) return;
+  const open = expandedIds.has(nodeId);
+  open ? expandedIds.delete(nodeId) : expandedIds.add(nodeId);
+  card.classList.toggle('expanded', !open);
+}
+
+// ─── RECORDING ──────────────────────────────────────────────────────────────
+function initRecognition() {
+  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if (!SR) {
+    setStatus('Speech recognition not supported — use Safari or Chrome');
+    document.getElementById('recordBtn').disabled = true;
+    return null;
+  }
+
+  const r      = new SR();
+  r.continuous     = true;
+  r.interimResults = true;
+  r.lang           = 'en-US';
+
+  r.onresult = e => {
+    let interim = '', final = '';
+    for (let i = e.resultIndex; i < e.results.length; i++) {
+      const t = e.results[i][0].transcript;
+      e.results[i].isFinal ? (final += t) : (interim += t);
+    }
+    if (final.trim()) {
+      document.getElementById('liveText').textContent = '';
+      handleTranscript(final.trim());
+    } else {
+      document.getElementById('liveText').textContent = interim;
+    }
+  };
+
+  r.onerror = e => {
+    if (e.error === 'no-speech') return;
+    const msgs = {
+      'audio-capture': '⚠ No mic found — connect one and try again',
+      'not-allowed':   '⚠ Mic blocked — allow it in browser settings',
+      'network':       '⚠ Network error',
+    };
+    const msg = msgs[e.error] || 'Mic error: ' + e.error;
+    setRecordingState(false);
+    setStatus(msg, 'error');
+    showToast(msg);
+  };
+
+  r.onend = () => { if (isRecording) r.start(); };
+  return r;
+}
+
+function startRecording() {
+  if (!getApiKey()) { showKeyModal(); return; }
+  if (!recognition) recognition = initRecognition();
+  if (!recognition) return;
+  recognition.start();
+  setRecordingState(true);
+}
+
+function stopRecording() {
+  isRecording = false;
+  if (recognition) { recognition.stop(); recognition = null; }
+  setRecordingState(false);
+  document.getElementById('liveText').textContent = '';
+}
+
+function setRecordingState(state) {
+  isRecording = state;
+  const btn = document.getElementById('recordBtn');
+  btn.disabled = state;
+  btn.classList.toggle('recording', state);
+  document.getElementById('stopBtn').disabled = !state;
+  setStatus(state ? 'Listening — speak your idea…' : 'Tap ⏺ to capture an idea');
+}
+
+function setStatus(msg, cls) {
+  const el = document.getElementById('statusText');
+  el.textContent = msg;
+  el.className   = 'status-text' + (cls ? ' ' + cls : '');
+}
+
+// ─── CLAUDE API ─────────────────────────────────────────────────────────────
+async function callClaude(userContent, systemPrompt, prefill = '') {
+  const apiKey = getApiKey();
+  if (!apiKey) throw new Error('No API key — tap ··· → API Key to add one');
+
+  const messages = [{ role: 'user', content: userContent }];
+  if (prefill) messages.push({ role: 'assistant', content: prefill });
+
+  const res = await fetch('https://api.anthropic.com/v1/messages', {
+    method: 'POST',
+    headers: {
+      'Content-Type':                              'application/json',
+      'x-api-key':                                 apiKey,
+      'anthropic-version':                         '2023-06-01',
+      'anthropic-dangerous-direct-browser-access': 'true',
+    },
+    body: JSON.stringify({
+      model:      CLAUDE_MODEL,
+      max_tokens: 500,
+      system:     systemPrompt,
+      messages
+    })
+  });
+
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    const msg = err.error?.message || `HTTP ${res.status}`;
+    // If key is invalid/revoked, prompt to update it
+    if (res.status === 401) {
+      setStatus('⚠ API key invalid — tap ··· → API Key', 'error');
+      throw new Error('API key invalid or revoked — go to ··· → API Key to update');
+    }
+    throw new Error(`[${res.status}] ${msg}`);
+  }
+  return prefill + (await res.json()).content[0].text;
+}
+
+function extractJSON(raw) {
+  try { return JSON.parse(raw.trim()); } catch {}
+  const start = raw.indexOf('{');
+  const end   = raw.lastIndexOf('}');
+  if (start !== -1 && end > start) {
+    try { return JSON.parse(raw.slice(start, end + 1)); } catch {}
+  }
+  return null;
+}
+
+async function handleTranscript(transcript) {
+  setStatus('Claude is thinking…', 'processing');
+
+  const ctx      = currentCtx();
+  const siblings = childrenOf(ctx.id);
+  const parent   = ctx.id ? session.nodes.find(n => n.id === ctx.id) : null;
+
+  const systemPrompt =
+`You distill voice memos into mind map cards. Be extremely concise.
+
+Return JSON with these keys:
+  "label"        — 2 to 4 words MAX. A short title like a newspaper headline. Never a full sentence.
+  "summary"      — 1 to 2 sentences. Restate the idea clearly and completely in your own words.
+  "relationship" — one of: "${R.CHILD}", "${R.SIBLING}", "${R.ROOT}"
+  "children"     — ONLY include when the transcript is a list (e.g. "my favorites are X, Y, Z"). Array of short label strings, one per item. OMIT entirely if not a list.
+
+List detection: if the speaker enumerates discrete items separated by commas, "and", "or", or ordinal words, extract each as a child label (2–4 words). The parent label becomes the list topic.
+
+Relationship rules:
+  "${R.CHILD}"   → this idea belongs under the current context
+  "${R.SIBLING}" → parallel idea at the same level
+  "${R.ROOT}"    → entirely new top-level subject
+
+Default to "${R.CHILD}". Bad labels: "The idea is about...", "User wants to...". Good labels: "Backyard irrigation", "Budget constraints", "Weekly meal prep".`;
+
+  const userMsg = [
+    `Current context: "${ctx.label}"`,
+    parent          ? `Parent: "${parent.label}"` : null,
+    siblings.length ? `Other ideas at this level: ${siblings.map(s => `"${s.label}"`).join(', ')}` : null,
+    `\nTranscript: "${transcript}"`
+  ].filter(Boolean).join('\n');
+
+  let parsed;
+  try {
+    const raw = await callClaude(userMsg, systemPrompt, '{');
+    console.log('[VoiceMap] Claude raw response:', raw);
+    parsed = extractJSON(raw);
+    if (!parsed?.label) throw new Error('JSON missing label — raw: ' + raw.slice(0, 80));
+  } catch (err) {
+    console.error('[VoiceMap] Claude error:', err.message);
+    setStatus('⚠ ' + err.message, 'error');
+    showToast('⚠ Claude error — saved as raw text');
+    parsed = { label: transcript.slice(0, 40), summary: transcript, relationship: R.CHILD };
+  }
+
+  addNode(parsed, transcript);
+  setRecordingState(isRecording);
+}
+
+// ─── ADD NODE ────────────────────────────────────────────────────────────────
+function makeId() {
+  return Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+}
+
+function addNode(parsed, transcript) {
+  const now = new Date().toISOString();
+  const ctx = currentCtx();
+
+  let parentId = ctx.id;
+  if      (parsed.relationship === R.SIBLING) parentId = navStack.length >= 2 ? navStack[navStack.length - 2].id : null;
+  else if (parsed.relationship === R.ROOT)    parentId = null;
+
+  const nodeId = makeId();
+
+  session.nodes.push({
+    id:            nodeId,
+    label:         parsed.label   || transcript.slice(0, 50),
+    summary:       parsed.summary || transcript,
+    transcript,
+    parent_id:     parentId,
+    status:        'untouched',
+    created:       now,
+    last_modified: now
+  });
+
+  const listItems = Array.isArray(parsed.children) ? parsed.children.filter(Boolean) : [];
+  listItems.forEach(childLabel => {
+    session.nodes.push({
+      id:            makeId(),
+      label:         String(childLabel).slice(0, 60),
+      summary:       '',
+      transcript:    '',
+      parent_id:     nodeId,
+      status:        'untouched',
+      created:       now,
+      last_modified: now
+    });
+  });
+
+  renderCards();
+
+  if (listItems.length) {
+    showToast(`Added "${parsed.label}" + ${listItems.length} items`);
+  } else {
+    showToast(`Added: "${parsed.label || transcript.slice(0, 32)}"`);
+  }
+}
+
+// ─── IMPORT / EXPORT ────────────────────────────────────────────────────────
+function importJSON(event) {
+  const file = event.target.files[0];
+  if (!file) return;
+
+  const reader = new FileReader();
+  reader.onload = e => {
+    try {
+      const data = JSON.parse(e.target.result);
+
+      if (data.ideas && !data.nodes) {
+        data.nodes = data.ideas.map((idea, i) => ({
+          id:            'v1-' + i,
+          label:         idea.text.slice(0, 60),
+          summary:       idea.text,
+          transcript:    idea.text,
+          parent_id:     null,
+          status:        'untouched',
+          created:       new Date().toISOString(),
+          last_modified: new Date().toISOString()
+        }));
+        delete data.ideas;
+      }
+
+      if (!Array.isArray(data.nodes)) { showToast('Invalid JSON — no nodes found'); return; }
+
+      session = data;
+      navStack = [{ id: null, label: data.session || 'Home' }];
+      expandedIds.clear();
+      updateNavBar();
+      renderCards();
+      showToast(`Loaded "${data.session}" · ${data.nodes.length} nodes`);
+    } catch (err) {
+      showToast('JSON error: ' + err.message);
+    }
+  };
+  reader.readAsText(file);
+  event.target.value = '';
+}
+
+function buildExport() {
+  const childMap = {};
+  session.nodes.forEach(n => {
+    childMap[n.id] = childMap[n.id] || [];
+    if (n.parent_id) {
+      childMap[n.parent_id] = childMap[n.parent_id] || [];
+      childMap[n.parent_id].push(n.id);
+    }
+  });
+  return {
+    session: session.session,
+    date:    new Date().toISOString(),
+    nodes:   session.nodes.map(n => ({ ...n, children: childMap[n.id] || [] })),
+    meta:    { tool: 'VoiceMap', version: '0.3' }
+  };
+}
+
+function downloadJSON() {
+  if (!session.nodes.length) { showToast('Nothing to export yet'); closeMenu(); return; }
+  const name = (session.session || 'brainstorm').replace(/\s+/g, '_').replace(/[^a-zA-Z0-9_-]/g, '');
+  const url  = URL.createObjectURL(new Blob([JSON.stringify(buildExport(), null, 2)], { type: 'application/json' }));
+  const a    = Object.assign(document.createElement('a'), {
+    href:     url,
+    download: name + '_' + new Date().toISOString().slice(0, 10) + '.json'
+  });
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+  closeMenu();
+  showToast('Downloaded');
+}
+
+function copyJSON() {
+  if (!session.nodes.length) { showToast('Nothing to copy yet'); closeMenu(); return; }
+  navigator.clipboard.writeText(JSON.stringify(buildExport(), null, 2))
+    .then(()  => { closeMenu(); showToast('Copied to clipboard'); })
+    .catch(()  => showToast('Copy failed — use Export instead'));
+}
+
+function clearAll() {
+  if (session.nodes.length && !confirm('Clear everything and start fresh?')) return;
+  session.nodes = [];
+  navStack      = [{ id: null, label: session.session || 'Home' }];
+  expandedIds.clear();
+  updateNavBar();
+  renderCards();
+  closeMenu();
+}
+
+function renameSession() {
+  const name = prompt('Session name:', session.session);
+  if (name?.trim()) {
+    session.session = name.trim();
+    if (navStack.length === 1) { navStack[0].label = session.session; updateNavBar(); }
+  }
+  closeMenu();
+}
+
+// ─── MENU ───────────────────────────────────────────────────────────────────
+const toggleMenu = () => document.getElementById('menuDropdown').classList.toggle('open');
+const closeMenu  = () => document.getElementById('menuDropdown').classList.remove('open');
+
+// ─── INIT ───────────────────────────────────────────────────────────────────
+document.addEventListener('DOMContentLoaded', () => {
+  updateNavBar();
+  renderCards();
+
+  // Show key modal on first launch
+  if (!getApiKey()) showKeyModal();
+
+  document.getElementById('recordBtn').addEventListener('click', startRecording);
+  document.getElementById('stopBtn').addEventListener('click', stopRecording);
+  document.getElementById('backBtn').addEventListener('click', navigateBack);
+
+  document.getElementById('menuBtn').addEventListener('click', e => { e.stopPropagation(); toggleMenu(); });
+  document.getElementById('miImport').addEventListener('click', () => { closeMenu(); document.getElementById('fileInput').click(); });
+  document.getElementById('miExport').addEventListener('click', downloadJSON);
+  document.getElementById('miCopy').addEventListener('click', copyJSON);
+  document.getElementById('miRename').addEventListener('click', renameSession);
+  document.getElementById('miApiKey').addEventListener('click', showKeyModal);
+  document.getElementById('miClear').addEventListener('click', clearAll);
+  document.getElementById('fileInput').addEventListener('change', importJSON);
+
+  document.getElementById('keySave').addEventListener('click', saveApiKey);
+  document.getElementById('keyInput').addEventListener('keydown', e => {
+    if (e.key === 'Enter') saveApiKey();
+  });
+
+  document.getElementById('cardList').addEventListener('click', e => {
+    const infoBtn = e.target.closest('[data-toggle-id]');
+    if (infoBtn) { e.stopPropagation(); toggleSummary(infoBtn.dataset.toggleId); return; }
+
+    const front = e.target.closest('.card-front');
+    if (front) {
+      const card = front.closest('[data-node-id]');
+      if (card) navigateInto(card.dataset.nodeId, card.dataset.nodeLabel);
+    }
+  });
+
+  document.addEventListener('click', e => {
+    if (!e.target.closest('.menu-wrap')) closeMenu();
+  });
+});
+</script>
+</body>
+</html>
