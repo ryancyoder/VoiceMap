@@ -943,14 +943,14 @@ function renderCards(animDir) {
             <div class="card-meta">${esc(meta)}</div>
           </div>
           <div class="card-actions">
-            ${!selectMode && summary ? `<button class="info-btn" data-toggle-id="${esc(node.id)}">ⓘ</button>` : ''}
+            ${!selectMode ? `<button class="info-btn" data-toggle-id="${esc(node.id)}">ⓘ</button>` : ''}
             ${!selectMode ? `<button class="delete-btn" data-delete-id="${esc(node.id)}">✕</button>` : ''}
             ${!selectMode ? `<span class="chevron">›</span>` : ''}
           </div>
         </div>
-        ${summary && !selectMode ? `
+        ${!selectMode ? `
         <div class="card-summary-wrap">
-          <div class="card-summary">${esc(summary)}</div>
+          ${summary ? `<div class="card-summary">${esc(summary)}</div>` : ''}
           <div class="card-action-row">
             <button class="refile-btn" data-refile-id="${esc(node.id)}">↗ Re-file</button>
             ${childCount > 0 ? `<button class="simplify-btn" data-simplify-id="${esc(node.id)}">⚡ Simplify</button>` : ''}
