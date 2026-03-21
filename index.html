@@ -733,26 +733,27 @@ Default to "${R.CHILD}". Bad labels: "The idea is about...", "User wants to...".
   ].filter(Boolean).join('\n');
 
   let parsed;
+  let claudeError = null;
   try {
     const raw = await callClaude(userMsg, systemPrompt, '{');
     console.log('[VoiceMap] Claude raw response:', raw);
     parsed = extractJSON(raw);
-    if (!parsed?.label) throw new Error('JSON missing label — raw: ' + raw.slice(0, 80));
+    if (!parsed?.label) throw new Error('Bad JSON from Claude: ' + raw.slice(0, 120));
   } catch (err) {
-    console.error('[VoiceMap] Claude error:', err.message);
-    setStatus('⚠ ' + err.message, 'error');
-    showToast('⚠ Claude error — saved as raw text');
+    claudeError = err.message;
+    console.error('[VoiceMap] Claude error:', claudeError);
     parsed = { label: transcript.slice(0, 40), summary: transcript, relationship: R.CHILD };
   }
 
   addNode(parsed, transcript);
-  setRecordingState(isRecording);
-}
 
-// ─── ADD NODE ────────────────────────────────────────────────────────────────
-function makeId() {
-  return Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
-}
+  if (claudeError) {
+    // Keep error visible — don't overwrite with normal status
+    setStatus('⚠ ' + claudeError, 'error');
+  } else {
+    setRecordingState(isRecording);
+  }
+
 
 function addNode(parsed, transcript) {
   const now = new Date().toISOString();
