@@ -491,7 +491,11 @@ function hideKeyModal() {
 }
 
 function saveApiKey() {
-  const val = document.getElementById('keyInput').value.trim();
+  // Strip ALL whitespace, smart quotes, and non-ASCII characters iPhone might add
+  let val = document.getElementById('keyInput').value
+    .replace(/[\u2018\u2019\u201C\u201D]/g, '') // smart quotes
+    .replace(/[^\x20-\x7E]/g, '')               // non-ASCII
+    .trim();
   // If user didn't type a new key (still showing masked existing), keep current
   if (!val || val.endsWith('…')) { hideKeyModal(); return; }
   if (!val.startsWith('sk-')) {
@@ -500,7 +504,7 @@ function saveApiKey() {
   }
   localStorage.setItem(API_KEY_STORE, val);
   hideKeyModal();
-  showToast('API key saved');
+  showToast(`API key saved (${val.length} chars)`);
 }
 
 // ─── NAV ────────────────────────────────────────────────────────────────────
@@ -657,6 +661,7 @@ function setStatus(msg, cls) {
 async function callClaude(userContent, systemPrompt, prefill = '') {
   const apiKey = getApiKey();
   if (!apiKey) throw new Error('No API key — tap ··· → API Key to add one');
+  console.log('[VoiceMap] key length:', apiKey.length, 'starts:', apiKey.slice(0, 7));
 
   const messages = [{ role: 'user', content: userContent }];
   if (prefill) messages.push({ role: 'assistant', content: prefill });
