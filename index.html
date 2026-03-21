@@ -220,6 +220,43 @@
     .simplify-btn:active { background: rgba(255,255,255,0.15); }
     .simplify-btn.working { color: #f5c842; }
 
+    /* ── Delete button ─────────────────────────────────────────── */
+    .delete-btn {
+      background: none; border: none;
+      color: #ff453a; font-size: 16px;
+      padding: 6px 8px; cursor: pointer; line-height: 1;
+    }
+    .delete-btn:active { opacity: 0.6; }
+
+    /* ── Select / merge mode ───────────────────────────────────── */
+    .card.selectable { cursor: pointer; }
+    .card.selectable .card-front { padding-right: 8px; }
+    .select-indicator {
+      width: 22px; height: 22px; border-radius: 50%;
+      border: 2px solid rgba(255,255,255,0.3);
+      flex-shrink: 0; display: flex; align-items: center; justify-content: center;
+      font-size: 13px; margin-right: 10px;
+    }
+    .card.selected .select-indicator {
+      background: #0a84ff; border-color: #0a84ff; color: white;
+    }
+    .merge-bar {
+      position: fixed; bottom: calc(var(--safe-bottom) + 130px);
+      left: 50%; transform: translateX(-50%);
+      background: #0a84ff; color: white;
+      border-radius: 24px; padding: 10px 24px;
+      font-size: 15px; font-weight: 600;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.4);
+      display: none; gap: 16px; align-items: center;
+      z-index: 200;
+    }
+    .merge-bar.visible { display: flex; }
+    .merge-bar button {
+      background: rgba(255,255,255,0.25); border: none;
+      color: white; border-radius: 14px;
+      padding: 4px 12px; font-size: 13px; cursor: pointer;
+    }
+
     .card-summary-wrap {
       max-height: 0;
       overflow: hidden;
@@ -421,6 +458,8 @@
     <div class="menu-wrap">
       <button class="menu-btn" id="menuBtn">···</button>
       <div class="menu-dropdown" id="menuDropdown">
+        <button class="menu-item" id="miCluster">⚡ Auto-cluster</button>
+        <button class="menu-item" id="miSelect">⊙ Select to merge</button>
         <button class="menu-item" id="miImport">Import JSON</button>
         <button class="menu-item" id="miExport">Export JSON</button>
         <button class="menu-item" id="miCopy">Copy JSON</button>
@@ -439,6 +478,13 @@
       <div class="empty-text">No ideas here yet</div>
       <div class="empty-hint">Tap the red button and start speaking</div>
     </div>
+  </div>
+
+  <!-- Merge bar -->
+  <div class="merge-bar" id="mergeBar">
+    <span id="mergeCount">0 selected</span>
+    <button id="mergeDoBtn">Merge</button>
+    <button id="mergeCancelBtn">Cancel</button>
   </div>
 
   <!-- Record bar -->
@@ -492,6 +538,8 @@ let session = {
 
 let navStack    = [{ id: null, label: 'Home' }];
 let expandedIds = new Set();
+let selectMode  = false;
+let selectedIds = new Set();
 let recognition = null;
 let isRecording = false;
 
@@ -623,10 +671,10 @@ async function refileNode(nodeId) {
   setStatus('Finding best match…', 'thinking');
 
   const candidateList = candidates
-    .map(n => `id:"${n.id}" | "${n.label}" — ${(n.summary || n.transcript || '').slice(0, 80)}`)
+    .map(n => `id:"${n.id}" | "${n.label}" — ${(n.summary || n.transcript || '').slice(0, 300)}`)
     .join('\n');
 
-  const userMsg = `Card to re-file:\nLabel: "${node.label}"\nSummary: "${(node.summary || node.transcript || '').slice(0, 200)}"\n\nCandidate parents:\n${candidateList}\n\nReturn JSON: {"parent_id":"<id or null for top level>","parent_label":"<label or Top Level>"}`;
+  const userMsg = `Card to re-file:\nLabel: "${node.label}"\nSummary: "${(node.summary || node.transcript || '').slice(0, 500)}"\n\nCandidate parents:\n${candidateList}\n\nReturn JSON: {"parent_id":"<id or null for top level>","parent_label":"<label or Top Level>"}`;
   const sys = 'You organize a mind map. Choose the single best parent for the card from the candidates, or null for top level. Return ONLY valid JSON.';
 
   try {
@@ -645,6 +693,144 @@ async function refileNode(nodeId) {
     setStatus('Tap ⏺ to capture an idea');
   } catch (err) {
     if (btn) { btn.textContent = '↗ Re-file with AI'; btn.classList.remove('filing'); btn.disabled = false; }
+    setStatus('⚠ ' + err.message, 'error');
+  }
+}
+
+// ─── DELETE ──────────────────────────────────────────────────────────────────
+function deleteNode(nodeId) {
+  const node = session.nodes.find(n => n.id === nodeId);
+  if (!node) return;
+  const descCount = getDescendants(nodeId).size;
+  const msg = descCount
+    ? `Delete "${node.label}" and its ${descCount} sub-card${descCount !== 1 ? 's' : ''}?`
+    : `Delete "${node.label}"?`;
+  if (!confirm(msg)) return;
+  const toRemove = getDescendants(nodeId);
+  toRemove.add(nodeId);
+  session.nodes = session.nodes.filter(n => !toRemove.has(n.id));
+  renderCards();
+  showToast('Card deleted');
+}
+
+// ─── SELECT / MERGE ──────────────────────────────────────────────────────────
+function enterSelectMode() {
+  selectMode = true; selectedIds.clear();
+  document.getElementById('mergeBar').classList.add('visible');
+  document.getElementById('mergeCount').textContent = '0 selected';
+  document.getElementById('miSelect').textContent = '⊙ Exit select mode';
+  renderCards();
+}
+
+function exitSelectMode() {
+  selectMode = false; selectedIds.clear();
+  document.getElementById('mergeBar').classList.remove('visible');
+  document.getElementById('miSelect').textContent = '⊙ Select to merge';
+  renderCards();
+}
+
+function toggleSelect(nodeId) {
+  selectedIds.has(nodeId) ? selectedIds.delete(nodeId) : selectedIds.add(nodeId);
+  document.getElementById('mergeCount').textContent = `${selectedIds.size} selected`;
+  const card = document.getElementById('card-' + nodeId);
+  if (card) {
+    card.classList.toggle('selected', selectedIds.has(nodeId));
+    card.querySelector('.select-indicator').textContent = selectedIds.has(nodeId) ? '✓' : '';
+  }
+}
+
+async function mergeSelected() {
+  if (selectedIds.size < 2) { showToast('Select at least 2 cards'); return; }
+  const ids   = [...selectedIds];
+  const nodes = ids.map(id => session.nodes.find(n => n.id === id)).filter(Boolean);
+
+  document.getElementById('mergeDoBtn').textContent = '⏳ Merging…';
+  setStatus('Merging cards…', 'thinking');
+
+  const cardList = nodes.map(n => `Label: "${n.label}"\nSummary: "${n.summary || n.transcript || ''}"`).join('\n\n');
+  const userMsg  = `Merge these ${nodes.length} cards into one:\n\n${cardList}\n\nReturn JSON: {"label":"2-5 word title","summary":"1-2 sentence combined summary"}`;
+  const sys      = 'You merge mind map cards. Create a single concise card combining all ideas. Return ONLY valid JSON.';
+
+  try {
+    const raw    = await callClaude(userMsg, sys, '{');
+    const parsed = extractJSON(raw);
+    if (!parsed?.label) throw new Error('Bad response from Claude');
+
+    // Collect all children from merged cards
+    const now = new Date().toISOString();
+    const parentId = nodes[0].parent_id;
+    const newId    = makeId();
+
+    session.nodes.push({
+      id: newId, label: parsed.label, summary: parsed.summary || '',
+      transcript: nodes.map(n => n.transcript).filter(Boolean).join(' | '),
+      parent_id: parentId, status: 'untouched', created: now, last_modified: now
+    });
+
+    // Re-parent children of merged cards to the new card
+    session.nodes.forEach(n => {
+      if (ids.includes(n.parent_id)) n.parent_id = newId;
+    });
+
+    // Remove the original merged cards
+    session.nodes = session.nodes.filter(n => !ids.includes(n.id));
+
+    exitSelectMode();
+    renderCards();
+    showToast(`Merged into: ${parsed.label}`);
+    setStatus('Tap ⏺ to capture an idea');
+  } catch (err) {
+    document.getElementById('mergeDoBtn').textContent = 'Merge';
+    setStatus('⚠ ' + err.message, 'error');
+  }
+}
+
+// ─── AUTO-CLUSTER ─────────────────────────────────────────────────────────────
+async function autoCluster() {
+  const cards = childrenOf(currentParentId());
+  if (cards.length < 3) { showToast('Need at least 3 cards to cluster'); return; }
+
+  setStatus('Clustering cards…', 'thinking');
+  closeMenu();
+
+  const cardList = cards.map(n =>
+    `id:"${n.id}" | "${n.label}" — ${(n.summary || n.transcript || '').slice(0, 200)}`
+  ).join('\n');
+
+  const userMsg = `Group these cards into logical clusters:\n\n${cardList}\n\nReturn JSON array: [{"groupLabel":"2-4 word group name","cardIds":["id1","id2"]}]. Only create groups with 2+ cards. Ungrouped cards can be omitted.`;
+  const sys     = 'You organize mind map cards into meaningful groups. Return ONLY a valid JSON array of groups.';
+
+  try {
+    const raw = await callClaude(userMsg, sys, '[');
+    let parsed;
+    try { parsed = JSON.parse(raw.trim()); } catch {}
+    if (!parsed) {
+      const s = raw.indexOf('['), e = raw.lastIndexOf(']');
+      if (s !== -1 && e > s) try { parsed = JSON.parse(raw.slice(s, e + 1)); } catch {}
+    }
+    if (!Array.isArray(parsed) || parsed.length === 0) throw new Error('No clusters returned');
+
+    const now = new Date().toISOString();
+    let moved = 0;
+
+    parsed.forEach(group => {
+      if (!group.groupLabel || !Array.isArray(group.cardIds) || group.cardIds.length < 2) return;
+      const groupId = makeId();
+      session.nodes.push({
+        id: groupId, label: group.groupLabel, summary: '',
+        transcript: '', parent_id: currentParentId(),
+        status: 'untouched', created: now, last_modified: now
+      });
+      group.cardIds.forEach(cid => {
+        const n = session.nodes.find(n => n.id === cid);
+        if (n) { n.parent_id = groupId; moved++; }
+      });
+    });
+
+    renderCards();
+    showToast(`Clustered into ${parsed.length} groups`);
+    setStatus('Tap ⏺ to capture an idea');
+  } catch (err) {
     setStatus('⚠ ' + err.message, 'error');
   }
 }
@@ -725,21 +911,23 @@ function renderCards(animDir) {
       ? `${childCount} idea${childCount !== 1 ? 's' : ''} inside`
       : 'No sub-ideas yet';
 
+    const isSelected = selectedIds.has(node.id);
     return `
-      <div class="card${expanded ? ' expanded' : ''}" id="card-${esc(node.id)}"
-           data-node-id="${esc(node.id)}" data-node-label="${esc(node.label)}">
+      <div class="card${expanded ? ' expanded' : ''}${selectMode ? ' selectable' : ''}${isSelected ? ' selected' : ''}"
+           id="card-${esc(node.id)}" data-node-id="${esc(node.id)}" data-node-label="${esc(node.label)}">
         <div class="card-front">
-          <div class="pip ${pip}"></div>
+          ${selectMode ? `<div class="select-indicator">${isSelected ? '✓' : ''}</div>` : `<div class="pip ${pip}"></div>`}
           <div class="card-body">
             <div class="card-title">${esc(node.label)}</div>
             <div class="card-meta">${esc(meta)}</div>
           </div>
           <div class="card-actions">
-            ${summary ? `<button class="info-btn" data-toggle-id="${esc(node.id)}">ⓘ</button>` : ''}
-            <span class="chevron">›</span>
+            ${!selectMode && summary ? `<button class="info-btn" data-toggle-id="${esc(node.id)}">ⓘ</button>` : ''}
+            ${!selectMode ? `<button class="delete-btn" data-delete-id="${esc(node.id)}">✕</button>` : ''}
+            ${!selectMode ? `<span class="chevron">›</span>` : ''}
           </div>
         </div>
-        ${summary ? `
+        ${summary && !selectMode ? `
         <div class="card-summary-wrap">
           <div class="card-summary">${esc(summary)}</div>
           <div class="card-action-row">
@@ -1111,12 +1299,16 @@ document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('backBtn').addEventListener('click', navigateBack);
 
   document.getElementById('menuBtn').addEventListener('click', e => { e.stopPropagation(); toggleMenu(); });
+  document.getElementById('miCluster').addEventListener('click', () => { closeMenu(); autoCluster(); });
+  document.getElementById('miSelect').addEventListener('click',  () => { closeMenu(); selectMode ? exitSelectMode() : enterSelectMode(); });
   document.getElementById('miImport').addEventListener('click', () => { closeMenu(); document.getElementById('fileInput').click(); });
   document.getElementById('miExport').addEventListener('click', downloadJSON);
   document.getElementById('miCopy').addEventListener('click', copyJSON);
   document.getElementById('miRename').addEventListener('click', renameSession);
   document.getElementById('miApiKey').addEventListener('click', showKeyModal);
   document.getElementById('miClear').addEventListener('click', clearAll);
+  document.getElementById('mergeDoBtn').addEventListener('click', mergeSelected);
+  document.getElementById('mergeCancelBtn').addEventListener('click', exitSelectMode);
   document.getElementById('fileInput').addEventListener('change', importJSON);
 
   document.getElementById('keySave').addEventListener('click', saveApiKey);
@@ -1126,6 +1318,9 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 
   document.getElementById('cardList').addEventListener('click', e => {
+    const deleteBtn = e.target.closest('[data-delete-id]');
+    if (deleteBtn) { e.stopPropagation(); deleteNode(deleteBtn.dataset.deleteId); return; }
+
     const refileBtn = e.target.closest('[data-refile-id]');
     if (refileBtn) { e.stopPropagation(); refileNode(refileBtn.dataset.refileId); return; }
 
@@ -1138,7 +1333,9 @@ document.addEventListener('DOMContentLoaded', () => {
     const front = e.target.closest('.card-front');
     if (front) {
       const card = front.closest('[data-node-id]');
-      if (card) navigateInto(card.dataset.nodeId, card.dataset.nodeLabel);
+      if (!card) return;
+      if (selectMode) { toggleSelect(card.dataset.nodeId); return; }
+      navigateInto(card.dataset.nodeId, card.dataset.nodeLabel);
     }
   });
 
