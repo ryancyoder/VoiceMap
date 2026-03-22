@@ -1449,7 +1449,7 @@ Default action to "create", relationship to "${R.CHILD}". Good labels: "Backyard
 
   const userMsg = [
     `Current context: "${ctx.label}"`,
-    parent          ? `Parent: "${parent.label}"` : null,
+    parent ? `Parent card: "${parent.label}"${parent.summary ? ` — ${parent.summary}` : ''}` : null,
     siblings.length ? `Siblings: ${siblings.map(s => `"${s.label}"`).join(', ')}` : null,
     allCards        ? `\nAll existing cards:\n${allCards}` : null,
     `\nTranscript: "${transcript}"`
@@ -1623,12 +1623,14 @@ async function skipImageDescription() {
   renderCards();
   showToast('Analyzing photo…');
 
+  let visionError = null;
   try {
     const base64     = dataUrl.split(',')[1];
     const parentNode = currentParentId() ? session.nodes.find(n => n.id === currentParentId()) : null;
     const contextPrompt = parentNode
       ? `Parent context: "${parentNode.label}"${parentNode.summary ? ` — ${parentNode.summary}` : ''}.\n\nDescribe this image as a child card under that context.`
       : 'Describe this image as a mind map card.';
+
     const res = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: {
@@ -1638,8 +1640,8 @@ async function skipImageDescription() {
         'anthropic-dangerous-direct-browser-access': 'true',
       },
       body: JSON.stringify({
-        model: CLAUDE_MODEL, max_tokens: 300,
-        system: 'You analyze images for a voice brainstorming app. Use the parent context to interpret the image meaningfully — e.g. a photo of a banana under "Grocery list" should yield "Buy bananas", not just "Banana". Return ONLY valid JSON: {"label":"2-4 word title","summary":"1-2 sentence description relevant as a brainstorm card."}',
+        model: CLAUDE_MODEL, max_tokens: 500,
+        system: 'You analyze images for a voice brainstorming app. Use the parent context to interpret the image meaningfully — e.g. a photo of a banana under "Grocery list" should yield "Buy bananas". Return ONLY valid JSON: {"label":"2-4 word title","summary":"1-2 sentence description relevant as a brainstorm card."}',
         messages: [
           { role: 'user', content: [
             { type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: base64 } },
@@ -1650,9 +1652,13 @@ async function skipImageDescription() {
       })
     });
 
+    const body = await res.text();
+    console.log('[VoiceMap] Vision response:', res.status, body.slice(0, 300));
+
     if (res.ok) {
-      const raw    = '{' + (await res.json()).content[0].text;
+      const raw    = '{' + JSON.parse(body).content[0].text;
       const parsed = extractJSON(raw);
+      console.log('[VoiceMap] Vision parsed:', parsed);
       if (parsed?.label) {
         node.label         = String(parsed.label).slice(0, 60);
         node.summary       = parsed.summary || '';
@@ -1660,18 +1666,25 @@ async function skipImageDescription() {
         renderCards();
         saveSession();
         showToast(`Photo: "${node.label}"`);
+      } else {
+        visionError = 'Could not parse vision response';
       }
     } else {
-      const body = await res.text().catch(() => '');
-      setStatus(`⚠ Vision error ${res.status}`, 'error');
-      console.error('[VoiceMap] Vision API error:', body);
+      let msg = `Vision error ${res.status}`;
+      try { msg = JSON.parse(body).error?.message || msg; } catch {}
+      visionError = msg;
     }
   } catch (err) {
-    setStatus('⚠ ' + err.message, 'error');
+    visionError = err.message;
     console.error('[VoiceMap] Vision error:', err);
   }
 
-  setStatus('Tap ⏺ to capture an idea');
+  if (visionError) {
+    setStatus('⚠ ' + visionError, 'error');
+    showToast('⚠ Vision failed — photo saved as "Photo"');
+  } else {
+    setStatus('Tap ⏺ to capture an idea');
+  }
 }
 
 // ─── IMPORT / EXPORT ────────────────────────────────────────────────────────
