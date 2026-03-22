@@ -1014,6 +1014,31 @@ function navigateInto(nodeId, label) {
   updateNavBar();
 }
 
+function navigateToContext(nodeId) {
+  // Build the full ancestor chain from root to this card's parent
+  const ancestors = [];
+  let cursor = session.nodes.find(n => n.id === nodeId);
+  while (cursor?.parent_id) {
+    cursor = session.nodes.find(n => n.id === cursor.parent_id);
+    if (cursor) ancestors.unshift({ id: cursor.id, label: cursor.label });
+  }
+  // Switch to All view, rebuild navStack to the card's parent level
+  currentView = 'all';
+  document.querySelectorAll('.filter-pill').forEach(p => {
+    p.classList.toggle('active', p.dataset.view === 'all');
+  });
+  navStack = [{ id: null, label: session.session || 'Home' }, ...ancestors];
+  expandedIds.clear();
+  expandedIds.add(nodeId); // expand the target card so it's visible
+  renderCards('back');
+  updateNavBar();
+  // Scroll the card into view after render
+  requestAnimationFrame(() => {
+    const el = document.getElementById('card-' + nodeId);
+    if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  });
+}
+
 function navigateBack() {
   if (navStack.length <= 1) return;
   navStack.pop();
@@ -2548,7 +2573,11 @@ document.addEventListener('DOMContentLoaded', () => {
       const card = front.closest('[data-node-id]');
       if (!card) return;
       if (selectMode) { toggleSelect(card.dataset.nodeId); return; }
-      navigateInto(card.dataset.nodeId, card.dataset.nodeLabel);
+      if (currentView !== 'all') {
+        navigateToContext(card.dataset.nodeId);
+      } else {
+        navigateInto(card.dataset.nodeId, card.dataset.nodeLabel);
+      }
     }
   });
 
