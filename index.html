@@ -1007,14 +1007,16 @@ async function refileNode(nodeId) {
 }
 
 // ─── DELETE ──────────────────────────────────────────────────────────────────
-function deleteNode(nodeId) {
+function deleteNode(nodeId, confirm = false) {
   const node = session.nodes.find(n => n.id === nodeId);
   if (!node) return;
   const descCount = getDescendants(nodeId).size;
-  const msg = descCount
-    ? `Delete "${node.label}" and its ${descCount} sub-card${descCount !== 1 ? 's' : ''}?`
-    : `Delete "${node.label}"?`;
-  if (!confirm(msg)) return;
+  if (confirm) {
+    const msg = descCount
+      ? `Delete "${node.label}" and its ${descCount} sub-card${descCount !== 1 ? 's' : ''}?`
+      : `Delete "${node.label}"?`;
+    if (!window.confirm(msg)) return;
+  }
   const toRemove = getDescendants(nodeId);
   toRemove.add(nodeId);
   toRemove.forEach(id => { if (imageCache[id]) deleteImageFromDB(id); });
