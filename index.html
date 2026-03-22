@@ -253,6 +253,32 @@
     .simplify-btn:active { background: rgba(255,255,255,0.15); }
     .simplify-btn.working { color: #f5c842; }
 
+    /* ── Drag & drop ───────────────────────────────────────────── */
+    .card-swipe-wrap.drag-source { opacity: 0.35; }
+    .card-swipe-wrap.drop-child-target > .card {
+      outline: 2.5px solid #30d158;
+      outline-offset: -2px;
+    }
+    #drag-ghost {
+      position: fixed;
+      pointer-events: none;
+      z-index: 1000;
+      border-radius: var(--radius);
+      box-shadow: 0 10px 36px rgba(0,0,0,0.26);
+      opacity: 0.93;
+      transform: scale(1.03);
+      background: var(--surface);
+      overflow: hidden;
+      border: 0.5px solid var(--border);
+    }
+    #drop-indicator {
+      height: 3px;
+      background: var(--accent);
+      border-radius: 3px;
+      margin: 3px 4px;
+      display: none;
+    }
+    #drop-indicator.visible { display: block; }
 
     /* ── Select / merge mode ───────────────────────────────────── */
     .card.selectable { cursor: pointer; }
@@ -1393,7 +1419,7 @@ function initSwipeHandlers() {
   const list = document.getElementById('cardList');
 
   list.addEventListener('touchstart', e => {
-    if (selectMode) return;
+    if (selectMode || dragState?.phase === 'dragging') return;
     const card = e.target.closest('.card');
     if (!card) return;
     const nodeId = card.dataset.nodeId;
@@ -1416,7 +1442,7 @@ function initSwipeHandlers() {
   }, { passive: true });
 
   document.addEventListener('touchmove', e => {
-    if (!swipeState) return;
+    if (!swipeState || dragState?.phase === 'dragging') return;
     const touch = e.touches[0];
     const dx = touch.clientX - swipeState.startX;
     const dy = touch.clientY - swipeState.startY;
@@ -1457,6 +1483,176 @@ function initSwipeHandlers() {
   }, { passive: true });
 }
 
+// ─── DRAG TO REORDER / REPARENT ──────────────────────────────────────────────
+let dragState         = null;
+let dragLongPressTimer = null;
+const DRAG_LONG_PRESS  = 480;
+
+function initDragHandlers() {
+  document.getElementById('cardList').addEventListener('touchstart', onDragTouchStart, { passive: true });
+  document.addEventListener('touchmove',   onDragTouchMove,   { passive: false });
+  document.addEventListener('touchend',    onDragTouchEnd,    { passive: true });
+  document.addEventListener('touchcancel', onDragCancel,      { passive: true });
+}
+
+function onDragTouchStart(e) {
+  if (selectMode) return;
+  // Ignore taps on action buttons
+  if (e.target.closest('.swipe-btn,.info-btn,.refile-btn,.simplify-btn')) return;
+  const wrap = e.target.closest('.card-swipe-wrap');
+  if (!wrap) return;
+  const card = wrap.querySelector('.card');
+  if (!card) return;
+  const nodeId = card.dataset.nodeId;
+  if (!nodeId) return;
+
+  const t = e.touches[0];
+  dragState = { nodeId, wrap, card, startX: t.clientX, startY: t.clientY, phase: 'pending' };
+  dragLongPressTimer = setTimeout(activateDrag, DRAG_LONG_PRESS);
+}
+
+function activateDrag() {
+  if (!dragState || dragState.phase !== 'pending') return;
+  if (navigator.vibrate) navigator.vibrate(12);
+  closeOpenSwipe();
+
+  const { card, wrap } = dragState;
+  const rect = card.getBoundingClientRect();
+
+  const ghost = document.createElement('div');
+  ghost.id = 'drag-ghost';
+  ghost.style.top   = rect.top  + 'px';
+  ghost.style.left  = rect.left + 'px';
+  ghost.style.width = rect.width + 'px';
+  ghost.innerHTML   = card.innerHTML;
+  document.body.appendChild(ghost);
+
+  wrap.classList.add('drag-source');
+
+  const indicator = document.createElement('div');
+  indicator.id = 'drop-indicator';
+  document.getElementById('cardList').prepend(indicator);
+
+  dragState = { ...dragState, phase: 'dragging', ghost, indicator,
+    offsetY: dragState.startY - rect.top, dropNodeId: null, insertBeforeId: null };
+}
+
+function onDragTouchMove(e) {
+  if (!dragState) return;
+  const t = e.touches[0];
+
+  if (dragState.phase === 'pending') {
+    // Cancel long press if finger moved more than 10px
+    if (Math.abs(t.clientX - dragState.startX) > 10 ||
+        Math.abs(t.clientY - dragState.startY) > 10) {
+      clearTimeout(dragLongPressTimer);
+      dragState = null;
+    }
+    return;
+  }
+  if (dragState.phase !== 'dragging') return;
+  e.preventDefault();
+
+  const { ghost, indicator, offsetY, nodeId } = dragState;
+
+  // Move ghost
+  ghost.style.top = (t.clientY - offsetY) + 'px';
+
+  // Find element under finger (hide ghost first)
+  ghost.style.visibility = 'hidden';
+  const el = document.elementFromPoint(t.clientX, t.clientY);
+  ghost.style.visibility = '';
+
+  // Clear highlights
+  document.querySelectorAll('.drop-child-target').forEach(w => w.classList.remove('drop-child-target'));
+  indicator.classList.remove('visible');
+  dragState.dropNodeId     = null;
+  dragState.insertBeforeId = null;
+
+  const targetWrap = el?.closest('.card-swipe-wrap');
+  const targetId   = targetWrap?.querySelector('.card')?.dataset.nodeId;
+
+  if (!targetWrap || targetId === nodeId) {
+    // Check if past all cards → insert at end (no indicator needed)
+    return;
+  }
+
+  const tRect = targetWrap.getBoundingClientRect();
+  const frac  = (t.clientY - tRect.top) / tRect.height;
+
+  if (frac < 0.28) {
+    // Top zone → insert before target
+    dragState.insertBeforeId = targetId;
+    targetWrap.before(indicator);
+    indicator.classList.add('visible');
+  } else if (frac > 0.72) {
+    // Bottom zone → insert after target (= before next sibling)
+    dragState.insertBeforeId = null;
+    dragState.insertAfterId  = targetId;
+    targetWrap.after(indicator);
+    indicator.classList.add('visible');
+  } else {
+    // Middle → make child of target
+    const descendants = getDescendants(nodeId);
+    if (!descendants.has(targetId)) {
+      dragState.dropNodeId = targetId;
+      targetWrap.classList.add('drop-child-target');
+    }
+  }
+}
+
+function onDragTouchEnd() {
+  clearTimeout(dragLongPressTimer);
+  if (!dragState || dragState.phase !== 'dragging') { dragState = null; return; }
+
+  const { nodeId, dropNodeId, insertBeforeId, insertAfterId, ghost, indicator, wrap } = dragState;
+  dragState = null;
+
+  ghost.remove();
+  indicator.remove();
+  wrap.classList.remove('drag-source');
+  document.querySelectorAll('.drop-child-target').forEach(w => w.classList.remove('drop-child-target'));
+
+  const sourceNode = session.nodes.find(n => n.id === nodeId);
+  if (!sourceNode) { renderCards(); return; }
+
+  if (dropNodeId) {
+    // ── Make child ──────────────────────────────────────────────
+    sourceNode.parent_id     = dropNodeId;
+    sourceNode.last_modified = new Date().toISOString();
+    renderCards();
+    showToast(`Moved inside "${session.nodes.find(n => n.id === dropNodeId)?.label}"`);
+    saveSession();
+
+  } else if (insertBeforeId || insertAfterId) {
+    // ── Reorder ─────────────────────────────────────────────────
+    const refId     = insertBeforeId || insertAfterId;
+    const refNode   = session.nodes.find(n => n.id === refId);
+    if (!refNode || refNode.parent_id !== sourceNode.parent_id) { renderCards(); return; }
+
+    const srcIdx = session.nodes.indexOf(sourceNode);
+    session.nodes.splice(srcIdx, 1);
+    let tgtIdx = session.nodes.indexOf(refNode);
+    if (insertAfterId) tgtIdx += 1;
+    session.nodes.splice(tgtIdx, 0, sourceNode);
+    renderCards();
+    saveSession();
+
+  } else {
+    renderCards();
+  }
+}
+
+function onDragCancel() {
+  clearTimeout(dragLongPressTimer);
+  if (!dragState) return;
+  if (dragState.ghost)     { dragState.ghost.remove(); }
+  if (dragState.indicator) { dragState.indicator.remove(); }
+  if (dragState.wrap)      { dragState.wrap.classList.remove('drag-source'); }
+  document.querySelectorAll('.drop-child-target').forEach(w => w.classList.remove('drop-child-target'));
+  dragState = null;
+}
+
 // ─── MENU ───────────────────────────────────────────────────────────────────
 const toggleMenu = () => document.getElementById('menuDropdown').classList.toggle('open');
 const closeMenu  = () => document.getElementById('menuDropdown').classList.remove('open');
@@ -1470,6 +1666,7 @@ document.addEventListener('DOMContentLoaded', () => {
   if (!getApiKey()) showKeyModal();
 
   initSwipeHandlers();
+  initDragHandlers();
 
   document.getElementById('recordBtn').addEventListener('click', startRecording);
   document.getElementById('stopBtn').addEventListener('click', stopRecording);
