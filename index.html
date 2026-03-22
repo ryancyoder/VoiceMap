@@ -168,8 +168,19 @@
     .swipe-btn-defer  { background: #ffd60a; color: #1c1c1e; }
 
     /* ── Card status indicators ───────────────────────────────── */
-    .card-pin-badge  { font-size: 13px; line-height: 1; }
+    .card-pin-badge   { font-size: 13px; line-height: 1; }
     .card-defer-badge { font-size: 11px; color: #ffd60a; font-weight: 600; white-space: nowrap; }
+    .card-title.archived-title { text-decoration: line-through; color: var(--muted); }
+
+    /* ── Day-of-week picker ───────────────────────────────────── */
+    .day-grid { display: grid; grid-template-columns: repeat(7,1fr); gap: 6px; margin-bottom: 12px; }
+    .day-btn {
+      padding: 10px 0; border-radius: 10px;
+      border: 0.5px solid var(--border); background: var(--surface);
+      color: var(--text); font-size: 12px; font-weight: 500;
+      font-family: var(--font); cursor: pointer;
+    }
+    .day-btn:active { background: rgba(255,214,10,0.3); }
 
     /* ── View filter bar ──────────────────────────────────────── */
     .view-filter-bar {
@@ -717,6 +728,7 @@
         <button class="menu-item" id="miCopy">Copy JSON</button>
         <button class="menu-item" id="miRename">Rename session</button>
         <button class="menu-item" id="miApiKey">API Key</button>
+        <button class="menu-item" id="miArchive">📁 View Archive</button>
         <button class="menu-item danger" id="miClear">Clear all</button>
       </div>
     </div>
@@ -747,6 +759,46 @@
       <button class="defer-option" data-defer-days="7">Defer a week</button>
       <button class="defer-option" data-defer-days="30">Defer a month</button>
       <button class="defer-cancel" id="deferCancel">Cancel</button>
+    </div>
+  </div>
+
+  <!-- Complete modal -->
+  <div class="defer-overlay hidden" id="completeModal">
+    <div class="defer-sheet">
+      <div class="defer-title" id="completeModalTitle">Mark complete</div>
+      <button class="defer-option" id="archiveBtn" style="background:rgba(48,209,88,0.15)">✓ Archive</button>
+      <button class="defer-option" id="rescheduleBtn" style="background:rgba(0,122,255,0.15)">🔄 Reschedule</button>
+      <button class="defer-cancel" id="completeCancel">Cancel</button>
+    </div>
+  </div>
+
+  <!-- Recurrence picker -->
+  <div class="defer-overlay hidden" id="recurrenceModal">
+    <div class="defer-sheet">
+      <div class="defer-title">How often does this repeat?</div>
+      <button class="defer-option" data-recurrence="daily">Daily</button>
+      <button class="defer-option" data-recurrence="weekly">Weekly</button>
+      <button class="defer-option" data-recurrence="biweekly">Bi-weekly</button>
+      <button class="defer-option" data-recurrence="monthly">Monthly</button>
+      <button class="defer-cancel" id="recurrenceCancel">← Back</button>
+    </div>
+  </div>
+
+  <!-- Weekly day picker -->
+  <div class="defer-overlay hidden" id="weeklyPicker">
+    <div class="defer-sheet">
+      <div class="defer-title" id="weeklyPickerTitle">Weekly — when?</div>
+      <button class="defer-option" data-weekday="-1" id="weeklyFromNow">7 days from now</button>
+      <div class="day-grid">
+        <button class="day-btn" data-weekday="1">Mon</button>
+        <button class="day-btn" data-weekday="2">Tue</button>
+        <button class="day-btn" data-weekday="3">Wed</button>
+        <button class="day-btn" data-weekday="4">Thu</button>
+        <button class="day-btn" data-weekday="5">Fri</button>
+        <button class="day-btn" data-weekday="6">Sat</button>
+        <button class="day-btn" data-weekday="0">Sun</button>
+      </div>
+      <button class="defer-cancel" id="weeklyPickerBack">← Back</button>
     </div>
   </div>
 
@@ -1121,6 +1173,107 @@ function formatDeferDate(iso) {
   return d.toLocaleDateString('en', { month: 'short', day: 'numeric' });
 }
 
+// ─── COMPLETE / ARCHIVE / RECURRENCE ────────────────────────────────────────
+let completePendingNodeId  = null;
+let recurrencePendingType  = null; // 'weekly' | 'biweekly' when weekly picker shown
+
+function showCompleteModal(nodeId) {
+  completePendingNodeId = nodeId;
+  const node = session.nodes.find(n => n.id === nodeId);
+  document.getElementById('completeModalTitle').textContent =
+    `"${(node?.label || 'Card').slice(0, 40)}"`;
+  document.getElementById('completeModal').classList.remove('hidden');
+}
+
+function hideCompleteModal() {
+  completePendingNodeId = null;
+  document.getElementById('completeModal').classList.add('hidden');
+}
+
+function archiveNode(nodeId) {
+  const node = session.nodes.find(n => n.id === nodeId);
+  if (!node) return;
+  node.status       = 'done';
+  node.archived     = true;
+  node.archivedAt   = new Date().toISOString();
+  node.last_modified = new Date().toISOString();
+  hideCompleteModal();
+  renderCards();
+  showToast(`✓ Archived: ${node.label}`);
+  saveSession();
+}
+
+function showRecurrenceModal(nodeId) {
+  completePendingNodeId = nodeId;
+  hideCompleteModal();
+  document.getElementById('recurrenceModal').classList.remove('hidden');
+}
+
+function hideRecurrenceModal() {
+  document.getElementById('recurrenceModal').classList.add('hidden');
+}
+
+function showWeeklyPicker(type) {
+  recurrencePendingType = type;
+  document.getElementById('weeklyPickerTitle').textContent =
+    type === 'biweekly' ? 'Bi-weekly — when?' : 'Weekly — when?';
+  document.getElementById('weeklyFromNow').textContent =
+    type === 'biweekly' ? '14 days from now' : '7 days from now';
+  hideRecurrenceModal();
+  document.getElementById('weeklyPicker').classList.remove('hidden');
+}
+
+function hideWeeklyPicker() {
+  recurrencePendingType = null;
+  document.getElementById('weeklyPicker').classList.add('hidden');
+}
+
+function getNextRecurrenceDate(type, dayOfWeek) {
+  const now = new Date();
+  if (type === 'daily') {
+    const d = new Date(now); d.setDate(d.getDate() + 1); return d;
+  }
+  if (type === 'weekly' || type === 'biweekly') {
+    const weeks = type === 'biweekly' ? 2 : 1;
+    if (dayOfWeek === null || dayOfWeek === -1) {
+      const d = new Date(now); d.setDate(d.getDate() + weeks * 7); return d;
+    }
+    const d = new Date(now);
+    let daysUntil = (dayOfWeek - d.getDay() + 7) % 7 || 7;
+    if (type === 'biweekly' && daysUntil < 7) daysUntil += 7;
+    d.setDate(d.getDate() + daysUntil); return d;
+  }
+  if (type === 'monthly') {
+    const d = new Date(now); d.setMonth(d.getMonth() + 1); return d;
+  }
+  const d = new Date(now); d.setDate(d.getDate() + 1); return d;
+}
+
+function scheduleRecurrence(nodeId, type, dayOfWeek = null) {
+  const node = session.nodes.find(n => n.id === nodeId);
+  if (!node) return;
+  const nextDate = getNextRecurrenceDate(type, dayOfWeek);
+  node.status              = 'untouched';
+  node.archived            = false;
+  node.deferred            = true;
+  node.deferredUntil       = nextDate.toISOString();
+  node.recurrence          = type;
+  node.recurrenceDayOfWeek = dayOfWeek;
+  node.last_modified       = new Date().toISOString();
+  hideRecurrenceModal();
+  hideWeeklyPicker();
+  renderCards();
+  showToast(`🔄 Rescheduled ${type}: ${node.label}`);
+  saveSession();
+}
+
+function isArchivedBeforeToday(node) {
+  if (!node.archived || !node.archivedAt) return false;
+  const today = new Date(); today.setHours(0, 0, 0, 0);
+  const day   = new Date(node.archivedAt); day.setHours(0, 0, 0, 0);
+  return day < today;
+}
+
 async function refileNode(nodeId) {
   const node = session.nodes.find(n => n.id === nodeId);
   if (!node) return;
@@ -1377,8 +1530,13 @@ function renderCards(animDir) {
     cards = [...session.nodes]
       .filter(n => n.deferred)
       .sort((a, b) => new Date(a.deferredUntil) - new Date(b.deferredUntil));
+  } else if (currentView === 'archived') {
+    cards = [...session.nodes]
+      .filter(n => n.archived)
+      .sort((a, b) => new Date(b.archivedAt) - new Date(a.archivedAt));
   } else {
-    cards = childrenOf(currentParentId());
+    // Hide cards archived before today from normal view
+    cards = childrenOf(currentParentId()).filter(n => !isArchivedBeforeToday(n));
   }
 
   const list  = document.getElementById('cardList');
@@ -1424,7 +1582,7 @@ function renderCards(animDir) {
           <div class="card-front">
             ${selectMode ? `<div class="select-indicator">${isSelected ? '✓' : ''}</div>` : (isImageCard ? thumb : `<div class="pip ${pip}"></div>`)}
             <div class="card-body">
-              <div class="card-title">${esc(node.label)}</div>
+              <div class="card-title${node.archived ? ' archived-title' : ''}">${esc(node.label)}</div>
               <div class="card-meta">
                 ${node.pinned ? `<span class="card-pin-badge">📌</span> ` : ''}${esc(meta)}${node.deferred ? ` <span class="card-defer-badge">⏳ ${formatDeferDate(node.deferredUntil)}</span>` : ''}
               </div>
@@ -2519,7 +2677,51 @@ document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('miCopy').addEventListener('click', copyJSON);
   document.getElementById('miRename').addEventListener('click', renameSession);
   document.getElementById('miApiKey').addEventListener('click', showKeyModal);
+  document.getElementById('miArchive').addEventListener('click', () => { closeMenu(); setView('archived'); });
   document.getElementById('miClear').addEventListener('click', clearAll);
+
+  // Complete modal
+  document.getElementById('archiveBtn').addEventListener('click', () => {
+    if (completePendingNodeId) archiveNode(completePendingNodeId);
+  });
+  document.getElementById('rescheduleBtn').addEventListener('click', () => {
+    if (completePendingNodeId) showRecurrenceModal(completePendingNodeId);
+  });
+  document.getElementById('completeCancel').addEventListener('click', hideCompleteModal);
+  document.getElementById('completeModal').addEventListener('click', e => {
+    if (e.target === document.getElementById('completeModal')) hideCompleteModal();
+  });
+
+  // Recurrence picker
+  document.querySelectorAll('[data-recurrence]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const type = btn.dataset.recurrence;
+      if (type === 'weekly' || type === 'biweekly') {
+        showWeeklyPicker(type);
+      } else if (completePendingNodeId) {
+        scheduleRecurrence(completePendingNodeId, type);
+      }
+    });
+  });
+  document.getElementById('recurrenceCancel').addEventListener('click', () => {
+    hideRecurrenceModal();
+    if (completePendingNodeId) showCompleteModal(completePendingNodeId);
+  });
+
+  // Weekly day picker
+  document.querySelectorAll('.day-btn, [data-weekday]').forEach(btn => {
+    if (!btn.dataset.weekday) return;
+    btn.addEventListener('click', () => {
+      const day = parseInt(btn.dataset.weekday);
+      if (completePendingNodeId && recurrencePendingType) {
+        scheduleRecurrence(completePendingNodeId, recurrencePendingType, day === -1 ? null : day);
+      }
+    });
+  });
+  document.getElementById('weeklyPickerBack').addEventListener('click', () => {
+    hideWeeklyPicker();
+    if (completePendingNodeId) showRecurrenceModal(completePendingNodeId);
+  });
   document.getElementById('mergeDoBtn').addEventListener('click', mergeSelected);
   document.getElementById('mergeCancelBtn').addEventListener('click', exitSelectMode);
   document.getElementById('fileInput').addEventListener('change', importJSON);
@@ -2550,12 +2752,16 @@ document.addEventListener('DOMContentLoaded', () => {
       e.stopPropagation();
       const nodeId = swipeDoneBtn.dataset.swipeDoneId;
       const n = session.nodes.find(n => n.id === nodeId);
-      if (n) {
-        n.status = n.status === 'done' ? 'untouched' : 'done';
+      if (n?.status === 'done' || n?.archived) {
+        // Already done — reopen
+        n.status   = 'untouched';
+        n.archived = false;
         n.last_modified = new Date().toISOString();
         renderCards();
-        showToast(n.status === 'done' ? `✓ Done: ${n.label}` : `Reopened: ${n.label}`);
+        showToast(`Reopened: ${n.label}`);
         saveSession();
+      } else {
+        showCompleteModal(nodeId);
       }
       closeOpenSwipe();
       return;
