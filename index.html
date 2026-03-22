@@ -2692,35 +2692,42 @@ document.addEventListener('DOMContentLoaded', () => {
     if (e.target === document.getElementById('completeModal')) hideCompleteModal();
   });
 
-  // Recurrence picker
-  document.querySelectorAll('[data-recurrence]').forEach(btn => {
-    btn.addEventListener('click', () => {
-      const type = btn.dataset.recurrence;
+  // Recurrence picker — event delegation
+  document.getElementById('recurrenceModal').addEventListener('click', e => {
+    if (e.target.closest('#recurrenceCancel')) {
+      hideRecurrenceModal();
+      if (completePendingNodeId) showCompleteModal(completePendingNodeId);
+      return;
+    }
+    const btn = e.target.closest('[data-recurrence]');
+    if (!btn) return;
+    const type = btn.dataset.recurrence;
+    btn.style.background = 'rgba(0,122,255,0.25)';
+    setTimeout(() => {
       if (type === 'weekly' || type === 'biweekly') {
         showWeeklyPicker(type);
       } else if (completePendingNodeId) {
         scheduleRecurrence(completePendingNodeId, type);
       }
-    });
-  });
-  document.getElementById('recurrenceCancel').addEventListener('click', () => {
-    hideRecurrenceModal();
-    if (completePendingNodeId) showCompleteModal(completePendingNodeId);
+    }, 180);
   });
 
-  // Weekly day picker
-  document.querySelectorAll('.day-btn, [data-weekday]').forEach(btn => {
-    if (!btn.dataset.weekday) return;
-    btn.addEventListener('click', () => {
-      const day = parseInt(btn.dataset.weekday);
-      if (completePendingNodeId && recurrencePendingType) {
-        scheduleRecurrence(completePendingNodeId, recurrencePendingType, day === -1 ? null : day);
-      }
-    });
-  });
-  document.getElementById('weeklyPickerBack').addEventListener('click', () => {
-    hideWeeklyPicker();
-    if (completePendingNodeId) showRecurrenceModal(completePendingNodeId);
+  // Weekly day picker — event delegation
+  document.getElementById('weeklyPicker').addEventListener('click', e => {
+    if (e.target.closest('#weeklyPickerBack')) {
+      hideWeeklyPicker();
+      if (completePendingNodeId) showRecurrenceModal(completePendingNodeId);
+      return;
+    }
+    const btn = e.target.closest('[data-weekday]');
+    if (!btn || !completePendingNodeId || !recurrencePendingType) return;
+    const day = parseInt(btn.dataset.weekday);
+    // Brief visual confirmation before closing
+    btn.style.background = 'rgba(255,214,10,0.45)';
+    btn.style.color = '#1c1c1e';
+    setTimeout(() => {
+      scheduleRecurrence(completePendingNodeId, recurrencePendingType, day === -1 ? null : day);
+    }, 180);
   });
   document.getElementById('mergeDoBtn').addEventListener('click', mergeSelected);
   document.getElementById('mergeCancelBtn').addEventListener('click', exitSelectMode);
