@@ -26,6 +26,15 @@
       box-sizing: border-box;
       margin: 0; padding: 0;
       -webkit-tap-highlight-color: transparent;
+      -webkit-user-select: none;
+      user-select: none;
+      -webkit-touch-callout: none;
+    }
+
+    /* Re-enable text selection only where typing is needed */
+    input, textarea, [contenteditable] {
+      -webkit-user-select: text;
+      user-select: text;
     }
 
     html, body { height: 100%; font-family: var(--font); background: var(--bg); overflow: hidden; }
@@ -409,6 +418,118 @@
     .status-text.processing { color: #f59e0b; }
     .status-text.error      { color: var(--accent); }
 
+    /* ── Chat modal ───────────────────────────────────────────── */
+    .chat-overlay {
+      position: fixed; inset: 0;
+      background: rgba(0,0,0,0.45);
+      backdrop-filter: blur(4px);
+      -webkit-backdrop-filter: blur(4px);
+      display: flex; flex-direction: column;
+      justify-content: flex-end;
+      z-index: 500;
+    }
+    .chat-overlay.hidden { display: none; }
+
+    .chat-sheet {
+      background: var(--bg);
+      border-radius: 20px 20px 0 0;
+      height: 88dvh;
+      display: flex; flex-direction: column;
+      overflow: hidden;
+    }
+
+    .chat-header {
+      display: flex; align-items: center;
+      padding: 14px 16px 10px;
+      background: var(--surface);
+      border-bottom: 0.5px solid var(--border);
+      gap: 8px; flex-shrink: 0;
+    }
+    .chat-close {
+      width: 30px; height: 30px; border-radius: 50%;
+      background: #e5e5ea; border: none;
+      font-size: 13px; cursor: pointer;
+      display: flex; align-items: center; justify-content: center;
+      flex-shrink: 0;
+    }
+    .chat-title {
+      flex: 1; font-size: 15px; font-weight: 600;
+      color: var(--text); text-align: center;
+      overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    }
+    .chat-context-badge {
+      font-size: 11px; color: var(--muted);
+      background: #f2f2f7; border-radius: 10px;
+      padding: 2px 8px; flex-shrink: 0;
+    }
+
+    .chat-messages {
+      flex: 1; overflow-y: auto;
+      -webkit-overflow-scrolling: touch;
+      padding: 14px 14px 8px;
+      display: flex; flex-direction: column; gap: 12px;
+    }
+
+    .chat-bubble {
+      max-width: 82%; padding: 10px 13px;
+      border-radius: 18px; font-size: 14px; line-height: 1.5;
+      word-wrap: break-word;
+    }
+    .chat-bubble.user {
+      align-self: flex-end;
+      background: var(--accent); color: white;
+      border-bottom-right-radius: 5px;
+    }
+    .chat-bubble.assistant {
+      align-self: flex-start;
+      background: var(--surface); color: var(--text);
+      border: 0.5px solid var(--border);
+      border-bottom-left-radius: 5px;
+    }
+    .chat-bubble.thinking {
+      align-self: flex-start;
+      background: #f2f2f7; color: var(--muted);
+      font-style: italic; font-size: 13px;
+    }
+    .chat-save-btn {
+      display: block; margin-top: 6px;
+      font-size: 12px; color: #007aff;
+      background: none; border: none;
+      cursor: pointer; padding: 0;
+      font-family: var(--font);
+    }
+    .chat-save-btn:active { opacity: 0.6; }
+
+    .chat-input-area {
+      background: var(--surface);
+      border-top: 0.5px solid var(--border);
+      padding: 10px 12px calc(var(--safe-bottom) + 10px);
+      display: flex; align-items: flex-end; gap: 8px;
+      flex-shrink: 0;
+    }
+    .chat-input {
+      flex: 1; padding: 10px 14px;
+      font-size: 15px; font-family: var(--font);
+      background: #f2f2f7; border: none; border-radius: 20px;
+      outline: none; color: var(--text);
+      resize: none; max-height: 120px;
+    }
+    .chat-send-btn {
+      width: 36px; height: 36px; border-radius: 50%;
+      background: var(--accent); border: none;
+      color: white; font-size: 18px; line-height: 1;
+      cursor: pointer; flex-shrink: 0;
+      display: flex; align-items: center; justify-content: center;
+    }
+    .chat-send-btn:disabled { background: #c7c7cc; }
+    .chat-voice-btn {
+      width: 36px; height: 36px; border-radius: 50%;
+      background: #f2f2f7; border: 0.5px solid var(--border);
+      font-size: 14px; cursor: pointer; flex-shrink: 0;
+      display: flex; align-items: center; justify-content: center;
+    }
+    .chat-voice-btn.listening { background: var(--accent); color: white; }
+
     /* ── API Key modal ────────────────────────────────────────── */
     .modal-overlay {
       position: fixed; inset: 0;
@@ -550,6 +671,24 @@
     <div class="status-text" id="statusText">Tap ⏺ to capture an idea</div>
   </div>
 
+</div>
+
+<!-- Chat modal -->
+<div class="chat-overlay hidden" id="chatModal">
+  <div class="chat-sheet">
+    <div class="chat-header">
+      <button class="chat-close" id="chatClose">✕</button>
+      <div class="chat-title" id="chatTitle">Explore idea</div>
+      <div class="chat-context-badge" id="chatBadge">AI Chat</div>
+    </div>
+    <div class="chat-messages" id="chatMessages"></div>
+    <div class="chat-input-area">
+      <button class="chat-voice-btn" id="chatVoiceBtn">⏺</button>
+      <input class="chat-input" id="chatInput" placeholder="Ask anything about this idea…"
+             autocorrect="on" autocapitalize="sentences" />
+      <button class="chat-send-btn" id="chatSendBtn">↑</button>
+    </div>
+  </div>
 </div>
 
 <!-- API Key modal -->
@@ -1016,6 +1155,7 @@ function renderCards(animDir) {
             <div class="card-action-row">
               <button class="refile-btn" data-refile-id="${nid}">↗ Re-file</button>
               ${childCount > 0 ? `<button class="simplify-btn" data-simplify-id="${nid}">⚡ Simplify</button>` : ''}
+              <button class="refile-btn" data-explore-id="${nid}" style="background:rgba(0,122,255,0.12);border-color:rgba(0,122,255,0.25);color:#007aff">💬 Explore</button>
             </div>
           </div>` : ''}
         </div>
@@ -1483,6 +1623,179 @@ function initSwipeHandlers() {
   }, { passive: true });
 }
 
+// ─── AI CHAT ─────────────────────────────────────────────────────────────────
+let chatNodeId      = null;
+let chatHistory     = [];
+let chatRecognition = null;
+let chatListening   = false;
+
+function openChatModal(nodeId) {
+  const node = session.nodes.find(n => n.id === nodeId);
+  if (!node) return;
+  chatNodeId  = nodeId;
+  chatHistory = [];
+
+  document.getElementById('chatTitle').textContent   = node.label;
+  document.getElementById('chatBadge').textContent   = 'AI Chat';
+  document.getElementById('chatMessages').innerHTML  = '';
+  document.getElementById('chatInput').value         = '';
+  document.getElementById('chatModal').classList.remove('hidden');
+
+  // Seed with a brief context message from Claude
+  const ctx    = (node.summary || node.transcript || '').slice(0, 400);
+  const seedMsg = ctx
+    ? `You're helping explore the idea: **"${node.label}"**\n\nContext: ${ctx}\n\nStart with one insightful question or observation to spark thinking.`
+    : `You're helping explore the idea: **"${node.label}"**\n\nStart with one insightful question or observation to spark thinking.`;
+
+  addChatBubble('thinking', '…');
+  callChatClaude(seedMsg, true);
+  setTimeout(() => document.getElementById('chatInput').focus(), 400);
+}
+
+function closeChatModal() {
+  document.getElementById('chatModal').classList.add('hidden');
+  stopChatVoice();
+  chatNodeId  = null;
+  chatHistory = [];
+}
+
+function addChatBubble(role, text, msgId) {
+  const msgs = document.getElementById('chatMessages');
+
+  // Remove thinking indicator if replacing it
+  const thinking = msgs.querySelector('.thinking');
+  if (thinking) thinking.remove();
+
+  const wrap = document.createElement('div');
+  wrap.style.display = 'flex';
+  wrap.style.flexDirection = 'column';
+  wrap.style.alignItems = role === 'user' ? 'flex-end' : 'flex-start';
+
+  const bubble = document.createElement('div');
+  bubble.className = `chat-bubble ${role}`;
+  bubble.textContent = text;
+  if (msgId) bubble.dataset.msgId = msgId;
+  wrap.appendChild(bubble);
+
+  if (role === 'assistant' && msgId) {
+    const saveBtn = document.createElement('button');
+    saveBtn.className  = 'chat-save-btn';
+    saveBtn.textContent = '➕ Save as card';
+    saveBtn.dataset.saveMsgId = msgId;
+    wrap.appendChild(saveBtn);
+  }
+
+  msgs.appendChild(wrap);
+  msgs.scrollTop = msgs.scrollHeight;
+}
+
+async function callChatClaude(userText, isSystem = false) {
+  const node = session.nodes.find(n => n.id === chatNodeId);
+  const systemPrompt = `You are a focused thinking partner helping explore a single idea from a voice brainstorming app. The idea is: "${node?.label || ''}". Context: ${(node?.summary || node?.transcript || '').slice(0, 300)}. Be concise (2-4 sentences), thought-provoking, and practical. When given a follow-up, build on the conversation naturally.`;
+
+  if (!isSystem) {
+    chatHistory.push({ role: 'user', content: userText });
+  }
+
+  const messages = isSystem
+    ? [{ role: 'user', content: userText }]
+    : [...chatHistory];
+
+  try {
+    const apiKey = getApiKey();
+    if (!apiKey) throw new Error('No API key');
+
+    const res = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type':                              'application/json',
+        'x-api-key':                                 apiKey,
+        'anthropic-version':                         '2023-06-01',
+        'anthropic-dangerous-direct-browser-access': 'true',
+      },
+      body: JSON.stringify({ model: CLAUDE_MODEL, max_tokens: 400, system: systemPrompt, messages })
+    });
+
+    if (!res.ok) {
+      const body = await res.text().catch(() => '');
+      throw new Error(`API error ${res.status}: ${body.slice(0, 80)}`);
+    }
+
+    const text = (await res.json()).content[0].text.trim();
+    const msgId = makeId();
+    chatHistory.push({ role: 'assistant', content: text });
+    addChatBubble('assistant', text, msgId);
+  } catch (err) {
+    addChatBubble('assistant', '⚠ ' + err.message);
+  }
+}
+
+function sendChatMessage() {
+  const input = document.getElementById('chatInput');
+  const text  = input.value.trim();
+  if (!text) return;
+  input.value = '';
+  addChatBubble('user', text);
+  addChatBubble('thinking', 'Thinking…');
+  callChatClaude(text);
+}
+
+function saveChatMessageAsCard(msgId) {
+  const bubble = document.querySelector(`[data-msg-id="${msgId}"]`);
+  if (!bubble || !chatNodeId) return;
+  const text  = bubble.textContent;
+  const now   = new Date().toISOString();
+  const label = text.split(/[.!?]/)[0].trim().split(' ').slice(0, 5).join(' ');
+  session.nodes.push({
+    id: makeId(), label: label.slice(0, 60), summary: text,
+    transcript: '', parent_id: chatNodeId,
+    status: 'untouched', created: now, last_modified: now
+  });
+  saveSession();
+  showToast('Saved as child card');
+  // Mark button as saved
+  const btn = document.querySelector(`[data-save-msg-id="${msgId}"]`);
+  if (btn) { btn.textContent = '✓ Saved'; btn.disabled = true; }
+}
+
+function startChatVoice() {
+  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if (!SR) { showToast('Voice not supported here'); return; }
+  if (chatListening) { stopChatVoice(); return; }
+
+  chatRecognition = new SR();
+  chatRecognition.continuous     = false;
+  chatRecognition.interimResults = false;
+  chatRecognition.lang           = 'en-US';
+
+  chatRecognition.onresult = e => {
+    const text = e.results[0][0].transcript.trim();
+    if (text) {
+      document.getElementById('chatInput').value = text;
+      sendChatMessage();
+    }
+  };
+  chatRecognition.onend = () => { chatListening = false; updateChatVoiceBtn(); };
+  chatRecognition.onerror = () => { chatListening = false; updateChatVoiceBtn(); };
+
+  chatRecognition.start();
+  chatListening = true;
+  updateChatVoiceBtn();
+}
+
+function stopChatVoice() {
+  if (chatRecognition) { chatRecognition.stop(); chatRecognition = null; }
+  chatListening = false;
+  updateChatVoiceBtn();
+}
+
+function updateChatVoiceBtn() {
+  const btn = document.getElementById('chatVoiceBtn');
+  if (!btn) return;
+  btn.classList.toggle('listening', chatListening);
+  btn.textContent = chatListening ? '■' : '⏺';
+}
+
 // ─── DRAG TO REORDER / REPARENT ──────────────────────────────────────────────
 let dragState         = null;
 let dragLongPressTimer = null;
@@ -1685,6 +1998,17 @@ document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('mergeCancelBtn').addEventListener('click', exitSelectMode);
   document.getElementById('fileInput').addEventListener('change', importJSON);
 
+  document.getElementById('chatClose').addEventListener('click', closeChatModal);
+  document.getElementById('chatSendBtn').addEventListener('click', sendChatMessage);
+  document.getElementById('chatVoiceBtn').addEventListener('click', startChatVoice);
+  document.getElementById('chatInput').addEventListener('keydown', e => {
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendChatMessage(); }
+  });
+  document.getElementById('chatMessages').addEventListener('click', e => {
+    const saveBtn = e.target.closest('[data-save-msg-id]');
+    if (saveBtn) saveChatMessageAsCard(saveBtn.dataset.saveMsgId);
+  });
+
   document.getElementById('keySave').addEventListener('click', saveApiKey);
   document.getElementById('keyTest').addEventListener('click', testApiKey);
   document.getElementById('keyInput').addEventListener('keydown', e => {
@@ -1712,6 +2036,9 @@ document.addEventListener('DOMContentLoaded', () => {
       }
       return;
     }
+
+    const exploreBtn = e.target.closest('[data-explore-id]');
+    if (exploreBtn) { e.stopPropagation(); openChatModal(exploreBtn.dataset.exploreId); return; }
 
     const refileBtn = e.target.closest('[data-refile-id]');
     if (refileBtn) { e.stopPropagation(); refileNode(refileBtn.dataset.refileId); return; }
