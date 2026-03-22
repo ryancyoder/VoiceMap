@@ -37,9 +37,10 @@
       user-select: text;
     }
 
-    html, body { height: 100%; font-family: var(--font); background: var(--bg); overflow: hidden; }
+    html, body { height: 100%; font-family: var(--font); background: var(--bg); overflow: hidden; max-width: 100vw; }
+    html { overflow-x: hidden; }
 
-    .app { height: 100dvh; display: flex; flex-direction: column; }
+    .app { height: 100dvh; width: 100vw; max-width: 100vw; display: flex; flex-direction: column; overflow: hidden; }
 
     /* ── Nav bar ──────────────────────────────────────────────── */
     .nav-bar {
@@ -418,6 +419,26 @@
     .status-text.processing { color: #f59e0b; }
     .status-text.error      { color: var(--accent); }
 
+    /* ── Camera / image cards ─────────────────────────────────── */
+    .camera-btn {
+      width: 44px; height: 44px; border-radius: 50%;
+      background: #f2f2f7; border: 0.5px solid var(--border);
+      font-size: 20px; cursor: pointer; flex-shrink: 0;
+      display: flex; align-items: center; justify-content: center;
+    }
+    .camera-btn:active:not(:disabled) { background: #e5e5ea; }
+    .camera-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+    .card-image-thumb {
+      width: 48px; height: 48px; border-radius: 8px;
+      object-fit: cover; flex-shrink: 0;
+    }
+    .card-image-full {
+      width: 100%; border-radius: 8px; margin-bottom: 8px;
+      display: block; object-fit: contain;
+    }
+    .card.image-card.expanded .card-summary-wrap { max-height: 70dvh; }
+
     /* ── Chat modal ───────────────────────────────────────────── */
     .chat-overlay {
       position: fixed; inset: 0;
@@ -666,7 +687,7 @@
     <div class="record-row">
       <button class="stop-btn" id="stopBtn" disabled>■</button>
       <button class="record-btn" id="recordBtn">⏺</button>
-      <div style="width:44px"></div>
+      <button class="camera-btn" id="cameraBtn">📷</button>
     </div>
     <div class="status-text" id="statusText">Tap ⏺ to capture an idea</div>
   </div>
@@ -708,7 +729,8 @@
 </div>
 
 <div class="toast" id="toast"></div>
-<input type="file" id="fileInput" accept=".json" style="display:none" />
+<input type="file" id="fileInput"  accept=".json"       style="display:none" />
+<input type="file" id="imageInput" accept="image/*"     style="display:none" />
 
 <script>
 'use strict';
@@ -720,26 +742,102 @@ const SESSION_STORE  = 'voicemap_session';
 
 const R = { CHILD: 'child', SIBLING: 'sibling', ROOT: 'root' };
 
-// ─── PERSISTENCE ─────────────────────────────────────────────────────────────
-function saveSession() {
-  try { localStorage.setItem(SESSION_STORE, JSON.stringify(session)); } catch (e) {}
+// ─── INDEXEDDB ───────────────────────────────────────────────────────────────
+const DB_NAME    = 'VoiceMapDB';
+const DB_VERSION = 1;
+let db = null;
+
+function openDB() {
+  return new Promise((resolve, reject) => {
+    const req = indexedDB.open(DB_NAME, DB_VERSION);
+    req.onupgradeneeded = e => {
+      const d = e.target.result;
+      if (!d.objectStoreNames.contains('sessions')) d.createObjectStore('sessions');
+      if (!d.objectStoreNames.contains('images'))   d.createObjectStore('images');
+    };
+    req.onsuccess = e => { db = e.target.result; resolve(db); };
+    req.onerror   = e => reject(e.target.error);
+  });
 }
 
-function loadSavedSession() {
+function saveSessionToDB() {
+  if (!db) return;
+  try {
+    const tx = db.transaction('sessions', 'readwrite');
+    tx.objectStore('sessions').put(JSON.parse(JSON.stringify(session)), 'current');
+  } catch {}
+}
+
+function loadSessionFromDB() {
+  if (!db) return Promise.resolve(null);
+  return new Promise(resolve => {
+    try {
+      const req = db.transaction('sessions', 'readonly').objectStore('sessions').get('current');
+      req.onsuccess = e => {
+        const s = e.target.result;
+        resolve(s && Array.isArray(s.nodes) ? s : null);
+      };
+      req.onerror = () => resolve(null);
+    } catch { resolve(null); }
+  });
+}
+
+async function saveImageToDB(nodeId, dataUrl) {
+  imageCache[nodeId] = dataUrl;
+  if (!db) return;
+  try {
+    db.transaction('images', 'readwrite').objectStore('images').put(dataUrl, nodeId);
+  } catch {}
+}
+
+function deleteImageFromDB(nodeId) {
+  delete imageCache[nodeId];
+  if (!db) return;
+  try {
+    db.transaction('images', 'readwrite').objectStore('images').delete(nodeId);
+  } catch {}
+}
+
+function loadImagesFromDB() {
+  if (!db) return Promise.resolve();
+  return new Promise(resolve => {
+    try {
+      const req = db.transaction('images', 'readonly').objectStore('images').openCursor();
+      req.onsuccess = e => {
+        const cursor = e.target.result;
+        if (cursor) { imageCache[cursor.key] = cursor.value; cursor.continue(); }
+        else resolve();
+      };
+      req.onerror = () => resolve();
+    } catch { resolve(); }
+  });
+}
+
+// ─── PERSISTENCE ─────────────────────────────────────────────────────────────
+function saveSession() {
+  // Sync localStorage backup (text only, no images)
+  try { localStorage.setItem(SESSION_STORE, JSON.stringify(session)); } catch {}
+  // Async IndexedDB save (fire and forget)
+  saveSessionToDB();
+}
+
+function loadSavedSessionSync() {
   try {
     const raw = localStorage.getItem(SESSION_STORE);
     if (raw) { const s = JSON.parse(raw); if (Array.isArray(s.nodes)) return s; }
-  } catch (e) {}
+  } catch {}
   return null;
 }
 
 // ─── STATE ──────────────────────────────────────────────────────────────────
-let session = loadSavedSession() || {
+let session = loadSavedSessionSync() || {
   session: 'Untitled brainstorm',
   date:    new Date().toISOString(),
   nodes:   [],
   meta:    { tool: 'VoiceMap', version: '0.3' }
 };
+
+const imageCache = {}; // nodeId → data URL, populated from IndexedDB on init
 
 let navStack    = [{ id: null, label: 'Home' }];
 let expandedIds = new Set();
@@ -913,6 +1011,7 @@ function deleteNode(nodeId) {
   if (!confirm(msg)) return;
   const toRemove = getDescendants(nodeId);
   toRemove.add(nodeId);
+  toRemove.forEach(id => { if (imageCache[id]) deleteImageFromDB(id); });
   session.nodes = session.nodes.filter(n => !toRemove.has(n.id));
   renderCards();
   showToast('Card deleted');
@@ -1111,15 +1210,19 @@ function renderCards(animDir) {
   empty.style.display = cards.length ? 'none' : 'flex';
 
   list.innerHTML = cards.map(node => {
-    const childCount = childrenOf(node.id).length;
-    const pip        = 'pip-' + (node.status || 'untouched');
-    const summary    = node.summary || node.transcript || '';
-    const expanded   = expandedIds.has(node.id);
-    const meta       = childCount
+    const childCount  = childrenOf(node.id).length;
+    const isImageCard = node.type === 'image';
+    const pip         = 'pip-' + (node.status || 'untouched');
+    const summary     = node.summary || node.transcript || '';
+    const expanded    = expandedIds.has(node.id);
+    const thumb       = isImageCard && imageCache[node.id]
+      ? `<img class="card-image-thumb" src="${imageCache[node.id]}" alt="" />`
+      : (isImageCard ? `<div class="pip pip-untouched" style="opacity:0.4"></div>` : '');
+    const meta        = childCount
       ? `${childCount} idea${childCount !== 1 ? 's' : ''} inside`
-      : 'No sub-ideas yet';
+      : (isImageCard ? 'Photo' : 'No sub-ideas yet');
 
-    const isSelected = selectedIds.has(node.id);
+    const isSelected  = selectedIds.has(node.id);
     const nid = esc(node.id);
     return `
       <div class="card-swipe-wrap" id="wrap-${nid}">
@@ -1136,10 +1239,10 @@ function renderCards(animDir) {
             <span class="swipe-icon">🗑</span><span>Delete</span>
           </button>
         </div>
-        <div class="card${expanded ? ' expanded' : ''}${selectMode ? ' selectable' : ''}${isSelected ? ' selected' : ''}"
+        <div class="card${expanded ? ' expanded' : ''}${isImageCard ? ' image-card' : ''}${selectMode ? ' selectable' : ''}${isSelected ? ' selected' : ''}"
              id="card-${nid}" data-node-id="${nid}" data-node-label="${esc(node.label)}" data-status="${esc(node.status || 'untouched')}">
           <div class="card-front">
-            ${selectMode ? `<div class="select-indicator">${isSelected ? '✓' : ''}</div>` : `<div class="pip ${pip}"></div>`}
+            ${selectMode ? `<div class="select-indicator">${isSelected ? '✓' : ''}</div>` : (isImageCard ? thumb : `<div class="pip ${pip}"></div>`)}
             <div class="card-body">
               <div class="card-title">${esc(node.label)}</div>
               <div class="card-meta">${esc(meta)}</div>
@@ -1151,6 +1254,7 @@ function renderCards(animDir) {
           </div>
           ${!selectMode ? `
           <div class="card-summary-wrap">
+            ${isImageCard && imageCache[node.id] ? `<img class="card-image-full" src="${imageCache[node.id]}" alt="" />` : ''}
             ${summary ? `<div class="card-summary">${esc(summary)}</div>` : ''}
             <div class="card-action-row">
               <button class="refile-btn" data-refile-id="${nid}">↗ Re-file</button>
@@ -1430,6 +1534,96 @@ function addNode(parsed, transcript) {
   } else {
     showToast(`Added: "${parsed.label || transcript.slice(0, 32)}"`);
   }
+}
+
+// ─── IMAGE CAPTURE ───────────────────────────────────────────────────────────
+function compressImage(file, maxDim) {
+  return new Promise(resolve => {
+    const img = new Image();
+    const url = URL.createObjectURL(file);
+    img.onload = () => {
+      URL.revokeObjectURL(url);
+      let { width, height } = img;
+      if (width > maxDim || height > maxDim) {
+        if (width > height) { height = Math.round(height * maxDim / width); width = maxDim; }
+        else { width = Math.round(width * maxDim / height); height = maxDim; }
+      }
+      const canvas = document.createElement('canvas');
+      canvas.width = width; canvas.height = height;
+      canvas.getContext('2d').drawImage(img, 0, 0, width, height);
+      resolve(canvas.toDataURL('image/jpeg', 0.80));
+    };
+    img.onerror = () => { URL.revokeObjectURL(url); resolve(null); };
+    img.src = url;
+  });
+}
+
+async function handleImageCapture(file) {
+  if (!file) return;
+  if (!getApiKey()) { showKeyModal(); return; }
+
+  setStatus('Processing photo…', 'processing');
+  document.getElementById('cameraBtn').disabled = true;
+
+  const dataUrl = await compressImage(file, 1024);
+  if (!dataUrl) { setStatus('Could not read image', 'error'); document.getElementById('cameraBtn').disabled = false; return; }
+
+  const nodeId = makeId();
+  const now    = new Date().toISOString();
+  const node   = {
+    id: nodeId, type: 'image', label: 'Photo', summary: '',
+    transcript: '', parent_id: currentParentId(),
+    status: 'untouched', created: now, last_modified: now
+  };
+  session.nodes.push(node);
+  await saveImageToDB(nodeId, dataUrl);
+  renderCards();
+  showToast('Photo added — analyzing…');
+
+  // Send to Claude vision
+  try {
+    const apiKey  = getApiKey();
+    const base64  = dataUrl.split(',')[1];
+    const res = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type':                              'application/json',
+        'x-api-key':                                 apiKey,
+        'anthropic-version':                         '2023-06-01',
+        'anthropic-dangerous-direct-browser-access': 'true',
+      },
+      body: JSON.stringify({
+        model:      CLAUDE_MODEL,
+        max_tokens: 300,
+        system:     'You analyze images for a voice brainstorming app. Return ONLY valid JSON: {"label":"2-4 word title","summary":"1-2 sentence description of what you see and why it is relevant as a brainstorm card."}',
+        messages: [
+          { role: 'user', content: [
+            { type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: base64 } },
+            { type: 'text',  text: 'Describe this image as a mind map card.' }
+          ]},
+          { role: 'assistant', content: '{' }
+        ]
+      })
+    });
+
+    if (res.ok) {
+      const raw    = '{' + (await res.json()).content[0].text;
+      const parsed = extractJSON(raw);
+      if (parsed?.label) {
+        node.label   = String(parsed.label).slice(0, 60);
+        node.summary = parsed.summary || '';
+        node.last_modified = new Date().toISOString();
+        renderCards();
+        saveSession();
+        showToast(`Photo: "${node.label}"`);
+      }
+    }
+  } catch (err) {
+    console.error('[VoiceMap] Image analysis error:', err);
+  }
+
+  document.getElementById('cameraBtn').disabled = false;
+  setStatus('Tap ⏺ to capture an idea');
 }
 
 // ─── IMPORT / EXPORT ────────────────────────────────────────────────────────
@@ -1962,19 +2156,44 @@ const toggleMenu = () => document.getElementById('menuDropdown').classList.toggl
 const closeMenu  = () => document.getElementById('menuDropdown').classList.remove('open');
 
 // ─── INIT ───────────────────────────────────────────────────────────────────
-document.addEventListener('DOMContentLoaded', () => {
+async function initApp() {
+  // Show immediately with localStorage data
   updateNavBar();
   renderCards();
-
-  // Show key modal on first launch
   if (!getApiKey()) showKeyModal();
 
+  // Then upgrade from IndexedDB in background
+  try {
+    await openDB();
+    const idbSession = await loadSessionFromDB();
+    // Use IndexedDB data if it has more nodes (more up to date)
+    if (idbSession && idbSession.nodes?.length >= session.nodes.length) {
+      session = idbSession;
+    } else if (session.nodes.length > 0) {
+      // Migrate localStorage data to IndexedDB
+      saveSessionToDB();
+    }
+    await loadImagesFromDB();
+    renderCards(); // Re-render with images loaded
+  } catch (e) {
+    console.warn('[VoiceMap] IndexedDB unavailable, using localStorage:', e.message);
+  }
+}
+
+document.addEventListener('DOMContentLoaded', () => {
   initSwipeHandlers();
   initDragHandlers();
+  initApp();
 
   document.getElementById('recordBtn').addEventListener('click', startRecording);
   document.getElementById('stopBtn').addEventListener('click', stopRecording);
   document.getElementById('backBtn').addEventListener('click', navigateBack);
+  document.getElementById('cameraBtn').addEventListener('click', () => document.getElementById('imageInput').click());
+  document.getElementById('imageInput').addEventListener('change', e => {
+    const file = e.target.files[0];
+    e.target.value = '';
+    if (file) handleImageCapture(file);
+  });
 
   document.getElementById('menuBtn').addEventListener('click', e => { e.stopPropagation(); toggleMenu(); });
   document.getElementById('miCluster').addEventListener('click', () => { closeMenu(); autoCluster(); });
