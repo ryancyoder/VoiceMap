@@ -735,7 +735,8 @@
 
 <div class="toast" id="toast"></div>
 <input type="file" id="fileInput"  accept=".json"       style="display:none" />
-<input type="file" id="imageInput" accept="image/*"     style="display:none" />
+<input type="file" id="imageInput" accept="image/*"
+       style="opacity:0;position:absolute;width:1px;height:1px;pointer-events:none" />
 
 <script>
 'use strict';
@@ -1410,15 +1411,9 @@ function extractJSON(raw) {
 }
 
 async function handleTranscript(transcript) {
-  // If a photo is waiting for a description, pair them together
-  if (pendingImage) {
-    const { dataUrl } = pendingImage;
-    clearPendingImage();
-    setStatus('Analyzing photo + description…', 'processing');
-    await createImageCard(dataUrl, transcript);
-    setRecordingState(isRecording);
-    return;
-  }
+  // Capture any pending image before processing (voice description path — no vision API needed)
+  const capturedImage = pendingImage;
+  if (capturedImage) clearPendingImage();
 
   setStatus('Claude is thinking…', 'processing');
 
@@ -1490,7 +1485,18 @@ Default action to "create", relationship to "${R.CHILD}". Good labels: "Backyard
   if (!parsed.label) {
     parsed = { action: 'create', label: transcript.slice(0, 40), summary: transcript, relationship: R.CHILD };
   }
-  addNode(parsed, transcript);
+  const newNodeId = addNode(parsed, transcript);
+
+  // Attach photo if one was waiting — no vision API needed, voice was the description
+  if (capturedImage && newNodeId) {
+    const node = session.nodes.find(n => n.id === newNodeId);
+    if (node) {
+      node.type = 'image';
+      await saveImageToDB(newNodeId, capturedImage.dataUrl);
+      renderCards();
+      saveSession();
+    }
+  }
 
   if (claudeError) {
     setStatus('⚠ ' + claudeError, 'error');
@@ -1549,6 +1555,7 @@ function addNode(parsed, transcript) {
   } else {
     showToast(`Added: "${parsed.label || transcript.slice(0, 32)}"`);
   }
+  return nodeId;
 }
 
 // ─── IMAGE CAPTURE ───────────────────────────────────────────────────────────
@@ -1603,36 +1610,26 @@ async function skipImageDescription() {
   const { dataUrl } = pendingImage;
   clearPendingImage();
   setStatus('Analyzing photo…', 'processing');
-  await createImageCard(dataUrl, '');
-  setStatus('Tap ⏺ to capture an idea');
-}
 
-async function createImageCard(dataUrl, transcript) {
   const nodeId = makeId();
   const now    = new Date().toISOString();
   const node   = {
     id: nodeId, type: 'image', label: 'Photo', summary: '',
-    transcript, parent_id: currentParentId(),
+    transcript: '', parent_id: currentParentId(),
     status: 'untouched', created: now, last_modified: now
   };
   session.nodes.push(node);
   await saveImageToDB(nodeId, dataUrl);
   renderCards();
-  showToast('Photo added — analyzing…');
+  showToast('Analyzing photo…');
 
-  // Send to Claude vision (with optional voice description)
   try {
-    const apiKey = getApiKey();
     const base64 = dataUrl.split(',')[1];
-    const textPrompt = transcript
-      ? `The user described this image as: "${transcript}". Use both the image and description to create a concise mind map card.`
-      : 'Describe this image as a mind map card.';
-
     const res = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: {
         'Content-Type':                              'application/json',
-        'x-api-key':                                 apiKey,
+        'x-api-key':                                 getApiKey(),
         'anthropic-version':                         '2023-06-01',
         'anthropic-dangerous-direct-browser-access': 'true',
       },
@@ -1642,7 +1639,7 @@ async function createImageCard(dataUrl, transcript) {
         messages: [
           { role: 'user', content: [
             { type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: base64 } },
-            { type: 'text',  text: textPrompt }
+            { type: 'text',  text: 'Describe this image as a mind map card.' }
           ]},
           { role: 'assistant', content: '{' }
         ]
@@ -1660,10 +1657,17 @@ async function createImageCard(dataUrl, transcript) {
         saveSession();
         showToast(`Photo: "${node.label}"`);
       }
+    } else {
+      const body = await res.text().catch(() => '');
+      setStatus(`⚠ Vision error ${res.status}`, 'error');
+      console.error('[VoiceMap] Vision API error:', body);
     }
   } catch (err) {
-    console.error('[VoiceMap] Image analysis error:', err);
+    setStatus('⚠ ' + err.message, 'error');
+    console.error('[VoiceMap] Vision error:', err);
   }
+
+  setStatus('Tap ⏺ to capture an idea');
 }
 
 // ─── IMPORT / EXPORT ────────────────────────────────────────────────────────
