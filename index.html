@@ -163,8 +163,58 @@
     }
     .swipe-btn .swipe-icon { font-size: 20px; line-height: 1; }
     .swipe-btn-done   { background: #30d158; }
-    .swipe-btn-refile { background: #007aff; }
+    .swipe-btn-pin    { background: #ff9500; }
     .swipe-btn-delete { background: #ff3b30; }
+    .swipe-btn-defer  { background: #ffd60a; color: #1c1c1e; }
+
+    /* ── Card status indicators ───────────────────────────────── */
+    .card-pin-badge  { font-size: 13px; line-height: 1; }
+    .card-defer-badge { font-size: 11px; color: #ffd60a; font-weight: 600; white-space: nowrap; }
+
+    /* ── View filter bar ──────────────────────────────────────── */
+    .view-filter-bar {
+      display: flex; gap: 8px; padding: 8px 16px 4px;
+      overflow-x: auto; -webkit-overflow-scrolling: touch;
+    }
+    .view-filter-bar::-webkit-scrollbar { display: none; }
+    .filter-pill {
+      flex-shrink: 0; padding: 5px 14px; border-radius: 99px;
+      font-size: 13px; font-weight: 500; border: 0.5px solid var(--border);
+      background: var(--surface); color: var(--muted); cursor: pointer;
+      transition: background 0.15s, color 0.15s;
+    }
+    .filter-pill.active { background: var(--accent); color: #fff; border-color: var(--accent); }
+
+    /* ── Defer modal ──────────────────────────────────────────── */
+    .defer-overlay {
+      position: fixed; inset: 0; background: rgba(0,0,0,0.45);
+      backdrop-filter: blur(4px); z-index: 300;
+      display: flex; align-items: flex-end; justify-content: center;
+    }
+    .defer-overlay.hidden { display: none; }
+    .defer-sheet {
+      background: var(--surface); border-radius: 16px 16px 0 0;
+      padding: 20px 20px calc(20px + env(safe-area-inset-bottom));
+      width: 100%; max-width: 480px;
+    }
+    .defer-title {
+      font-size: 15px; font-weight: 600; text-align: center;
+      margin-bottom: 16px; color: var(--text);
+    }
+    .defer-option {
+      display: block; width: 100%; padding: 14px;
+      margin-bottom: 10px; border-radius: 12px; border: none;
+      font-size: 16px; font-weight: 500; font-family: var(--font);
+      background: rgba(255,214,10,0.15); color: var(--text);
+      cursor: pointer; text-align: center;
+    }
+    .defer-option:active { background: rgba(255,214,10,0.3); }
+    .defer-cancel {
+      display: block; width: 100%; padding: 14px; border-radius: 12px;
+      border: none; font-size: 16px; font-family: var(--font);
+      background: var(--bg); color: var(--muted); cursor: pointer;
+      text-align: center; margin-top: 4px;
+    }
 
     /* ── Card ─────────────────────────────────────────────────── */
     .card {
@@ -672,6 +722,13 @@
     </div>
   </div>
 
+  <!-- View filter pills -->
+  <div class="view-filter-bar">
+    <button class="filter-pill active" data-view="all">All</button>
+    <button class="filter-pill" data-view="pinned">📌 Pinned</button>
+    <button class="filter-pill" data-view="deferred">⏳ Deferred</button>
+  </div>
+
   <!-- Card list -->
   <div class="card-scroll">
     <div id="cardList"></div>
@@ -679,6 +736,17 @@
       <div class="empty-icon">💭</div>
       <div class="empty-text">No ideas here yet</div>
       <div class="empty-hint">Tap the red button and start speaking</div>
+    </div>
+  </div>
+
+  <!-- Defer modal -->
+  <div class="defer-overlay hidden" id="deferModal">
+    <div class="defer-sheet">
+      <div class="defer-title">Defer this idea</div>
+      <button class="defer-option" data-defer-days="1">Defer a day</button>
+      <button class="defer-option" data-defer-days="7">Defer a week</button>
+      <button class="defer-option" data-defer-days="30">Defer a month</button>
+      <button class="defer-cancel" id="deferCancel">Cancel</button>
     </div>
   </div>
 
@@ -968,6 +1036,66 @@ function getDescendants(nodeId) {
   return result;
 }
 
+// ─── VIEW FILTER ────────────────────────────────────────────────────────────
+let currentView = 'all'; // 'all' | 'pinned' | 'deferred'
+
+function setView(view) {
+  currentView = view;
+  document.querySelectorAll('.filter-pill').forEach(p => {
+    p.classList.toggle('active', p.dataset.view === view);
+  });
+  renderCards();
+}
+
+// ─── PIN ────────────────────────────────────────────────────────────────────
+function pinNode(nodeId) {
+  const node = session.nodes.find(n => n.id === nodeId);
+  if (!node) return;
+  node.pinned = !node.pinned;
+  node.last_modified = new Date().toISOString();
+  renderCards();
+  showToast(node.pinned ? `📌 Pinned: ${node.label}` : `Unpinned: ${node.label}`);
+  saveSession();
+}
+
+// ─── DEFER ──────────────────────────────────────────────────────────────────
+let deferPendingNodeId = null;
+
+function showDeferModal(nodeId) {
+  deferPendingNodeId = nodeId;
+  document.getElementById('deferModal').classList.remove('hidden');
+}
+
+function hideDeferModal() {
+  deferPendingNodeId = null;
+  document.getElementById('deferModal').classList.add('hidden');
+}
+
+function deferNode(nodeId, days) {
+  const node = session.nodes.find(n => n.id === nodeId);
+  if (!node) return;
+  const until = new Date();
+  until.setDate(until.getDate() + days);
+  node.deferred      = true;
+  node.deferredUntil = until.toISOString();
+  node.last_modified = new Date().toISOString();
+  hideDeferModal();
+  renderCards();
+  showToast(`⏳ Deferred until ${formatDeferDate(node.deferredUntil)}`);
+  saveSession();
+}
+
+function formatDeferDate(iso) {
+  if (!iso) return '';
+  const d = new Date(iso);
+  const today = new Date();
+  const diff  = Math.round((d - today) / 86400000);
+  if (diff === 0) return 'Today';
+  if (diff === 1) return 'Tomorrow';
+  if (diff <= 7)  return d.toLocaleDateString('en', { weekday: 'short' });
+  return d.toLocaleDateString('en', { month: 'short', day: 'numeric' });
+}
+
 async function refileNode(nodeId) {
   const node = session.nodes.find(n => n.id === nodeId);
   if (!node) return;
@@ -1214,7 +1342,20 @@ function renderCards(animDir) {
   saveSession();
   openSwipeNodeId = null;
   swipeState = null;
-  const cards = childrenOf(currentParentId());
+
+  let cards;
+  if (currentView === 'pinned') {
+    cards = [...session.nodes]
+      .filter(n => n.pinned)
+      .sort((a, b) => new Date(b.created) - new Date(a.created));
+  } else if (currentView === 'deferred') {
+    cards = [...session.nodes]
+      .filter(n => n.deferred)
+      .sort((a, b) => new Date(a.deferredUntil) - new Date(b.deferredUntil));
+  } else {
+    cards = childrenOf(currentParentId());
+  }
+
   const list  = document.getElementById('cardList');
   const empty = document.getElementById('emptyState');
 
@@ -1241,10 +1382,13 @@ function renderCards(animDir) {
           <button class="swipe-btn swipe-btn-done" data-swipe-done-id="${nid}">
             <span class="swipe-icon">✓</span><span>Done</span>
           </button>
+          <button class="swipe-btn swipe-btn-pin" data-swipe-pin-id="${nid}">
+            <span class="swipe-icon">📌</span><span>${node.pinned ? 'Unpin' : 'Pin'}</span>
+          </button>
         </div>
         <div class="swipe-left-btns">
-          <button class="swipe-btn swipe-btn-refile" data-swipe-refile-id="${nid}">
-            <span class="swipe-icon">↗</span><span>Re-file</span>
+          <button class="swipe-btn swipe-btn-defer" data-swipe-defer-id="${nid}">
+            <span class="swipe-icon">⏳</span><span>Defer</span>
           </button>
           <button class="swipe-btn swipe-btn-delete" data-swipe-delete-id="${nid}">
             <span class="swipe-icon">🗑</span><span>Delete</span>
@@ -1256,7 +1400,9 @@ function renderCards(animDir) {
             ${selectMode ? `<div class="select-indicator">${isSelected ? '✓' : ''}</div>` : (isImageCard ? thumb : `<div class="pip ${pip}"></div>`)}
             <div class="card-body">
               <div class="card-title">${esc(node.label)}</div>
-              <div class="card-meta">${esc(meta)}</div>
+              <div class="card-meta">
+                ${node.pinned ? `<span class="card-pin-badge">📌</span> ` : ''}${esc(meta)}${node.deferred ? ` <span class="card-defer-badge">⏳ ${formatDeferDate(node.deferredUntil)}</span>` : ''}
+              </div>
             </div>
             <div class="card-actions">
               ${!selectMode ? `<button class="info-btn" data-toggle-id="${nid}">ⓘ</button>` : ''}
@@ -1902,7 +2048,7 @@ function initSwipeHandlers() {
     e.preventDefault();
     swipeState.dx = dx;
 
-    // Left swipe opens two buttons (160px), right swipe opens one (80px)
+    // Left swipe opens two buttons (160px), right swipe opens two buttons (160px)
     const clamped = Math.max(-160, Math.min(80, dx));
     const card = getSwipeCard(swipeState.nodeId);
     if (card) {
@@ -1921,7 +2067,7 @@ function initSwipeHandlers() {
       snapCard(nodeId, -160);
       openSwipeNodeId = nodeId;
     } else if (dx > THRESHOLD) {
-      snapCard(nodeId, 80);
+      snapCard(nodeId, 160);
       openSwipeNodeId = nodeId;
     } else {
       snapCard(nodeId, 0);
@@ -2297,6 +2443,22 @@ document.addEventListener('DOMContentLoaded', () => {
   initDragHandlers();
   initApp();
 
+  // View filter pills
+  document.querySelectorAll('.filter-pill').forEach(pill => {
+    pill.addEventListener('click', () => setView(pill.dataset.view));
+  });
+
+  // Defer modal
+  document.getElementById('deferCancel').addEventListener('click', hideDeferModal);
+  document.querySelectorAll('[data-defer-days]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      if (deferPendingNodeId) deferNode(deferPendingNodeId, parseInt(btn.dataset.deferDays));
+    });
+  });
+  document.getElementById('deferModal').addEventListener('click', e => {
+    if (e.target === document.getElementById('deferModal')) hideDeferModal();
+  });
+
   document.getElementById('recordBtn').addEventListener('click', startRecording);
   document.getElementById('stopBtn').addEventListener('click', stopRecording);
   document.getElementById('backBtn').addEventListener('click', navigateBack);
@@ -2345,9 +2507,6 @@ document.addEventListener('DOMContentLoaded', () => {
     const swipeDeleteBtn = e.target.closest('[data-swipe-delete-id]');
     if (swipeDeleteBtn) { e.stopPropagation(); closeOpenSwipe(); deleteNode(swipeDeleteBtn.dataset.swipeDeleteId); return; }
 
-    const swipeRefileBtn = e.target.closest('[data-swipe-refile-id]');
-    if (swipeRefileBtn) { e.stopPropagation(); closeOpenSwipe(); refileNode(swipeRefileBtn.dataset.swipeRefileId); return; }
-
     const swipeDoneBtn = e.target.closest('[data-swipe-done-id]');
     if (swipeDoneBtn) {
       e.stopPropagation();
@@ -2360,8 +2519,15 @@ document.addEventListener('DOMContentLoaded', () => {
         showToast(n.status === 'done' ? `✓ Done: ${n.label}` : `Reopened: ${n.label}`);
         saveSession();
       }
+      closeOpenSwipe();
       return;
     }
+
+    const swipePinBtn = e.target.closest('[data-swipe-pin-id]');
+    if (swipePinBtn) { e.stopPropagation(); closeOpenSwipe(); pinNode(swipePinBtn.dataset.swipePinId); return; }
+
+    const swipeDeferBtn = e.target.closest('[data-swipe-defer-id]');
+    if (swipeDeferBtn) { e.stopPropagation(); closeOpenSwipe(); showDeferModal(swipeDeferBtn.dataset.swipeDeferId); return; }
 
     const elaborateBtn = e.target.closest('[data-elaborate-id]');
     if (elaborateBtn) { e.stopPropagation(); startElaborate(elaborateBtn.dataset.elaborateId); return; }
