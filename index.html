@@ -1185,8 +1185,8 @@ function showCompleteModal(nodeId) {
   document.getElementById('completeModal').classList.remove('hidden');
 }
 
-function hideCompleteModal() {
-  completePendingNodeId = null;
+function hideCompleteModal(clearNode = true) {
+  if (clearNode) completePendingNodeId = null;
   document.getElementById('completeModal').classList.add('hidden');
 }
 
@@ -1205,7 +1205,7 @@ function archiveNode(nodeId) {
 
 function showRecurrenceModal(nodeId) {
   completePendingNodeId = nodeId;
-  hideCompleteModal();
+  hideCompleteModal(false); // hide without clearing the node id
   document.getElementById('recurrenceModal').classList.remove('hidden');
 }
 
