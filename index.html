@@ -128,17 +128,44 @@
     #cardList.anim-forward { animation: slideFromRight 0.22s ease; }
     #cardList.anim-back    { animation: slideFromLeft  0.22s ease; }
 
+    /* ── Swipe wrapper ────────────────────────────────────────── */
+    .card-swipe-wrap {
+      position: relative;
+      margin-bottom: 10px;
+      border-radius: var(--radius);
+      overflow: hidden;
+      box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+    }
+
+    .swipe-left-btns, .swipe-right-btns {
+      position: absolute; top: 0; bottom: 0;
+      display: flex; align-items: stretch;
+    }
+    .swipe-left-btns  { right: 0; }
+    .swipe-right-btns { left: 0; }
+
+    .swipe-btn {
+      display: flex; flex-direction: column;
+      align-items: center; justify-content: center;
+      gap: 3px; width: 80px; padding: 0; border: none;
+      color: white; font-size: 12px; font-weight: 600;
+      font-family: var(--font); cursor: pointer;
+    }
+    .swipe-btn .swipe-icon { font-size: 20px; line-height: 1; }
+    .swipe-btn-done   { background: #30d158; }
+    .swipe-btn-refile { background: #007aff; }
+    .swipe-btn-delete { background: #ff3b30; }
+
     /* ── Card ─────────────────────────────────────────────────── */
     .card {
       background: var(--surface);
       border-radius: var(--radius);
       border: 0.5px solid var(--border);
-      margin-bottom: 10px;
       overflow: hidden;
-      box-shadow: 0 1px 4px rgba(0,0,0,0.06);
-      transition: box-shadow 0.12s;
+      position: relative; z-index: 2;
+      transform: translateX(0);
     }
-    .card:active { box-shadow: none; }
+    .card.swipe-snap { transition: transform 0.22s ease; }
 
     .card-front {
       display: flex;
@@ -226,13 +253,6 @@
     .simplify-btn:active { background: rgba(255,255,255,0.15); }
     .simplify-btn.working { color: #f5c842; }
 
-    /* ── Delete button ─────────────────────────────────────────── */
-    .delete-btn {
-      background: none; border: none;
-      color: #ff453a; font-size: 16px;
-      padding: 6px 8px; cursor: pointer; line-height: 1;
-    }
-    .delete-btn:active { opacity: 0.6; }
 
     /* ── Select / merge mode ───────────────────────────────────── */
     .card.selectable { cursor: pointer; }
@@ -917,6 +937,8 @@ async function simplifyNode(nodeId) {
 
 function renderCards(animDir) {
   saveSession();
+  openSwipeNodeId = null;
+  swipeState = null;
   const cards = childrenOf(currentParentId());
   const list  = document.getElementById('cardList');
   const empty = document.getElementById('emptyState');
@@ -933,29 +955,44 @@ function renderCards(animDir) {
       : 'No sub-ideas yet';
 
     const isSelected = selectedIds.has(node.id);
+    const nid = esc(node.id);
     return `
-      <div class="card${expanded ? ' expanded' : ''}${selectMode ? ' selectable' : ''}${isSelected ? ' selected' : ''}"
-           id="card-${esc(node.id)}" data-node-id="${esc(node.id)}" data-node-label="${esc(node.label)}" data-status="${esc(node.status || 'untouched')}">
-        <div class="card-front">
-          ${selectMode ? `<div class="select-indicator">${isSelected ? '✓' : ''}</div>` : `<div class="pip ${pip}"></div>`}
-          <div class="card-body">
-            <div class="card-title">${esc(node.label)}</div>
-            <div class="card-meta">${esc(meta)}</div>
-          </div>
-          <div class="card-actions">
-            ${!selectMode ? `<button class="info-btn" data-toggle-id="${esc(node.id)}">ⓘ</button>` : ''}
-            ${!selectMode ? `<button class="delete-btn" data-delete-id="${esc(node.id)}">✕</button>` : ''}
-            ${!selectMode ? `<span class="chevron">›</span>` : ''}
-          </div>
+      <div class="card-swipe-wrap" id="wrap-${nid}">
+        <div class="swipe-right-btns">
+          <button class="swipe-btn swipe-btn-done" data-swipe-done-id="${nid}">
+            <span class="swipe-icon">✓</span><span>Done</span>
+          </button>
         </div>
-        ${!selectMode ? `
-        <div class="card-summary-wrap">
-          ${summary ? `<div class="card-summary">${esc(summary)}</div>` : ''}
-          <div class="card-action-row">
-            <button class="refile-btn" data-refile-id="${esc(node.id)}">↗ Re-file</button>
-            ${childCount > 0 ? `<button class="simplify-btn" data-simplify-id="${esc(node.id)}">⚡ Simplify</button>` : ''}
+        <div class="swipe-left-btns">
+          <button class="swipe-btn swipe-btn-refile" data-swipe-refile-id="${nid}">
+            <span class="swipe-icon">↗</span><span>Re-file</span>
+          </button>
+          <button class="swipe-btn swipe-btn-delete" data-swipe-delete-id="${nid}">
+            <span class="swipe-icon">🗑</span><span>Delete</span>
+          </button>
+        </div>
+        <div class="card${expanded ? ' expanded' : ''}${selectMode ? ' selectable' : ''}${isSelected ? ' selected' : ''}"
+             id="card-${nid}" data-node-id="${nid}" data-node-label="${esc(node.label)}" data-status="${esc(node.status || 'untouched')}">
+          <div class="card-front">
+            ${selectMode ? `<div class="select-indicator">${isSelected ? '✓' : ''}</div>` : `<div class="pip ${pip}"></div>`}
+            <div class="card-body">
+              <div class="card-title">${esc(node.label)}</div>
+              <div class="card-meta">${esc(meta)}</div>
+            </div>
+            <div class="card-actions">
+              ${!selectMode ? `<button class="info-btn" data-toggle-id="${nid}">ⓘ</button>` : ''}
+              ${!selectMode ? `<span class="chevron">›</span>` : ''}
+            </div>
           </div>
-        </div>` : ''}
+          ${!selectMode ? `
+          <div class="card-summary-wrap">
+            ${summary ? `<div class="card-summary">${esc(summary)}</div>` : ''}
+            <div class="card-action-row">
+              <button class="refile-btn" data-refile-id="${nid}">↗ Re-file</button>
+              ${childCount > 0 ? `<button class="simplify-btn" data-simplify-id="${nid}">⚡ Simplify</button>` : ''}
+            </div>
+          </div>` : ''}
+        </div>
       </div>`;
   }).join('');
 
@@ -1329,6 +1366,97 @@ function renameSession() {
   closeMenu();
 }
 
+// ─── SWIPE GESTURES ──────────────────────────────────────────────────────────
+let swipeState      = null;
+let openSwipeNodeId = null;
+
+function getSwipeCard(nodeId) {
+  return document.querySelector(`#wrap-${nodeId} .card`);
+}
+
+function snapCard(nodeId, tx, animate = true) {
+  const card = getSwipeCard(nodeId);
+  if (!card) return;
+  if (animate) card.classList.add('swipe-snap');
+  card.style.transform = tx === 0 ? '' : `translateX(${tx}px)`;
+  if (tx === 0) {
+    setTimeout(() => card?.classList.remove('swipe-snap'), 230);
+    if (openSwipeNodeId === nodeId) openSwipeNodeId = null;
+  }
+}
+
+function closeOpenSwipe() {
+  if (openSwipeNodeId) { snapCard(openSwipeNodeId, 0); openSwipeNodeId = null; }
+}
+
+function initSwipeHandlers() {
+  const list = document.getElementById('cardList');
+
+  list.addEventListener('touchstart', e => {
+    if (selectMode) return;
+    const card = e.target.closest('.card');
+    if (!card) return;
+    const nodeId = card.dataset.nodeId;
+    if (!nodeId) return;
+
+    // Tapping a different card closes any open swipe
+    if (openSwipeNodeId && openSwipeNodeId !== nodeId) {
+      closeOpenSwipe();
+      swipeState = null;
+      return;
+    }
+
+    swipeState = {
+      nodeId,
+      startX: e.touches[0].clientX,
+      startY: e.touches[0].clientY,
+      dx: 0,
+      dir: null,
+    };
+  }, { passive: true });
+
+  document.addEventListener('touchmove', e => {
+    if (!swipeState) return;
+    const touch = e.touches[0];
+    const dx = touch.clientX - swipeState.startX;
+    const dy = touch.clientY - swipeState.startY;
+
+    if (!swipeState.dir) {
+      if (Math.abs(dx) < 4 && Math.abs(dy) < 4) return;
+      swipeState.dir = Math.abs(dx) > Math.abs(dy) ? 'h' : 'v';
+    }
+    if (swipeState.dir === 'v') return;
+
+    e.preventDefault();
+    swipeState.dx = dx;
+
+    // Left swipe opens two buttons (160px), right swipe opens one (80px)
+    const clamped = Math.max(-160, Math.min(80, dx));
+    const card = getSwipeCard(swipeState.nodeId);
+    if (card) {
+      card.classList.remove('swipe-snap');
+      card.style.transform = `translateX(${clamped}px)`;
+    }
+  }, { passive: false });
+
+  document.addEventListener('touchend', () => {
+    if (!swipeState || swipeState.dir !== 'h') { swipeState = null; return; }
+    const { nodeId, dx } = swipeState;
+    swipeState = null;
+
+    const THRESHOLD = 45;
+    if (dx < -THRESHOLD) {
+      snapCard(nodeId, -160);
+      openSwipeNodeId = nodeId;
+    } else if (dx > THRESHOLD) {
+      snapCard(nodeId, 80);
+      openSwipeNodeId = nodeId;
+    } else {
+      snapCard(nodeId, 0);
+    }
+  }, { passive: true });
+}
+
 // ─── MENU ───────────────────────────────────────────────────────────────────
 const toggleMenu = () => document.getElementById('menuDropdown').classList.toggle('open');
 const closeMenu  = () => document.getElementById('menuDropdown').classList.remove('open');
@@ -1340,6 +1468,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // Show key modal on first launch
   if (!getApiKey()) showKeyModal();
+
+  initSwipeHandlers();
 
   document.getElementById('recordBtn').addEventListener('click', startRecording);
   document.getElementById('stopBtn').addEventListener('click', stopRecording);
@@ -1365,8 +1495,26 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 
   document.getElementById('cardList').addEventListener('click', e => {
-    const deleteBtn = e.target.closest('[data-delete-id]');
-    if (deleteBtn) { e.stopPropagation(); deleteNode(deleteBtn.dataset.deleteId); return; }
+    const swipeDeleteBtn = e.target.closest('[data-swipe-delete-id]');
+    if (swipeDeleteBtn) { e.stopPropagation(); closeOpenSwipe(); deleteNode(swipeDeleteBtn.dataset.swipeDeleteId); return; }
+
+    const swipeRefileBtn = e.target.closest('[data-swipe-refile-id]');
+    if (swipeRefileBtn) { e.stopPropagation(); closeOpenSwipe(); refileNode(swipeRefileBtn.dataset.swipeRefileId); return; }
+
+    const swipeDoneBtn = e.target.closest('[data-swipe-done-id]');
+    if (swipeDoneBtn) {
+      e.stopPropagation();
+      const nodeId = swipeDoneBtn.dataset.swipeDoneId;
+      const n = session.nodes.find(n => n.id === nodeId);
+      if (n) {
+        n.status = n.status === 'done' ? 'untouched' : 'done';
+        n.last_modified = new Date().toISOString();
+        renderCards();
+        showToast(n.status === 'done' ? `✓ Done: ${n.label}` : `Reopened: ${n.label}`);
+        saveSession();
+      }
+      return;
+    }
 
     const refileBtn = e.target.closest('[data-refile-id]');
     if (refileBtn) { e.stopPropagation(); refileNode(refileBtn.dataset.refileId); return; }
