@@ -425,9 +425,14 @@
       background: #f2f2f7; border: 0.5px solid var(--border);
       font-size: 20px; cursor: pointer; flex-shrink: 0;
       display: flex; align-items: center; justify-content: center;
+      transition: background 0.15s;
     }
     .camera-btn:active:not(:disabled) { background: #e5e5ea; }
     .camera-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+    .camera-btn.has-pending {
+      background: #fff3cd; border-color: #f59e0b;
+      font-size: 12px; font-weight: 600; color: #92400e;
+    }
 
     .card-image-thumb {
       width: 48px; height: 48px; border-radius: 8px;
@@ -1405,6 +1410,16 @@ function extractJSON(raw) {
 }
 
 async function handleTranscript(transcript) {
+  // If a photo is waiting for a description, pair them together
+  if (pendingImage) {
+    const { dataUrl } = pendingImage;
+    clearPendingImage();
+    setStatus('Analyzing photo + description…', 'processing');
+    await createImageCard(dataUrl, transcript);
+    setRecordingState(isRecording);
+    return;
+  }
+
   setStatus('Claude is thinking…', 'processing');
 
   const ctx      = currentCtx();
@@ -1537,6 +1552,8 @@ function addNode(parsed, transcript) {
 }
 
 // ─── IMAGE CAPTURE ───────────────────────────────────────────────────────────
+let pendingImage = null; // { dataUrl } — set after photo taken, cleared after card created
+
 function compressImage(file, maxDim) {
   return new Promise(resolve => {
     const img = new Image();
@@ -1563,16 +1580,39 @@ async function handleImageCapture(file) {
   if (!getApiKey()) { showKeyModal(); return; }
 
   setStatus('Processing photo…', 'processing');
-  document.getElementById('cameraBtn').disabled = true;
-
   const dataUrl = await compressImage(file, 1024);
-  if (!dataUrl) { setStatus('Could not read image', 'error'); document.getElementById('cameraBtn').disabled = false; return; }
+  if (!dataUrl) { setStatus('Could not read image', 'error'); return; }
 
+  pendingImage = { dataUrl };
+  const btn = document.getElementById('cameraBtn');
+  btn.textContent = 'Skip';
+  btn.classList.add('has-pending');
+  setStatus('Photo ready — tap ⏺ to describe it', 'processing');
+  showToast('Photo ready — describe it or tap Skip');
+}
+
+function clearPendingImage() {
+  pendingImage = null;
+  const btn = document.getElementById('cameraBtn');
+  btn.textContent = '📷';
+  btn.classList.remove('has-pending');
+}
+
+async function skipImageDescription() {
+  if (!pendingImage) return;
+  const { dataUrl } = pendingImage;
+  clearPendingImage();
+  setStatus('Analyzing photo…', 'processing');
+  await createImageCard(dataUrl, '');
+  setStatus('Tap ⏺ to capture an idea');
+}
+
+async function createImageCard(dataUrl, transcript) {
   const nodeId = makeId();
   const now    = new Date().toISOString();
   const node   = {
     id: nodeId, type: 'image', label: 'Photo', summary: '',
-    transcript: '', parent_id: currentParentId(),
+    transcript, parent_id: currentParentId(),
     status: 'untouched', created: now, last_modified: now
   };
   session.nodes.push(node);
@@ -1580,10 +1620,14 @@ async function handleImageCapture(file) {
   renderCards();
   showToast('Photo added — analyzing…');
 
-  // Send to Claude vision
+  // Send to Claude vision (with optional voice description)
   try {
-    const apiKey  = getApiKey();
-    const base64  = dataUrl.split(',')[1];
+    const apiKey = getApiKey();
+    const base64 = dataUrl.split(',')[1];
+    const textPrompt = transcript
+      ? `The user described this image as: "${transcript}". Use both the image and description to create a concise mind map card.`
+      : 'Describe this image as a mind map card.';
+
     const res = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: {
@@ -1593,13 +1637,12 @@ async function handleImageCapture(file) {
         'anthropic-dangerous-direct-browser-access': 'true',
       },
       body: JSON.stringify({
-        model:      CLAUDE_MODEL,
-        max_tokens: 300,
-        system:     'You analyze images for a voice brainstorming app. Return ONLY valid JSON: {"label":"2-4 word title","summary":"1-2 sentence description of what you see and why it is relevant as a brainstorm card."}',
+        model: CLAUDE_MODEL, max_tokens: 300,
+        system: 'You analyze images for a voice brainstorming app. Return ONLY valid JSON: {"label":"2-4 word title","summary":"1-2 sentence description relevant as a brainstorm card."}',
         messages: [
           { role: 'user', content: [
             { type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: base64 } },
-            { type: 'text',  text: 'Describe this image as a mind map card.' }
+            { type: 'text',  text: textPrompt }
           ]},
           { role: 'assistant', content: '{' }
         ]
@@ -1610,8 +1653,8 @@ async function handleImageCapture(file) {
       const raw    = '{' + (await res.json()).content[0].text;
       const parsed = extractJSON(raw);
       if (parsed?.label) {
-        node.label   = String(parsed.label).slice(0, 60);
-        node.summary = parsed.summary || '';
+        node.label         = String(parsed.label).slice(0, 60);
+        node.summary       = parsed.summary || '';
         node.last_modified = new Date().toISOString();
         renderCards();
         saveSession();
@@ -1621,9 +1664,6 @@ async function handleImageCapture(file) {
   } catch (err) {
     console.error('[VoiceMap] Image analysis error:', err);
   }
-
-  document.getElementById('cameraBtn').disabled = false;
-  setStatus('Tap ⏺ to capture an idea');
 }
 
 // ─── IMPORT / EXPORT ────────────────────────────────────────────────────────
@@ -2188,7 +2228,10 @@ document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('recordBtn').addEventListener('click', startRecording);
   document.getElementById('stopBtn').addEventListener('click', stopRecording);
   document.getElementById('backBtn').addEventListener('click', navigateBack);
-  document.getElementById('cameraBtn').addEventListener('click', () => document.getElementById('imageInput').click());
+  document.getElementById('cameraBtn').addEventListener('click', () => {
+    if (pendingImage) { skipImageDescription(); }
+    else { document.getElementById('imageInput').click(); }
+  });
   document.getElementById('imageInput').addEventListener('change', e => {
     const file = e.target.files[0];
     e.target.value = '';
