@@ -1624,7 +1624,11 @@ async function skipImageDescription() {
   showToast('Analyzing photo…');
 
   try {
-    const base64 = dataUrl.split(',')[1];
+    const base64     = dataUrl.split(',')[1];
+    const parentNode = currentParentId() ? session.nodes.find(n => n.id === currentParentId()) : null;
+    const contextPrompt = parentNode
+      ? `Parent context: "${parentNode.label}"${parentNode.summary ? ` — ${parentNode.summary}` : ''}.\n\nDescribe this image as a child card under that context.`
+      : 'Describe this image as a mind map card.';
     const res = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: {
@@ -1635,11 +1639,11 @@ async function skipImageDescription() {
       },
       body: JSON.stringify({
         model: CLAUDE_MODEL, max_tokens: 300,
-        system: 'You analyze images for a voice brainstorming app. Return ONLY valid JSON: {"label":"2-4 word title","summary":"1-2 sentence description relevant as a brainstorm card."}',
+        system: 'You analyze images for a voice brainstorming app. Use the parent context to interpret the image meaningfully — e.g. a photo of a banana under "Grocery list" should yield "Buy bananas", not just "Banana". Return ONLY valid JSON: {"label":"2-4 word title","summary":"1-2 sentence description relevant as a brainstorm card."}',
         messages: [
           { role: 'user', content: [
             { type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: base64 } },
-            { type: 'text',  text: 'Describe this image as a mind map card.' }
+            { type: 'text',  text: contextPrompt }
           ]},
           { role: 'assistant', content: '{' }
         ]
