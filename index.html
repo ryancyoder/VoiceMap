@@ -1267,6 +1267,7 @@ function renderCards(animDir) {
             <div class="card-action-row">
               <button class="refile-btn" data-refile-id="${nid}">↗ Re-file</button>
               ${childCount > 0 ? `<button class="simplify-btn" data-simplify-id="${nid}">⚡ Simplify</button>` : ''}
+              <button class="refile-btn" data-elaborate-id="${nid}" style="background:rgba(255,149,0,0.12);border-color:rgba(255,149,0,0.25);color:#ff9500">✏ Elaborate</button>
               <button class="refile-btn" data-explore-id="${nid}" style="background:rgba(0,122,255,0.12);border-color:rgba(0,122,255,0.25);color:#007aff">💬 Explore</button>
             </div>
           </div>` : ''}
@@ -1413,6 +1414,41 @@ function extractJSON(raw) {
 }
 
 async function handleTranscript(transcript) {
+  // Elaborate path — update existing card summary instead of creating a new card
+  if (pendingElaborate) {
+    const { nodeId } = pendingElaborate;
+    pendingElaborate = null;
+    const node = session.nodes.find(n => n.id === nodeId);
+    if (!node) { setRecordingState(isRecording); return; }
+    setStatus('Elaborating…', 'processing');
+    const elaboratePrompt =
+`You are improving a mind map card's notes based on new voice input from the user.
+
+Card title: "${node.label}"
+Existing notes: "${node.summary || node.transcript || '(none)'}"
+New voice input: "${transcript}"
+
+Consolidate the existing notes and new input into a single improved summary.
+Be concise but thorough — this summary provides context for all child ideas under this card.
+Return JSON: {"summary": "<improved summary>"}`;
+    try {
+      const raw    = await callClaude(elaboratePrompt, '', '{');
+      const parsed = extractJSON(raw);
+      if (parsed?.summary) {
+        node.summary = parsed.summary;
+        saveSession();
+        renderCards();
+        setStatus('Notes updated', 'processing');
+        setTimeout(() => setRecordingState(isRecording), 1500);
+      } else {
+        setStatus('⚠ Could not parse elaboration', 'error');
+      }
+    } catch (err) {
+      setStatus('⚠ ' + err.message, 'error');
+    }
+    return;
+  }
+
   // Capture any pending image before processing (voice description path — no vision API needed)
   const capturedImage = pendingImage;
   if (capturedImage) clearPendingImage();
@@ -1561,7 +1597,8 @@ function addNode(parsed, transcript) {
 }
 
 // ─── IMAGE CAPTURE ───────────────────────────────────────────────────────────
-let pendingImage = null; // { dataUrl } — set after photo taken, cleared after card created
+let pendingImage     = null; // { dataUrl } — set after photo taken, cleared after card created
+let pendingElaborate = null; // { nodeId } — set when user taps Elaborate, cleared after update
 
 function compressImage(file, maxDim) {
   return new Promise(resolve => {
@@ -1605,6 +1642,15 @@ function clearPendingImage() {
   const btn = document.getElementById('cameraBtn');
   btn.textContent = '📷';
   btn.classList.remove('has-pending');
+}
+
+function startElaborate(nodeId) {
+  const node = session.nodes.find(n => n.id === nodeId);
+  if (!node) return;
+  pendingElaborate = { nodeId };
+  // Cancel any pending image
+  if (pendingImage) clearPendingImage();
+  setStatus(`Tap ⏺ to add context to "${node.label.slice(0, 30)}"`, 'processing');
 }
 
 async function skipImageDescription() {
@@ -2252,7 +2298,8 @@ document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('stopBtn').addEventListener('click', stopRecording);
   document.getElementById('backBtn').addEventListener('click', navigateBack);
   document.getElementById('cameraBtn').addEventListener('click', () => {
-    if (pendingImage) { skipImageDescription(); }
+    if (pendingElaborate) { pendingElaborate = null; setRecordingState(isRecording); }
+    else if (pendingImage) { skipImageDescription(); }
     else { document.getElementById('imageInput').click(); }
   });
   document.getElementById('imageInput').addEventListener('change', e => {
@@ -2313,6 +2360,8 @@ document.addEventListener('DOMContentLoaded', () => {
       return;
     }
 
+    const elaborateBtn = e.target.closest('[data-elaborate-id]');
+    if (elaborateBtn) { e.stopPropagation(); startElaborate(elaborateBtn.dataset.elaborateId); return; }
     const exploreBtn = e.target.closest('[data-explore-id]');
     if (exploreBtn) { e.stopPropagation(); openChatModal(exploreBtn.dataset.exploreId); return; }
 
