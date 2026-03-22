@@ -1855,7 +1855,6 @@ function onDragTouchMove(e) {
   const t = e.touches[0];
 
   if (dragState.phase === 'pending') {
-    // Cancel long press if finger moved more than 10px
     if (Math.abs(t.clientX - dragState.startX) > 10 ||
         Math.abs(t.clientY - dragState.startY) > 10) {
       clearTimeout(dragLongPressTimer);
@@ -1868,47 +1867,36 @@ function onDragTouchMove(e) {
 
   const { ghost, indicator, offsetY, nodeId } = dragState;
 
-  // Move ghost
   ghost.style.top = (t.clientY - offsetY) + 'px';
 
-  // Find element under finger (hide ghost first)
   ghost.style.visibility = 'hidden';
   const el = document.elementFromPoint(t.clientX, t.clientY);
   ghost.style.visibility = '';
 
-  // Clear highlights
+  // Clear live highlights
   document.querySelectorAll('.drop-child-target').forEach(w => w.classList.remove('drop-child-target'));
   indicator.classList.remove('visible');
-  dragState.dropNodeId     = null;
-  dragState.insertBeforeId = null;
 
   const targetWrap = el?.closest('.card-swipe-wrap');
   const targetId   = targetWrap?.querySelector('.card')?.dataset.nodeId;
 
-  if (!targetWrap || targetId === nodeId) {
-    // Check if past all cards → insert at end (no indicator needed)
-    return;
-  }
+  if (!targetWrap || targetId === nodeId) return;
 
   const tRect = targetWrap.getBoundingClientRect();
   const frac  = (t.clientY - tRect.top) / tRect.height;
 
-  if (frac < 0.28) {
-    // Top zone → insert before target
-    dragState.insertBeforeId = targetId;
+  if (frac < 0.30) {
+    dragState.lastConfirmedDrop = { type: 'before', refId: targetId };
     targetWrap.before(indicator);
     indicator.classList.add('visible');
-  } else if (frac > 0.72) {
-    // Bottom zone → insert after target (= before next sibling)
-    dragState.insertBeforeId = null;
-    dragState.insertAfterId  = targetId;
+  } else if (frac > 0.70) {
+    dragState.lastConfirmedDrop = { type: 'after', refId: targetId };
     targetWrap.after(indicator);
     indicator.classList.add('visible');
   } else {
-    // Middle → make child of target
     const descendants = getDescendants(nodeId);
     if (!descendants.has(targetId)) {
-      dragState.dropNodeId = targetId;
+      dragState.lastConfirmedDrop = { type: 'child', refId: targetId };
       targetWrap.classList.add('drop-child-target');
     }
   }
@@ -1918,7 +1906,7 @@ function onDragTouchEnd() {
   clearTimeout(dragLongPressTimer);
   if (!dragState || dragState.phase !== 'dragging') { dragState = null; return; }
 
-  const { nodeId, dropNodeId, insertBeforeId, insertAfterId, ghost, indicator, wrap } = dragState;
+  const { nodeId, lastConfirmedDrop, ghost, indicator, wrap } = dragState;
   dragState = null;
 
   ghost.remove();
@@ -1927,26 +1915,29 @@ function onDragTouchEnd() {
   document.querySelectorAll('.drop-child-target').forEach(w => w.classList.remove('drop-child-target'));
 
   const sourceNode = session.nodes.find(n => n.id === nodeId);
-  if (!sourceNode) { renderCards(); return; }
+  if (!sourceNode || !lastConfirmedDrop) { renderCards(); return; }
 
-  if (dropNodeId) {
-    // ── Make child ──────────────────────────────────────────────
-    sourceNode.parent_id     = dropNodeId;
+  const { type, refId } = lastConfirmedDrop;
+
+  if (type === 'child') {
+    sourceNode.parent_id     = refId;
     sourceNode.last_modified = new Date().toISOString();
     renderCards();
-    showToast(`Moved inside "${session.nodes.find(n => n.id === dropNodeId)?.label}"`);
+    showToast(`Moved inside "${session.nodes.find(n => n.id === refId)?.label}"`);
     saveSession();
 
-  } else if (insertBeforeId || insertAfterId) {
-    // ── Reorder ─────────────────────────────────────────────────
-    const refId     = insertBeforeId || insertAfterId;
-    const refNode   = session.nodes.find(n => n.id === refId);
-    if (!refNode || refNode.parent_id !== sourceNode.parent_id) { renderCards(); return; }
+  } else if (type === 'before' || type === 'after') {
+    const refNode = session.nodes.find(n => n.id === refId);
+    if (!refNode) { renderCards(); return; }
+
+    // Move sourceNode to be a sibling of refNode regardless of current parent
+    sourceNode.parent_id     = refNode.parent_id;
+    sourceNode.last_modified = new Date().toISOString();
 
     const srcIdx = session.nodes.indexOf(sourceNode);
     session.nodes.splice(srcIdx, 1);
     let tgtIdx = session.nodes.indexOf(refNode);
-    if (insertAfterId) tgtIdx += 1;
+    if (type === 'after') tgtIdx += 1;
     session.nodes.splice(tgtIdx, 0, sourceNode);
     renderCards();
     saveSession();
