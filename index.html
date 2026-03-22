@@ -1594,28 +1594,41 @@ async function handleTranscript(transcript) {
     pendingElaborate = null;
     const node = session.nodes.find(n => n.id === nodeId);
     if (!node) { setRecordingState(isRecording); return; }
-    setStatus('Elaborating…', 'processing');
-    const elaboratePrompt =
-`You are improving a mind map card's notes based on new voice input from the user.
+    const isRename = /^rename\b/i.test(transcript.trim());
+    setStatus(isRename ? 'Renaming…' : 'Elaborating…', 'processing');
 
+    const elaboratePrompt = isRename
+      ? `Rename this mind map card based on the user's spoken request.
+Current title: "${node.label}"
+User's request: "${transcript}"
+Return a concise 2–4 word title. JSON: {"label": "<new title>"}`
+      : `You are improving a mind map card's notes based on new voice input from the user.
 Card title: "${node.label}"
 Existing notes: "${node.summary || node.transcript || '(none)'}"
 New voice input: "${transcript}"
-
 Consolidate the existing notes and new input into a single improved summary.
 Be concise but thorough — this summary provides context for all child ideas under this card.
 Return JSON: {"summary": "<improved summary>"}`;
+
     try {
       const raw    = await callClaude(elaboratePrompt, '', '{');
       const parsed = extractJSON(raw);
-      if (parsed?.summary) {
-        node.summary = parsed.summary;
+      if (isRename && parsed?.label) {
+        node.label         = String(parsed.label).slice(0, 60);
+        node.last_modified = new Date().toISOString();
+        saveSession();
+        renderCards();
+        setStatus('Card renamed', 'processing');
+        setTimeout(() => setRecordingState(isRecording), 1500);
+      } else if (!isRename && parsed?.summary) {
+        node.summary       = parsed.summary;
+        node.last_modified = new Date().toISOString();
         saveSession();
         renderCards();
         setStatus('Notes updated', 'processing');
         setTimeout(() => setRecordingState(isRecording), 1500);
       } else {
-        setStatus('⚠ Could not parse elaboration', 'error');
+        setStatus('⚠ Could not parse response', 'error');
       }
     } catch (err) {
       setStatus('⚠ ' + err.message, 'error');
