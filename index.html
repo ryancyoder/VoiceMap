@@ -440,9 +440,12 @@
     }
     .card-image-full {
       width: 100%; border-radius: 8px; margin-bottom: 8px;
-      display: block; object-fit: contain;
+      display: block; object-fit: contain; max-height: 40dvh;
     }
-    .card.image-card.expanded .card-summary-wrap { max-height: 70dvh; }
+    .card.image-card.expanded .card-summary-wrap {
+      max-height: 70dvh;
+      overflow-y: auto;
+    }
 
     /* ── Chat modal ───────────────────────────────────────────── */
     .chat-overlay {
