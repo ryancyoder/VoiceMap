@@ -743,6 +743,7 @@
         <button class="menu-item" id="miImport">Import JSON</button>
         <button class="menu-item" id="miExport">Export JSON</button>
         <button class="menu-item" id="miCopy">Copy JSON</button>
+        <button class="menu-item" id="miPaste">Load from Clipboard</button>
         <button class="menu-item" id="miRename">Rename session</button>
         <button class="menu-item" id="miApiKey">API Key</button>
         <button class="menu-item" id="miArchive">📁 View Archive</button>
@@ -2177,6 +2178,25 @@ function copyJSON() {
     .catch(()  => showToast('Copy failed — use Export instead'));
 }
 
+async function pasteJSON() {
+  closeMenu();
+  try {
+    const text = await navigator.clipboard.readText();
+    const data = JSON.parse(text);
+    if (!Array.isArray(data.nodes)) { showToast('Clipboard has no VoiceMap data'); return; }
+    session = data;
+    navStack = [{ id: null, label: data.session || 'Home' }];
+    expandedIds.clear();
+    saveSession();
+    updateNavBar();
+    renderCards();
+    showToast(`Loaded "${data.session}" · ${data.nodes.length} cards`);
+  } catch (err) {
+    if (err.name === 'SyntaxError') showToast('Clipboard is not valid JSON');
+    else showToast('Could not read clipboard — allow access if prompted');
+  }
+}
+
 function clearAll() {
   if (session.nodes.length && !confirm('Clear everything and start fresh?')) return;
   session.nodes = [];
@@ -2701,6 +2721,7 @@ document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('miImport').addEventListener('click', () => { closeMenu(); document.getElementById('fileInput').click(); });
   document.getElementById('miExport').addEventListener('click', downloadJSON);
   document.getElementById('miCopy').addEventListener('click', copyJSON);
+  document.getElementById('miPaste').addEventListener('click', pasteJSON);
   document.getElementById('miRename').addEventListener('click', renameSession);
   document.getElementById('miApiKey').addEventListener('click', showKeyModal);
   document.getElementById('miArchive').addEventListener('click', () => { closeMenu(); setView('archived'); });
