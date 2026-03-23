@@ -705,6 +705,85 @@
     }
     .modal-save:active { background: var(--accent-dark); }
 
+    /* ── Mind Map (iPad landscape) ────────────────────────────── */
+    .mm-view {
+      position: fixed; inset: 0; background: var(--bg);
+      z-index: 200; display: flex; flex-direction: column; overflow: hidden;
+    }
+    .mm-view.hidden { display: none; }
+    .mm-header {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: calc(var(--safe-top) + 10px) 16px 10px;
+      background: var(--surface); border-bottom: 0.5px solid var(--border);
+      flex-shrink: 0;
+    }
+    .mm-back-btn {
+      background: none; border: none; color: var(--accent);
+      font-size: 17px; padding: 6px 10px; border-radius: 8px;
+      cursor: pointer; font-family: var(--font);
+    }
+    .mm-header-title { font-size: 17px; font-weight: 600; color: var(--text); }
+    .mm-header-record {
+      background: var(--accent); color: #fff; border: none; border-radius: 20px;
+      padding: 6px 16px; font-size: 14px; font-weight: 600;
+      font-family: var(--font); cursor: pointer;
+    }
+    .mm-body { flex: 1; display: flex; overflow: hidden; }
+    .mm-canvas-wrap {
+      flex: 1; position: relative; overflow: hidden; cursor: grab;
+    }
+    .mm-canvas-wrap.panning { cursor: grabbing; }
+    .mm-canvas { position: absolute; top: 0; left: 0; transform-origin: 0 0; will-change: transform; }
+    .mm-svg { position: absolute; top: 0; left: 0; pointer-events: none; overflow: visible; }
+    .mm-nodes { position: absolute; top: 0; left: 0; }
+    .mm-node {
+      position: absolute; background: var(--surface);
+      border: 1.5px solid var(--border); border-radius: 12px;
+      padding: 10px 14px; cursor: pointer;
+      transition: border-color 0.15s, box-shadow 0.15s;
+    }
+    .mm-node.selected { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(226,75,74,0.2); }
+    .mm-node.status-done .mm-node-title { text-decoration: line-through; color: var(--muted); }
+    .mm-node.has-image { border-left: 3px solid #30d158; }
+    .mm-node-title {
+      font-size: 13px; font-weight: 600; color: var(--text);
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 140px;
+    }
+    .mm-node-meta { font-size: 11px; color: var(--muted); margin-top: 3px; }
+    .mm-node-thumb { width: 100%; height: 60px; object-fit: cover; border-radius: 6px; margin-top: 6px; }
+    .mm-panel {
+      width: 300px; flex-shrink: 0; background: var(--surface);
+      border-left: 0.5px solid var(--border);
+      display: flex; flex-direction: column; padding: 16px; overflow-y: auto; gap: 12px;
+    }
+    .mm-panel.hidden { display: none; }
+    .mm-panel-close {
+      align-self: flex-end; background: none; border: none;
+      color: var(--muted); font-size: 18px; cursor: pointer;
+      padding: 4px 8px; border-radius: 8px; font-family: var(--font);
+    }
+    .mm-panel-title { font-size: 20px; font-weight: 700; color: var(--text); line-height: 1.3; }
+    .mm-panel-meta { font-size: 13px; color: var(--muted); }
+    .mm-panel-summary {
+      font-size: 14px; color: var(--text); line-height: 1.6;
+      background: var(--bg); border-radius: 10px; padding: 12px; min-height: 48px;
+    }
+    .mm-panel-actions { display: flex; flex-direction: column; gap: 8px; }
+    .mm-panel-btn {
+      padding: 12px 16px; border-radius: 10px;
+      background: rgba(0,0,0,0.04); color: var(--text);
+      border: 0.5px solid var(--border); font-size: 14px; font-weight: 500;
+      cursor: pointer; text-align: left; font-family: var(--font);
+    }
+    .mm-panel-btn:active { opacity: 0.7; }
+    .mm-panel-btn.danger { color: #ff3b30; background: rgba(255,59,48,0.08); }
+    .mm-toggle-btn {
+      display: none; background: none; border: 1px solid var(--border);
+      color: var(--accent); font-size: 13px; padding: 5px 10px;
+      border-radius: 8px; cursor: pointer; font-family: var(--font);
+    }
+    @media (min-width: 768px) { .mm-toggle-btn { display: block; } }
+
     /* ── Toast ────────────────────────────────────────────────── */
     .toast {
       position: fixed;
@@ -735,6 +814,7 @@
   <div class="nav-bar">
     <button class="back-btn" id="backBtn">‹ Back</button>
     <div class="nav-title" id="navTitle">Home</div>
+    <button class="mm-toggle-btn" id="mmToggleBtn">🗺 Map</button>
     <div class="menu-wrap">
       <button class="menu-btn" id="menuBtn">···</button>
       <div class="menu-dropdown" id="menuDropdown">
@@ -1632,6 +1712,13 @@ function renderCards(animDir) {
   }
 }
 
+// Keep mind map in sync whenever cards re-render
+const _renderCards = renderCards;
+renderCards = function(animDir) {
+  _renderCards(animDir);
+  if (mmVisible) renderMindMap();
+};
+
 function toggleSummary(nodeId) {
   const card = document.getElementById('card-' + nodeId);
   if (!card) return;
@@ -2096,6 +2183,225 @@ async function skipImageDescription() {
   } else {
     setStatus('Tap ⏺ to capture an idea');
   }
+}
+
+// ─── MIND MAP ────────────────────────────────────────────────────────────────
+const MM_W   = 160;   // node width
+const MM_H   = 52;    // node height (no image)
+const MM_HI  = 120;   // node height (with image)
+const MM_CG  = 60;    // column gap
+const MM_RG  = 20;    // row gap
+const MM_PAD = 48;    // canvas padding
+
+let mmTransform   = { x: 0, y: 0, scale: 1 };
+let mmSelectedId  = null;
+let mmVisible     = false;
+
+function buildMindMapLayout() {
+  const nodes = session.nodes;
+  if (!nodes.length) return { pos: {}, svgW: 600, svgH: 400 };
+  let leafY = 0;
+  const pos = {};
+
+  function nodeH(n) { return (n.type === 'image' && imageCache[n.id]) ? MM_HI : MM_H; }
+
+  function lay(nodeId, depth) {
+    const node = nodes.find(n => n.id === nodeId);
+    if (!node) return;
+    const children = nodes.filter(n => n.parent_id === nodeId);
+    const x = MM_PAD + depth * (MM_W + MM_CG);
+    if (!children.length) {
+      pos[nodeId] = { x, y: MM_PAD + leafY * (MM_H + MM_RG) };
+      leafY++;
+    } else {
+      children.forEach(c => lay(c.id, depth + 1));
+      const ys = children.map(c => pos[c.id]?.y ?? 0);
+      pos[nodeId] = { x, y: (ys[0] + ys[ys.length - 1]) / 2 };
+    }
+  }
+
+  nodes.filter(n => !n.parent_id || !nodes.find(p => p.id === n.parent_id))
+       .forEach(n => lay(n.id, 0));
+
+  const allPos = Object.values(pos);
+  return {
+    pos,
+    svgW: Math.max(...allPos.map(p => p.x)) + MM_W + MM_PAD,
+    svgH: Math.max(...allPos.map(p => p.y)) + MM_HI + MM_PAD
+  };
+}
+
+function renderMindMap() {
+  if (!mmVisible) return;
+  const nodes = session.nodes;
+  const { pos, svgW, svgH } = buildMindMapLayout();
+
+  // SVG connections
+  const svg = document.getElementById('mmSvg');
+  svg.style.width  = svgW + 'px';
+  svg.style.height = svgH + 'px';
+  svg.innerHTML = nodes.map(n => {
+    if (!n.parent_id || !pos[n.id] || !pos[n.parent_id]) return '';
+    const p  = pos[n.parent_id], c = pos[n.id];
+    const x1 = p.x + MM_W, y1 = p.y + MM_H / 2;
+    const x2 = c.x,        y2 = c.y + MM_H / 2;
+    const mx = (x1 + x2) / 2;
+    return `<path d="M${x1},${y1} C${mx},${y1} ${mx},${y2} ${x2},${y2}"
+      fill="none" stroke="var(--border)" stroke-width="1.5" stroke-linecap="round"/>`;
+  }).join('');
+
+  // Node cards
+  const nodesEl = document.getElementById('mmNodes');
+  nodesEl.style.width  = svgW + 'px';
+  nodesEl.style.height = svgH + 'px';
+  nodesEl.innerHTML = nodes.map(n => {
+    if (!pos[n.id]) return '';
+    const { x, y } = pos[n.id];
+    const children = nodes.filter(c => c.parent_id === n.id).length;
+    const img = imageCache[n.id];
+    const selected = mmSelectedId === n.id ? ' selected' : '';
+    const hasImg   = img ? ' has-image' : '';
+    const done     = n.status === 'done' ? ' status-done' : '';
+    const meta = [
+      children ? `${children} sub-card${children !== 1 ? 's' : ''}` : '',
+      n.deferred ? `⏳ ${formatDeferDate(n.deferredUntil)}` : '',
+      n.archived ? '📁 archived' : '',
+      n.pinned   ? '📌' : ''
+    ].filter(Boolean).join(' · ');
+    return `<div class="mm-node${selected}${hasImg}${done}"
+         id="mmn-${esc(n.id)}" data-mmid="${esc(n.id)}"
+         style="left:${x}px;top:${y}px;width:${MM_W}px">
+      ${img ? `<img class="mm-node-thumb" src="${img}" alt="">` : ''}
+      <div class="mm-node-title">${esc(n.label)}</div>
+      ${meta ? `<div class="mm-node-meta">${esc(meta)}</div>` : ''}
+    </div>`;
+  }).join('');
+
+  // Re-apply selected highlight
+  if (mmSelectedId) selectMmNode(mmSelectedId, false);
+}
+
+function selectMmNode(nodeId, scroll = true) {
+  mmSelectedId = nodeId;
+  document.querySelectorAll('.mm-node').forEach(el => el.classList.remove('selected'));
+  document.getElementById('mmn-' + nodeId)?.classList.add('selected');
+
+  const node = session.nodes.find(n => n.id === nodeId);
+  if (!node) return;
+
+  const panel = document.getElementById('mmPanel');
+  panel.classList.remove('hidden');
+  document.getElementById('mmPanelTitle').textContent   = node.label;
+  document.getElementById('mmPanelSummary').textContent = node.summary || node.transcript || '—';
+  const children = session.nodes.filter(n => n.parent_id === nodeId).length;
+  document.getElementById('mmPanelMeta').textContent = [
+    children ? `${children} sub-card${children !== 1 ? 's' : ''}` : 'No sub-cards',
+    node.pinned ? '📌 Pinned' : '',
+    node.deferred ? `⏳ ${formatDeferDate(node.deferredUntil)}` : ''
+  ].filter(Boolean).join(' · ');
+
+  // Show/hide Simplify based on whether it has children
+  document.getElementById('mmSimplifyBtn').style.display = children ? '' : 'none';
+}
+
+function showMindMap() {
+  mmVisible = true;
+  mmTransform = { x: 40, y: 40, scale: 1 };
+  document.getElementById('mmView').classList.remove('hidden');
+  document.getElementById('mmHeaderTitle').textContent = session.session || 'VoiceMap';
+  renderMindMap();
+  applyMmTransform();
+}
+
+function hideMindMap() {
+  mmVisible = false;
+  mmSelectedId = null;
+  document.getElementById('mmView').classList.add('hidden');
+  document.getElementById('mmPanel').classList.add('hidden');
+}
+
+function applyMmTransform() {
+  const canvas = document.getElementById('mmCanvas');
+  if (canvas) canvas.style.transform =
+    `translate(${mmTransform.x}px,${mmTransform.y}px) scale(${mmTransform.scale})`;
+}
+
+function initMmPanZoom() {
+  const wrap = document.getElementById('mmCanvasWrap');
+  let panning = false, lastT = null, pinchDist = null, tapTimer = null, tapNode = null;
+
+  wrap.addEventListener('touchstart', e => {
+    if (e.touches.length === 2) {
+      panning = false;
+      pinchDist = Math.hypot(
+        e.touches[0].clientX - e.touches[1].clientX,
+        e.touches[0].clientY - e.touches[1].clientY
+      );
+    } else if (e.touches.length === 1) {
+      lastT = { x: e.touches[0].clientX, y: e.touches[0].clientY };
+      panning = true;
+      pinchDist = null;
+      const node = e.target.closest('[data-mmid]');
+      tapNode = node ? node.dataset.mmid : null;
+    }
+  }, { passive: true });
+
+  wrap.addEventListener('touchmove', e => {
+    if (e.touches.length === 2 && pinchDist !== null) {
+      e.preventDefault();
+      const d = Math.hypot(
+        e.touches[0].clientX - e.touches[1].clientX,
+        e.touches[0].clientY - e.touches[1].clientY
+      );
+      mmTransform.scale = Math.max(0.25, Math.min(4, mmTransform.scale * (d / pinchDist)));
+      pinchDist = d;
+      applyMmTransform();
+      tapNode = null;
+    } else if (e.touches.length === 1 && panning && lastT) {
+      const dx = e.touches[0].clientX - lastT.x;
+      const dy = e.touches[0].clientY - lastT.y;
+      if (Math.abs(dx) > 4 || Math.abs(dy) > 4) tapNode = null;
+      mmTransform.x += dx;
+      mmTransform.y += dy;
+      lastT = { x: e.touches[0].clientX, y: e.touches[0].clientY };
+      applyMmTransform();
+    }
+  }, { passive: false });
+
+  wrap.addEventListener('touchend', e => {
+    if (e.changedTouches.length === 1 && tapNode) selectMmNode(tapNode);
+    panning = false; pinchDist = null; lastT = null; tapNode = null;
+  }, { passive: true });
+
+  // Mouse support (desktop/trackpad)
+  let mouseDown = false, mouseStart = null, mouseMoved = false;
+  wrap.addEventListener('mousedown', e => {
+    mouseDown = true; mouseMoved = false;
+    mouseStart = { x: e.clientX, y: e.clientY };
+    wrap.classList.add('panning');
+  });
+  wrap.addEventListener('mousemove', e => {
+    if (!mouseDown || !mouseStart) return;
+    const dx = e.clientX - mouseStart.x, dy = e.clientY - mouseStart.y;
+    if (Math.abs(dx) > 3 || Math.abs(dy) > 3) mouseMoved = true;
+    mmTransform.x += dx; mmTransform.y += dy;
+    mouseStart = { x: e.clientX, y: e.clientY };
+    applyMmTransform();
+  });
+  wrap.addEventListener('mouseup', e => {
+    wrap.classList.remove('panning');
+    if (!mouseMoved) {
+      const node = e.target.closest('[data-mmid]');
+      if (node) selectMmNode(node.dataset.mmid);
+    }
+    mouseDown = false; mouseStart = null;
+  });
+  wrap.addEventListener('wheel', e => {
+    e.preventDefault();
+    const factor = e.deltaY > 0 ? 0.92 : 1.08;
+    mmTransform.scale = Math.max(0.25, Math.min(4, mmTransform.scale * factor));
+    applyMmTransform();
+  }, { passive: false });
 }
 
 // ─── IMPORT / EXPORT ────────────────────────────────────────────────────────
@@ -2727,6 +3033,44 @@ document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('miArchive').addEventListener('click', () => { closeMenu(); setView('archived'); });
   document.getElementById('miClear').addEventListener('click', clearAll);
 
+  // Mind map
+  initMmPanZoom();
+  document.getElementById('mmToggleBtn').addEventListener('click', showMindMap);
+  document.getElementById('mmBackBtn').addEventListener('click', hideMindMap);
+  document.getElementById('mmPanelClose').addEventListener('click', () => {
+    document.getElementById('mmPanel').classList.add('hidden');
+    mmSelectedId = null;
+    document.querySelectorAll('.mm-node').forEach(el => el.classList.remove('selected'));
+  });
+  document.getElementById('mmRecordBtn').addEventListener('click', () => {
+    hideMindMap();
+    setTimeout(startRecording, 100);
+  });
+  document.getElementById('mmRefileBtn').addEventListener('click', () => {
+    if (mmSelectedId) { hideMindMap(); refileNode(mmSelectedId); }
+  });
+  document.getElementById('mmElaborateBtn').addEventListener('click', () => {
+    if (mmSelectedId) { hideMindMap(); startElaborate(mmSelectedId); }
+  });
+  document.getElementById('mmSimplifyBtn').addEventListener('click', () => {
+    if (mmSelectedId) { hideMindMap(); simplifyNode(mmSelectedId); }
+  });
+  document.getElementById('mmExploreBtn').addEventListener('click', () => {
+    if (mmSelectedId) { hideMindMap(); openChatModal(mmSelectedId); }
+  });
+  document.getElementById('mmDeleteBtn').addEventListener('click', () => {
+    if (mmSelectedId) {
+      const id = mmSelectedId;
+      hideMindMap();
+      deleteNode(id);
+    }
+  });
+
+  // Auto-show mind map on iPad landscape
+  const mmMediaQuery = window.matchMedia('(min-width: 900px) and (orientation: landscape)');
+  mmMediaQuery.addEventListener('change', e => { if (e.matches) showMindMap(); else hideMindMap(); });
+  if (mmMediaQuery.matches) showMindMap();
+
   // Complete modal
   document.getElementById('archiveBtn').addEventListener('click', () => {
     if (completePendingNodeId) archiveNode(completePendingNodeId);
@@ -2859,6 +3203,34 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 });
 </script>
+
+<!-- Mind Map View -->
+<div class="mm-view hidden" id="mmView">
+  <div class="mm-header">
+    <button class="mm-back-btn" id="mmBackBtn">‹ Cards</button>
+    <div class="mm-header-title" id="mmHeaderTitle">VoiceMap</div>
+    <button class="mm-header-record" id="mmRecordBtn">⏺ Record</button>
+  </div>
+  <div class="mm-body">
+    <div class="mm-canvas-wrap" id="mmCanvasWrap">
+      <svg class="mm-svg" id="mmSvg" xmlns="http://www.w3.org/2000/svg"></svg>
+      <div class="mm-nodes" id="mmNodes"></div>
+    </div>
+    <div class="mm-panel hidden" id="mmPanel">
+      <button class="mm-panel-close" id="mmPanelClose">✕</button>
+      <div class="mm-panel-title" id="mmPanelTitle"></div>
+      <div class="mm-panel-meta" id="mmPanelMeta"></div>
+      <div class="mm-panel-summary" id="mmPanelSummary"></div>
+      <div class="mm-panel-actions">
+        <button class="mm-panel-btn" id="mmRefileBtn">↗ Re-file with AI</button>
+        <button class="mm-panel-btn" id="mmElaborateBtn">✏ Elaborate</button>
+        <button class="mm-panel-btn" id="mmSimplifyBtn">⚡ Simplify</button>
+        <button class="mm-panel-btn" id="mmExploreBtn">💬 Explore with AI</button>
+        <button class="mm-panel-btn danger" id="mmDeleteBtn">✕ Delete card</button>
+      </div>
+    </div>
+  </div>
+</div>
 
 <!-- Tap-to-record overlay (shown when ?record=1 in URL) -->
 <div class="tap-record-overlay hidden" id="tapRecordOverlay">
