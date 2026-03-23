@@ -2626,7 +2626,7 @@ function applyMmTransform() {
 function initMmPanZoom() {
   const wrap = document.getElementById('mmCanvasWrap');
   let panning = false, lastT = null, pinchDist = null, tapNode = null;
-  let lastTapTime = 0, lastTapNodeId = undefined;
+  let lastTapTime = 0, lastTapNodeId = undefined, singleTapTimer = null;
 
   wrap.addEventListener('touchstart', e => {
     if (e.touches.length === 2) {
@@ -2669,14 +2669,23 @@ function initMmPanZoom() {
   wrap.addEventListener('touchend', e => {
     if (e.changedTouches.length === 1) {
       const now = Date.now();
-      const isDoubleTap = (now - lastTapTime) < 320 && lastTapNodeId === tapNode;
+      const captured = tapNode;
+      const isDoubleTap = (now - lastTapTime) < 300 && lastTapNodeId === captured;
       if (isDoubleTap) {
-        if (tapNode) mmFocusOnNode(tapNode);
+        // Cancel the pending single-tap so the panel doesn't open/shift before focus
+        clearTimeout(singleTapTimer); singleTapTimer = null;
+        if (captured) mmFocusOnNode(captured);
         else mmFocusUp();
         lastTapTime = 0; lastTapNodeId = undefined;
       } else {
-        if (tapNode) selectMmNode(tapNode);
-        lastTapTime = now; lastTapNodeId = tapNode;
+        // Delay single-tap action until double-tap window passes
+        // This prevents the panel from opening and shifting the canvas before the 2nd tap
+        lastTapTime = now; lastTapNodeId = captured;
+        clearTimeout(singleTapTimer);
+        singleTapTimer = setTimeout(() => {
+          if (captured) selectMmNode(captured);
+          singleTapTimer = null;
+        }, 300);
       }
     }
     panning = false; pinchDist = null; lastT = null; tapNode = null;
