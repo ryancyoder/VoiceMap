@@ -881,6 +881,7 @@
     <div class="menu-wrap">
       <button class="menu-btn" id="menuBtn">···</button>
       <div class="menu-dropdown" id="menuDropdown">
+        <button class="menu-item" id="miExportPrompt">📤 Export Prompt</button>
         <button class="menu-item" id="miCluster">⚡ Auto-cluster</button>
         <button class="menu-item" id="miSelect">⊙ Select to merge</button>
         <button class="menu-item" id="miImport">Import JSON</button>
@@ -2270,11 +2271,11 @@ function inlineMd(t) {
 }
 
 function buildExportPrompt(nodeId) {
-  const node = session.nodes.find(n => n.id === nodeId);
-  if (!node) return '';
+  // nodeId = null exports the entire session (all top-level cards + descendants)
+  const isFullExport = nodeId === null;
+  if (!isFullExport && !session.nodes.find(n => n.id === nodeId)) return '';
 
   const lines = [];
-
   lines.push(`You are helping me explore, discuss, and expand on notes from my brainstorming session. The notes below are organized hierarchically. Engage conversationally — summarize, ask clarifying questions, surface connections, and help me think deeper. Use clear, voice-friendly language since I may be listening rather than reading.\n`);
 
   function buildTree(id, depth) {
@@ -2288,11 +2289,14 @@ function buildExportPrompt(nodeId) {
     session.nodes.filter(x => x.parent_id === id).forEach(child => buildTree(child.id, depth + 1));
   }
 
-  buildTree(nodeId, 1);
+  if (isFullExport) {
+    session.nodes.filter(n => !n.parent_id).forEach(n => buildTree(n.id, 1));
+  } else {
+    buildTree(nodeId, 1);
+  }
 
   lines.push('---');
   lines.push('Please start with a brief overview of the key themes in these notes, then wait for me to guide the conversation.');
-
   return lines.join('\n');
 }
 
@@ -3313,6 +3317,7 @@ document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('miRename').addEventListener('click', renameSession);
   document.getElementById('miApiKey').addEventListener('click', showKeyModal);
   document.getElementById('miArchive').addEventListener('click', () => { closeMenu(); setView('archived'); });
+  document.getElementById('miExportPrompt').addEventListener('click', () => { closeMenu(); exportPrompt(null); });
   document.getElementById('miClear').addEventListener('click', clearAll);
 
   // Mind map
