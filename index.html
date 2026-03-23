@@ -745,6 +745,7 @@
       flex: 1; position: relative; overflow: hidden; cursor: grab;
     }
     .mm-canvas-wrap.panning { cursor: grabbing; }
+    .mm-header-fit { background: var(--surface); border: 0.5px solid var(--border); border-radius: 10px; color: var(--text); font-size: 18px; padding: 6px 12px; cursor: pointer; }
     .mm-canvas { position: absolute; top: 0; left: 0; transform-origin: 0 0; will-change: transform; }
     .mm-svg { position: absolute; top: 0; left: 0; pointer-events: none; overflow: visible; }
     .mm-nodes { position: absolute; top: 0; left: 0; }
@@ -3250,6 +3251,7 @@ document.addEventListener('DOMContentLoaded', () => {
     mmSelectedId = null;
     document.querySelectorAll('.mm-node').forEach(el => el.classList.remove('selected'));
   });
+  document.getElementById('mmFitBtn').addEventListener('click', mmZoomToFit);
   document.getElementById('mmRecordBtn').addEventListener('click', mmStartRecording);
   document.getElementById('mmStopBtn2').addEventListener('click', stopRecording);
   document.getElementById('mmRefileBtn').addEventListener('click', () => {
@@ -3433,12 +3435,15 @@ document.addEventListener('DOMContentLoaded', () => {
       <div class="mm-live-text" id="mmLiveText">Listening…</div>
       <button class="mm-stop-btn" id="mmStopBtn2">Stop</button>
     </div>
+    <button class="mm-header-fit" id="mmFitBtn" title="Zoom to fit">⊡</button>
     <button class="mm-header-record" id="mmRecordBtn">⏺ Record</button>
   </div>
   <div class="mm-body">
     <div class="mm-canvas-wrap" id="mmCanvasWrap">
-      <svg class="mm-svg" id="mmSvg" xmlns="http://www.w3.org/2000/svg"></svg>
-      <div class="mm-nodes" id="mmNodes"></div>
+      <div class="mm-canvas" id="mmCanvas">
+        <svg class="mm-svg" id="mmSvg" xmlns="http://www.w3.org/2000/svg"></svg>
+        <div class="mm-nodes" id="mmNodes"></div>
+      </div>
     </div>
     <div class="mm-panel hidden" id="mmPanel">
       <button class="mm-panel-close" id="mmPanelClose">✕</button>
