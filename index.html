@@ -2518,6 +2518,7 @@ function mmZoomToFit() {
 function mmFocusOnNode(nodeId) {
   mmFocusNodeId = nodeId;
   const node = session.nodes.find(n => n.id === nodeId);
+  showToast('Focus: ' + (node?.label || '??'));
   document.getElementById('mmFocusLabel').textContent = node?.label || '';
   document.getElementById('mmFocusBar').classList.add('visible');
   document.getElementById('mmFilterBar').style.display = 'none';
