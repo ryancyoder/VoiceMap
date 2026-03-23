@@ -2626,7 +2626,7 @@ function applyMmTransform() {
 function initMmPanZoom() {
   const wrap = document.getElementById('mmCanvasWrap');
   let panning = false, lastT = null, pinchDist = null, tapNode = null;
-  let lastTapTime = 0, lastTapNodeId = undefined, singleTapTimer = null;
+  let lastTapTime = 0, lastTapNodeId = undefined, singleTapTimer = null, touchDblHandled = false;
 
   wrap.addEventListener('touchstart', e => {
     if (e.touches.length === 2) {
@@ -2674,6 +2674,9 @@ function initMmPanZoom() {
       if (isDoubleTap) {
         // Cancel the pending single-tap so the panel doesn't open/shift before focus
         clearTimeout(singleTapTimer); singleTapTimer = null;
+        // Flag so the dblclick event that fires after touch events are done is ignored
+        touchDblHandled = true;
+        setTimeout(() => { touchDblHandled = false; }, 600);
         if (captured) mmFocusOnNode(captured);
         else mmFocusUp();
         lastTapTime = 0; lastTapNodeId = undefined;
@@ -2715,6 +2718,7 @@ function initMmPanZoom() {
     mouseDown = false; mouseStart = null;
   });
   wrap.addEventListener('dblclick', e => {
+    if (touchDblHandled) return; // already handled via touch events — skip
     const node = e.target.closest('[data-mmid]');
     if (node) mmFocusOnNode(node.dataset.mmid);
     else mmFocusUp();
