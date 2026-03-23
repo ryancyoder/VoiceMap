@@ -777,6 +777,21 @@
     }
     .mm-panel-btn:active { opacity: 0.7; }
     .mm-panel-btn.danger { color: #ff3b30; background: rgba(255,59,48,0.08); }
+    .mm-recording-bar {
+      display: none; align-items: center; gap: 10px;
+      background: rgba(226,75,74,0.1); border-radius: 12px; padding: 6px 14px;
+    }
+    .mm-recording-bar.visible { display: flex; }
+    .mm-rec-dot {
+      width: 10px; height: 10px; border-radius: 50%; background: var(--accent); flex-shrink: 0;
+      animation: pulse 1s ease-in-out infinite;
+    }
+    .mm-live-text { font-size: 14px; color: var(--text); min-width: 160px; max-width: 400px;
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .mm-stop-btn {
+      background: none; border: none; color: var(--accent);
+      font-size: 14px; font-weight: 600; font-family: var(--font); cursor: pointer; padding: 2px 8px;
+    }
     .mm-toggle-btn {
       display: none; background: none; border: 1px solid var(--border);
       color: var(--accent); font-size: 13px; padding: 5px 10px;
@@ -1764,6 +1779,7 @@ function initRecognition() {
       handleTranscript(final.trim());
     } else {
       document.getElementById('liveText').textContent = interim;
+      if (mmVisible) document.getElementById('mmLiveText').textContent = interim || 'Listening…';
     }
   };
 
@@ -1806,6 +1822,14 @@ function setRecordingState(state) {
   btn.classList.toggle('recording', state);
   document.getElementById('stopBtn').disabled = !state;
   setStatus(state ? 'Listening — speak your idea…' : 'Tap ⏺ to capture an idea');
+
+  // Mind map recording indicator
+  if (mmVisible) {
+    document.getElementById('mmRecordingBar').classList.toggle('visible', state);
+    document.getElementById('mmRecordBtn').style.display  = state ? 'none' : '';
+    document.querySelector('.mm-filter-bar').style.display = state ? 'none' : '';
+    if (!state) document.getElementById('mmLiveText').textContent = 'Listening…';
+  }
 }
 
 function setStatus(msg, cls) {
@@ -2324,6 +2348,17 @@ function selectMmNode(nodeId, scroll = true) {
 
   // Show/hide Simplify based on whether it has children
   document.getElementById('mmSimplifyBtn').style.display = children ? '' : 'none';
+}
+
+function mmStartRecording() {
+  // Set nav context to selected card so new cards file under it
+  if (mmSelectedId) {
+    const node = session.nodes.find(n => n.id === mmSelectedId);
+    if (node) navStack = [{ id: null, label: 'Home' }, { id: node.id, label: node.label }];
+  } else {
+    navStack = [{ id: null, label: 'Home' }];
+  }
+  startRecording();
 }
 
 function showMindMap() {
@@ -3074,10 +3109,8 @@ document.addEventListener('DOMContentLoaded', () => {
     mmSelectedId = null;
     document.querySelectorAll('.mm-node').forEach(el => el.classList.remove('selected'));
   });
-  document.getElementById('mmRecordBtn').addEventListener('click', () => {
-    hideMindMap();
-    setTimeout(startRecording, 100);
-  });
+  document.getElementById('mmRecordBtn').addEventListener('click', mmStartRecording);
+  document.getElementById('mmStopBtn2').addEventListener('click', stopRecording);
   document.getElementById('mmRefileBtn').addEventListener('click', () => {
     if (mmSelectedId) { hideMindMap(); refileNode(mmSelectedId); }
   });
@@ -3244,6 +3277,11 @@ document.addEventListener('DOMContentLoaded', () => {
     <div class="mm-filter-bar">
       <button class="mm-filter-pill" id="mmFilterDeferred">⏳ Hide Deferred</button>
       <button class="mm-filter-pill" id="mmFilterArchived">📁 Hide Archived</button>
+    </div>
+    <div class="mm-recording-bar" id="mmRecordingBar">
+      <div class="mm-rec-dot"></div>
+      <div class="mm-live-text" id="mmLiveText">Listening…</div>
+      <button class="mm-stop-btn" id="mmStopBtn2">Stop</button>
     </div>
     <button class="mm-header-record" id="mmRecordBtn">⏺ Record</button>
   </div>
