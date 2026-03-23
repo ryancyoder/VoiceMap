@@ -777,6 +777,17 @@
     }
     .mm-panel-btn:active { opacity: 0.7; }
     .mm-panel-btn.danger { color: #ff3b30; background: rgba(255,59,48,0.08); }
+    .mm-focus-bar {
+      display: none; align-items: center; gap: 10px;
+      background: rgba(0,122,255,0.12); border-radius: 10px; padding: 5px 14px;
+      font-size: 13px; color: #007aff;
+    }
+    .mm-focus-bar.visible { display: flex; }
+    .mm-focus-label { font-weight: 600; max-width: 200px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .mm-focus-exit {
+      background: none; border: none; color: #007aff;
+      font-size: 13px; font-weight: 600; font-family: var(--font); cursor: pointer; padding: 0;
+    }
     .mm-recording-bar {
       display: none; align-items: center; gap: 10px;
       background: rgba(226,75,74,0.1); border-radius: 12px; padding: 6px 14px;
@@ -2234,10 +2245,20 @@ let mmSelectedId     = null;
 let mmVisible        = false;
 let mmHideDeferred   = false;
 let mmHideArchived   = false;
+let mmFocusNodeId    = null;
 
 function mmVisibleNodes() {
+  let allowed = null;
+  if (mmFocusNodeId) {
+    allowed = new Set([mmFocusNodeId]);
+    const addDesc = id => session.nodes
+      .filter(n => n.parent_id === id)
+      .forEach(n => { allowed.add(n.id); addDesc(n.id); });
+    addDesc(mmFocusNodeId);
+  }
   return session.nodes.filter(n => {
-    if (mmHideDeferred && n.deferred && !isArchivedBeforeToday(n)) return false;
+    if (allowed && !allowed.has(n.id)) return false;
+    if (mmHideDeferred && n.deferred) return false;
     if (mmHideArchived && n.archived) return false;
     return true;
   });
@@ -2350,6 +2371,36 @@ function selectMmNode(nodeId, scroll = true) {
   document.getElementById('mmSimplifyBtn').style.display = children ? '' : 'none';
 }
 
+function mmZoomToFit() {
+  const wrap = document.getElementById('mmCanvasWrap');
+  const { svgW, svgH } = buildMindMapLayout();
+  if (!svgW || !svgH) return;
+  const wW = wrap.clientWidth  - 80;
+  const wH = wrap.clientHeight - 80;
+  const scale = Math.min(wW / svgW, wH / svgH, 2);
+  const x = (wrap.clientWidth  - svgW * scale) / 2;
+  const y = (wrap.clientHeight - svgH * scale) / 2;
+  mmTransform = { x: Math.max(x, 40), y: Math.max(y, 40), scale };
+  applyMmTransform();
+}
+
+function mmFocusOnNode(nodeId) {
+  mmFocusNodeId = nodeId;
+  const node = session.nodes.find(n => n.id === nodeId);
+  document.getElementById('mmFocusLabel').textContent = node?.label || '';
+  document.getElementById('mmFocusBar').classList.add('visible');
+  document.getElementById('mmFilterBar').style.display = 'none';
+  renderMindMap();
+  setTimeout(mmZoomToFit, 50);
+}
+
+function mmExitFocus() {
+  mmFocusNodeId = null;
+  document.getElementById('mmFocusBar').classList.remove('visible');
+  document.getElementById('mmFilterBar').style.display = '';
+  renderMindMap();
+}
+
 function mmStartRecording() {
   // Set nav context to selected card so new cards file under it
   if (mmSelectedId) {
@@ -2373,8 +2424,11 @@ function showMindMap() {
 function hideMindMap() {
   mmVisible = false;
   mmSelectedId = null;
+  mmFocusNodeId = null;
   document.getElementById('mmView').classList.add('hidden');
   document.getElementById('mmPanel').classList.add('hidden');
+  document.getElementById('mmFocusBar').classList.remove('visible');
+  document.getElementById('mmFilterBar').style.display = '';
 }
 
 function applyMmTransform() {
@@ -3112,17 +3166,21 @@ document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('mmRecordBtn').addEventListener('click', mmStartRecording);
   document.getElementById('mmStopBtn2').addEventListener('click', stopRecording);
   document.getElementById('mmRefileBtn').addEventListener('click', () => {
-    if (mmSelectedId) { hideMindMap(); refileNode(mmSelectedId); }
+    if (mmSelectedId) refileNode(mmSelectedId);
   });
   document.getElementById('mmElaborateBtn').addEventListener('click', () => {
-    if (mmSelectedId) { hideMindMap(); startElaborate(mmSelectedId); }
+    if (mmSelectedId) startElaborate(mmSelectedId);
   });
   document.getElementById('mmSimplifyBtn').addEventListener('click', () => {
-    if (mmSelectedId) { hideMindMap(); simplifyNode(mmSelectedId); }
+    if (mmSelectedId) simplifyNode(mmSelectedId);
   });
   document.getElementById('mmExploreBtn').addEventListener('click', () => {
-    if (mmSelectedId) { hideMindMap(); openChatModal(mmSelectedId); }
+    if (mmSelectedId) openChatModal(mmSelectedId);
   });
+  document.getElementById('mmFocusBtn').addEventListener('click', () => {
+    if (mmSelectedId) mmFocusOnNode(mmSelectedId);
+  });
+  document.getElementById('mmExitFocusBtn').addEventListener('click', mmExitFocus);
   document.getElementById('mmDeleteBtn').addEventListener('click', () => {
     if (mmSelectedId) {
       const id = mmSelectedId;
@@ -3274,7 +3332,12 @@ document.addEventListener('DOMContentLoaded', () => {
   <div class="mm-header">
     <button class="mm-back-btn" id="mmBackBtn">‹ Cards</button>
     <div class="mm-header-title" id="mmHeaderTitle">VoiceMap</div>
-    <div class="mm-filter-bar">
+    <div class="mm-focus-bar" id="mmFocusBar">
+      <span>🔍 Focused:</span>
+      <span class="mm-focus-label" id="mmFocusLabel"></span>
+      <button class="mm-focus-exit" id="mmExitFocusBtn">✕ Exit</button>
+    </div>
+    <div class="mm-filter-bar" id="mmFilterBar">
       <button class="mm-filter-pill" id="mmFilterDeferred">⏳ Hide Deferred</button>
       <button class="mm-filter-pill" id="mmFilterArchived">📁 Hide Archived</button>
     </div>
@@ -3300,6 +3363,7 @@ document.addEventListener('DOMContentLoaded', () => {
         <button class="mm-panel-btn" id="mmElaborateBtn">✏ Elaborate</button>
         <button class="mm-panel-btn" id="mmSimplifyBtn">⚡ Simplify</button>
         <button class="mm-panel-btn" id="mmExploreBtn">💬 Explore with AI</button>
+        <button class="mm-panel-btn" id="mmFocusBtn">🔍 Focus on this card</button>
         <button class="mm-panel-btn danger" id="mmDeleteBtn">✕ Delete card</button>
       </div>
     </div>
