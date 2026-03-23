@@ -768,6 +768,18 @@
       font-size: 14px; color: var(--text); line-height: 1.6;
       background: var(--bg); border-radius: 10px; padding: 12px; min-height: 48px;
     }
+    .mm-panel-summary h1 { font-size: 16px; font-weight: 700; margin: 8px 0 4px; }
+    .mm-panel-summary h2 { font-size: 15px; font-weight: 700; margin: 8px 0 4px; }
+    .mm-panel-summary h3 { font-size: 14px; font-weight: 700; margin: 6px 0 3px; }
+    .mm-panel-summary p  { margin: 4px 0; }
+    .mm-panel-summary ul, .mm-panel-summary ol { padding-left: 20px; margin: 4px 0; }
+    .mm-panel-summary li { margin: 2px 0; }
+    .mm-panel-summary strong { font-weight: 700; }
+    .mm-panel-summary em { font-style: italic; }
+    .mm-panel-summary code {
+      background: rgba(0,0,0,0.08); border-radius: 4px;
+      padding: 1px 5px; font-size: 12px; font-family: monospace;
+    }
     .mm-panel-actions { display: flex; flex-direction: column; gap: 8px; }
     .mm-panel-btn {
       padding: 12px 16px; border-radius: 10px;
@@ -2232,6 +2244,48 @@ async function skipImageDescription() {
   }
 }
 
+// ─── MARKDOWN RENDERER ───────────────────────────────────────────────────────
+function inlineMd(t) {
+  return t
+    .replace(/\*\*\*(.+?)\*\*\*/g, '<strong><em>$1</em></strong>')
+    .replace(/\*\*(.+?)\*\*/g,     '<strong>$1</strong>')
+    .replace(/\*(.+?)\*/g,         '<em>$1</em>')
+    .replace(/__(.+?)__/g,         '<strong>$1</strong>')
+    .replace(/_(.+?)_/g,           '<em>$1</em>')
+    .replace(/`(.+?)`/g,           '<code>$1</code>');
+}
+
+function mdToHtml(text) {
+  if (!text) return '<em style="opacity:0.45">No notes yet</em>';
+  const safe = text.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  const lines = safe.split('\n');
+  const out = [];
+  let inUl = false, inOl = false;
+
+  const closeLists = () => {
+    if (inUl) { out.push('</ul>'); inUl = false; }
+    if (inOl) { out.push('</ol>'); inOl = false; }
+  };
+
+  for (const raw of lines) {
+    if (/^### /.test(raw))       { closeLists(); out.push(`<h3>${inlineMd(raw.slice(4))}</h3>`); continue; }
+    if (/^## /.test(raw))        { closeLists(); out.push(`<h2>${inlineMd(raw.slice(3))}</h2>`); continue; }
+    if (/^# /.test(raw))         { closeLists(); out.push(`<h1>${inlineMd(raw.slice(2))}</h1>`); continue; }
+    if (/^[-*+] /.test(raw))     {
+      if (!inUl) { closeLists(); out.push('<ul>'); inUl = true; }
+      out.push(`<li>${inlineMd(raw.slice(2))}</li>`); continue;
+    }
+    if (/^\d+\.\s/.test(raw))    {
+      if (!inOl) { closeLists(); out.push('<ol>'); inOl = true; }
+      out.push(`<li>${inlineMd(raw.replace(/^\d+\.\s/, ''))}</li>`); continue;
+    }
+    closeLists();
+    out.push(raw.trim() === '' ? '<br>' : `<p>${inlineMd(raw)}</p>`);
+  }
+  closeLists();
+  return out.join('');
+}
+
 // ─── MIND MAP ────────────────────────────────────────────────────────────────
 const MM_W   = 160;   // node width
 const MM_H   = 52;    // node height (no image)
@@ -2359,7 +2413,7 @@ function selectMmNode(nodeId, scroll = true) {
   const panel = document.getElementById('mmPanel');
   panel.classList.remove('hidden');
   document.getElementById('mmPanelTitle').textContent   = node.label;
-  document.getElementById('mmPanelSummary').textContent = node.summary || node.transcript || '—';
+  document.getElementById('mmPanelSummary').innerHTML = mdToHtml(node.summary || node.transcript || '');
   const children = session.nodes.filter(n => n.parent_id === nodeId).length;
   document.getElementById('mmPanelMeta').textContent = [
     children ? `${children} sub-card${children !== 1 ? 's' : ''}` : 'No sub-cards',
