@@ -2438,6 +2438,25 @@ function selectMmNode(nodeId, scroll = true) {
   document.getElementById('mmSimplifyBtn').style.display = children ? '' : 'none';
 }
 
+function mmZoomToCard(nodeId) {
+  const el = document.querySelector(`[data-mmid="${nodeId}"]`);
+  const wrap = document.getElementById('mmCanvasWrap');
+  if (!el || !wrap) { mmZoomToFit(); return; }
+  const wW = wrap.clientWidth;
+  const wH = wrap.clientHeight;
+  const scale = Math.min(1.4, mmTransform.scale); // zoom in a bit but not too much
+  const nodeX = parseFloat(el.style.left) || 0;
+  const nodeY = parseFloat(el.style.top)  || 0;
+  const nodeW = el.offsetWidth  || 160;
+  const nodeH = el.offsetHeight || 50;
+  mmTransform = {
+    scale,
+    x: wW / 2 - (nodeX + nodeW / 2) * scale,
+    y: wH / 2 - (nodeY + nodeH / 2) * scale,
+  };
+  applyMmTransform();
+}
+
 function mmZoomToFit() {
   const wrap = document.getElementById('mmCanvasWrap');
   const { svgW, svgH } = buildMindMapLayout();
@@ -2484,8 +2503,23 @@ function showMindMap() {
   mmTransform = { x: 40, y: 40, scale: 1 };
   document.getElementById('mmView').classList.remove('hidden');
   document.getElementById('mmHeaderTitle').textContent = session.session || 'VoiceMap';
+
+  // Sync from list context — pre-select the card we were viewing
+  const ctxId = currentCtx().id;
+  mmSelectedId = ctxId || null;
+
   renderMindMap();
   applyMmTransform();
+
+  // Zoom to the selected card if there is one, otherwise fit everything
+  setTimeout(() => {
+    if (mmSelectedId) {
+      selectMmNode(mmSelectedId, true);
+      mmZoomToCard(mmSelectedId);
+    } else {
+      mmZoomToFit();
+    }
+  }, 50);
 }
 
 function buildNodePath(nodeId) {
