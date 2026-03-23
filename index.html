@@ -2503,7 +2503,8 @@ function hideMindMap() {
     const path = buildNodePath(mmSelectedId);
     if (path.length) {
       navStack = [{ id: null, label: 'Home' }];
-      path.forEach(n => navStack.push({ id: n.id, label: n.label }));
+      // Stop one level short so the selected card is visible in the list
+      path.slice(0, -1).forEach(n => navStack.push({ id: n.id, label: n.label }));
     }
   }
   mmVisible = false;
