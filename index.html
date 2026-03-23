@@ -783,6 +783,18 @@
       border-radius: 8px; cursor: pointer; font-family: var(--font);
     }
     @media (min-width: 768px) { .mm-toggle-btn { display: block; } }
+    .mm-filter-bar {
+      display: flex; gap: 8px; align-items: center;
+    }
+    .mm-filter-pill {
+      padding: 5px 12px; border-radius: 20px; font-size: 13px; font-weight: 500;
+      border: 1px solid var(--border); background: var(--bg); color: var(--muted);
+      cursor: pointer; font-family: var(--font); white-space: nowrap;
+      transition: background 0.15s, color 0.15s;
+    }
+    .mm-filter-pill.active {
+      background: var(--accent); color: #fff; border-color: var(--accent);
+    }
 
     /* ── Toast ────────────────────────────────────────────────── */
     .toast {
@@ -2193,12 +2205,22 @@ const MM_CG  = 60;    // column gap
 const MM_RG  = 20;    // row gap
 const MM_PAD = 48;    // canvas padding
 
-let mmTransform   = { x: 0, y: 0, scale: 1 };
-let mmSelectedId  = null;
-let mmVisible     = false;
+let mmTransform      = { x: 0, y: 0, scale: 1 };
+let mmSelectedId     = null;
+let mmVisible        = false;
+let mmHideDeferred   = false;
+let mmHideArchived   = false;
+
+function mmVisibleNodes() {
+  return session.nodes.filter(n => {
+    if (mmHideDeferred && n.deferred && !isArchivedBeforeToday(n)) return false;
+    if (mmHideArchived && n.archived) return false;
+    return true;
+  });
+}
 
 function buildMindMapLayout() {
-  const nodes = session.nodes;
+  const nodes = mmVisibleNodes();
   if (!nodes.length) return { pos: {}, svgW: 600, svgH: 400 };
   let leafY = 0;
   const pos = {};
@@ -2233,7 +2255,7 @@ function buildMindMapLayout() {
 
 function renderMindMap() {
   if (!mmVisible) return;
-  const nodes = session.nodes;
+  const nodes = mmVisibleNodes();
   const { pos, svgW, svgH } = buildMindMapLayout();
 
   // SVG connections
@@ -3036,6 +3058,16 @@ document.addEventListener('DOMContentLoaded', () => {
   // Mind map
   initMmPanZoom();
   document.getElementById('mmToggleBtn').addEventListener('click', showMindMap);
+  document.getElementById('mmFilterDeferred').addEventListener('click', () => {
+    mmHideDeferred = !mmHideDeferred;
+    document.getElementById('mmFilterDeferred').classList.toggle('active', mmHideDeferred);
+    renderMindMap();
+  });
+  document.getElementById('mmFilterArchived').addEventListener('click', () => {
+    mmHideArchived = !mmHideArchived;
+    document.getElementById('mmFilterArchived').classList.toggle('active', mmHideArchived);
+    renderMindMap();
+  });
   document.getElementById('mmBackBtn').addEventListener('click', hideMindMap);
   document.getElementById('mmPanelClose').addEventListener('click', () => {
     document.getElementById('mmPanel').classList.add('hidden');
@@ -3209,6 +3241,10 @@ document.addEventListener('DOMContentLoaded', () => {
   <div class="mm-header">
     <button class="mm-back-btn" id="mmBackBtn">‹ Cards</button>
     <div class="mm-header-title" id="mmHeaderTitle">VoiceMap</div>
+    <div class="mm-filter-bar">
+      <button class="mm-filter-pill" id="mmFilterDeferred">⏳ Hide Deferred</button>
+      <button class="mm-filter-pill" id="mmFilterArchived">📁 Hide Archived</button>
+    </div>
     <button class="mm-header-record" id="mmRecordBtn">⏺ Record</button>
   </div>
   <div class="mm-body">
