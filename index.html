@@ -1762,6 +1762,7 @@ function renderCards(animDir) {
               ${childCount > 0 ? `<button class="simplify-btn" data-simplify-id="${nid}">⚡ Simplify</button>` : ''}
               <button class="refile-btn" data-elaborate-id="${nid}" style="background:rgba(255,149,0,0.12);border-color:rgba(255,149,0,0.25);color:#ff9500">✏ Elaborate</button>
               <button class="refile-btn" data-explore-id="${nid}" style="background:rgba(0,122,255,0.12);border-color:rgba(0,122,255,0.25);color:#007aff">💬 Explore</button>
+              <button class="refile-btn" data-export-prompt-id="${nid}" style="background:rgba(175,82,222,0.12);border-color:rgba(175,82,222,0.25);color:#af52de">📤 Export Prompt</button>
             </div>
           </div>` : ''}
         </div>
@@ -2266,6 +2267,46 @@ function inlineMd(t) {
     .replace(/__(.+?)__/g,         '<strong>$1</strong>')
     .replace(/_(.+?)_/g,           '<em>$1</em>')
     .replace(/`(.+?)`/g,           '<code>$1</code>');
+}
+
+function buildExportPrompt(nodeId) {
+  const node = session.nodes.find(n => n.id === nodeId);
+  if (!node) return '';
+
+  const lines = [];
+
+  lines.push(`You are helping me explore, discuss, and expand on notes from my brainstorming session. The notes below are organized hierarchically. Engage conversationally — summarize, ask clarifying questions, surface connections, and help me think deeper. Use clear, voice-friendly language since I may be listening rather than reading.\n`);
+
+  function buildTree(id, depth) {
+    const n = session.nodes.find(x => x.id === id);
+    if (!n) return;
+    const heading = '#'.repeat(Math.min(depth, 6));
+    lines.push(`${heading} ${n.label}`);
+    const body = (n.summary && n.summary !== n.transcript) ? n.summary : (n.transcript || '');
+    if (body) lines.push(body);
+    lines.push('');
+    session.nodes.filter(x => x.parent_id === id).forEach(child => buildTree(child.id, depth + 1));
+  }
+
+  buildTree(nodeId, 1);
+
+  lines.push('---');
+  lines.push('Please start with a brief overview of the key themes in these notes, then wait for me to guide the conversation.');
+
+  return lines.join('\n');
+}
+
+async function exportPrompt(nodeId) {
+  const prompt = buildExportPrompt(nodeId);
+  if (!prompt) return;
+  try {
+    await navigator.clipboard.writeText(prompt);
+    const node = session.nodes.find(n => n.id === nodeId);
+    const childCount = getDescendants(nodeId).size;
+    showToast(`📤 Prompt copied — ${childCount + 1} card${childCount !== 1 ? 's' : ''} included`);
+  } catch {
+    showToast('⚠ Could not copy — check clipboard permission');
+  }
 }
 
 function mdToHtml(text) {
@@ -3311,6 +3352,9 @@ document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('mmFocusBtn').addEventListener('click', () => {
     if (mmSelectedId) mmFocusOnNode(mmSelectedId);
   });
+  document.getElementById('mmExportPromptBtn').addEventListener('click', () => {
+    if (mmSelectedId) exportPrompt(mmSelectedId);
+  });
   document.getElementById('mmExitFocusBtn').addEventListener('click', mmExitFocus);
   document.getElementById('mmDeleteBtn').addEventListener('click', () => {
     if (mmSelectedId) {
@@ -3430,6 +3474,9 @@ document.addEventListener('DOMContentLoaded', () => {
     const exploreBtn = e.target.closest('[data-explore-id]');
     if (exploreBtn) { e.stopPropagation(); openChatModal(exploreBtn.dataset.exploreId); return; }
 
+    const exportPromptBtn = e.target.closest('[data-export-prompt-id]');
+    if (exportPromptBtn) { e.stopPropagation(); exportPrompt(exportPromptBtn.dataset.exportPromptId); return; }
+
     const refileBtn = e.target.closest('[data-refile-id]');
     if (refileBtn) { e.stopPropagation(); refileNode(refileBtn.dataset.refileId); return; }
 
@@ -3498,6 +3545,7 @@ document.addEventListener('DOMContentLoaded', () => {
         <button class="mm-panel-btn" id="mmSimplifyBtn">⚡ Simplify</button>
         <button class="mm-panel-btn" id="mmExploreBtn">💬 Explore with AI</button>
         <button class="mm-panel-btn" id="mmFocusBtn">🔍 Focus on this card</button>
+        <button class="mm-panel-btn" id="mmExportPromptBtn" style="color:#af52de">📤 Export Prompt</button>
         <button class="mm-panel-btn danger" id="mmDeleteBtn">✕ Delete card</button>
       </div>
     </div>
