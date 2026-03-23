@@ -203,6 +203,23 @@
       display: flex; align-items: flex-end; justify-content: center;
     }
     .defer-overlay.hidden { display: none; }
+    .tap-record-overlay {
+      position: fixed; inset: 0; z-index: 400;
+      background: rgba(0,0,0,0.85);
+      display: flex; flex-direction: column;
+      align-items: center; justify-content: center; gap: 24px;
+      cursor: pointer;
+    }
+    .tap-record-overlay.hidden { display: none; }
+    .tap-record-pulse {
+      width: 96px; height: 96px; border-radius: 50%;
+      background: var(--accent); opacity: 0.9;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 40px;
+      animation: pulse 1.4s ease-in-out infinite;
+    }
+    .tap-record-label { color: #fff; font-size: 22px; font-weight: 600; }
+    .tap-record-sub   { color: rgba(255,255,255,0.5); font-size: 14px; }
     .defer-sheet {
       background: var(--surface); border-radius: 16px 16px 0 0;
       padding: 20px 20px calc(20px + env(safe-area-inset-bottom));
@@ -2614,7 +2631,16 @@ async function initApp() {
   // Show immediately with localStorage data
   updateNavBar();
   renderCards();
-  if (!getApiKey()) showKeyModal();
+  if (!getApiKey()) { showKeyModal(); }
+  else if (new URLSearchParams(window.location.search).get('record') === '1') {
+    // Launched via Back Tap shortcut — show tap-to-record overlay
+    const overlay = document.getElementById('tapRecordOverlay');
+    overlay.classList.remove('hidden');
+    overlay.addEventListener('click', () => {
+      overlay.classList.add('hidden');
+      startRecording();
+    }, { once: true });
+  }
 
   // Then upgrade from IndexedDB in background
   try {
@@ -2812,5 +2838,12 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 });
 </script>
+
+<!-- Tap-to-record overlay (shown when ?record=1 in URL) -->
+<div class="tap-record-overlay hidden" id="tapRecordOverlay">
+  <div class="tap-record-pulse">⏺</div>
+  <div class="tap-record-label">Tap anywhere to record</div>
+  <div class="tap-record-sub">Back Tap shortcut activated</div>
+</div>
 </body>
 </html>
