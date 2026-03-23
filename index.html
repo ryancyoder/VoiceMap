@@ -2504,22 +2504,24 @@ function showMindMap() {
   document.getElementById('mmView').classList.remove('hidden');
   document.getElementById('mmHeaderTitle').textContent = session.session || 'VoiceMap';
 
-  // Sync from list context — pre-select the card we were viewing
   const ctxId = currentCtx().id;
-  mmSelectedId = ctxId || null;
+  if (ctxId) {
+    // List was inside a card — enter focus mode on that card
+    mmFocusNodeId = ctxId;
+    mmSelectedId  = ctxId;
+    const node = session.nodes.find(n => n.id === ctxId);
+    document.getElementById('mmFocusBar').classList.add('visible');
+    document.getElementById('mmFocusLabel').textContent = node?.label || '';
+  } else {
+    // List was at home — show full map, no focus
+    mmFocusNodeId = null;
+    mmSelectedId  = null;
+    document.getElementById('mmFocusBar').classList.remove('visible');
+  }
 
   renderMindMap();
   applyMmTransform();
-
-  // Zoom to the selected card if there is one, otherwise fit everything
-  setTimeout(() => {
-    if (mmSelectedId) {
-      selectMmNode(mmSelectedId, true);
-      mmZoomToCard(mmSelectedId);
-    } else {
-      mmZoomToFit();
-    }
-  }, 50);
+  setTimeout(() => mmZoomToFit(), 50);
 }
 
 function buildNodePath(nodeId) {
@@ -2533,13 +2535,19 @@ function buildNodePath(nodeId) {
 }
 
 function hideMindMap() {
-  // Sync card list nav context to the selected mind map card
-  if (mmSelectedId) {
-    const path = buildNodePath(mmSelectedId);
+  // Sync list nav to match the mind map's focused subtree
+  const syncId = mmFocusNodeId || mmSelectedId;
+  if (syncId) {
+    const path = buildNodePath(syncId);
     if (path.length) {
       navStack = [{ id: null, label: 'Home' }];
-      // Stop one level short so the selected card is visible in the list
-      path.slice(0, -1).forEach(n => navStack.push({ id: n.id, label: n.label }));
+      if (mmFocusNodeId) {
+        // Focused on a card → navigate INTO it so list shows its children (same subtree)
+        path.forEach(n => navStack.push({ id: n.id, label: n.label }));
+      } else {
+        // Card selected but no focus → show the card in the list (navigate to its parent)
+        path.slice(0, -1).forEach(n => navStack.push({ id: n.id, label: n.label }));
+      }
     }
   }
   mmVisible = false;
