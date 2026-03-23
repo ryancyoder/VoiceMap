@@ -2530,6 +2530,17 @@ function mmExitFocus() {
   document.getElementById('mmFocusBar').classList.remove('visible');
   document.getElementById('mmFilterBar').style.display = '';
   renderMindMap();
+  setTimeout(() => mmZoomToFit(), 50);
+}
+
+function mmFocusUp() {
+  if (!mmFocusNodeId) return;
+  const node = session.nodes.find(n => n.id === mmFocusNodeId);
+  if (node?.parent_id) {
+    mmFocusOnNode(node.parent_id); // go up one level
+  } else {
+    mmExitFocus(); // already at root — exit focus entirely
+  }
 }
 
 function mmStartRecording() {
@@ -2614,7 +2625,8 @@ function applyMmTransform() {
 
 function initMmPanZoom() {
   const wrap = document.getElementById('mmCanvasWrap');
-  let panning = false, lastT = null, pinchDist = null, tapTimer = null, tapNode = null;
+  let panning = false, lastT = null, pinchDist = null, tapNode = null;
+  let lastTapTime = 0, lastTapNodeId = undefined;
 
   wrap.addEventListener('touchstart', e => {
     if (e.touches.length === 2) {
@@ -2655,7 +2667,18 @@ function initMmPanZoom() {
   }, { passive: false });
 
   wrap.addEventListener('touchend', e => {
-    if (e.changedTouches.length === 1 && tapNode) selectMmNode(tapNode);
+    if (e.changedTouches.length === 1) {
+      const now = Date.now();
+      const isDoubleTap = (now - lastTapTime) < 320 && lastTapNodeId === tapNode;
+      if (isDoubleTap) {
+        if (tapNode) mmFocusOnNode(tapNode);
+        else mmFocusUp();
+        lastTapTime = 0; lastTapNodeId = undefined;
+      } else {
+        if (tapNode) selectMmNode(tapNode);
+        lastTapTime = now; lastTapNodeId = tapNode;
+      }
+    }
     panning = false; pinchDist = null; lastT = null; tapNode = null;
   }, { passive: true });
 
@@ -2681,6 +2704,11 @@ function initMmPanZoom() {
       if (node) selectMmNode(node.dataset.mmid);
     }
     mouseDown = false; mouseStart = null;
+  });
+  wrap.addEventListener('dblclick', e => {
+    const node = e.target.closest('[data-mmid]');
+    if (node) mmFocusOnNode(node.dataset.mmid);
+    else mmFocusUp();
   });
   wrap.addEventListener('wheel', e => {
     e.preventDefault();
