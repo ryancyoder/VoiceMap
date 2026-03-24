@@ -1201,7 +1201,7 @@ const R = { CHILD: 'child', SIBLING: 'sibling', ROOT: 'root' };
 
 // ─── INDEXEDDB ───────────────────────────────────────────────────────────────
 const DB_NAME    = 'VoiceMapDB';
-const DB_VERSION = 1;
+const DB_VERSION = 2;
 let db = null;
 
 function openDB() {
@@ -1211,6 +1211,7 @@ function openDB() {
       const d = e.target.result;
       if (!d.objectStoreNames.contains('sessions')) d.createObjectStore('sessions');
       if (!d.objectStoreNames.contains('images'))   d.createObjectStore('images');
+      if (!d.objectStoreNames.contains('settings')) d.createObjectStore('settings');
     };
     req.onsuccess = e => { db = e.target.result; resolve(db); };
     req.onerror   = e => reject(e.target.error);
@@ -1271,6 +1272,22 @@ function loadImagesFromDB() {
 }
 
 // ─── PERSISTENCE ─────────────────────────────────────────────────────────────
+function saveTokenToDB(token) {
+  if (!db) return;
+  try { db.transaction('settings', 'readwrite').objectStore('settings').put(token, GITHUB_TOKEN_STORE); } catch {}
+}
+
+function loadTokenFromDB() {
+  if (!db) return Promise.resolve(null);
+  return new Promise(resolve => {
+    try {
+      const req = db.transaction('settings', 'readonly').objectStore('settings').get(GITHUB_TOKEN_STORE);
+      req.onsuccess = e => resolve(e.target.result || null);
+      req.onerror   = () => resolve(null);
+    } catch { resolve(null); }
+  });
+}
+
 function saveSession() {
   // Sync localStorage backup (text only, no images)
   try { localStorage.setItem(SESSION_STORE, JSON.stringify(session)); } catch {}
@@ -3612,6 +3629,7 @@ async function testGithubToken() {
     if (res.ok) {
       // Save immediately on success — iOS can clear the field before a separate Save tap
       localStorage.setItem(GITHUB_TOKEN_STORE, raw);
+      saveTokenToDB(raw);
       result.textContent = 'Saved · logged in as @' + data.login;
       document.getElementById('githubSave').textContent = 'Close';
     } else {
@@ -3635,6 +3653,7 @@ function saveGithubToken() {
     return;
   }
   localStorage.setItem(GITHUB_TOKEN_STORE, raw);
+  saveTokenToDB(raw);
   hideGithubModal();
   showToast('GitHub token saved — syncing…');
   pushToGist();
@@ -3748,6 +3767,11 @@ async function initApp() {
       saveSessionToDB();
     }
     await loadImagesFromDB();
+    // Restore GitHub token from IndexedDB if localStorage lost it (iOS standalone eviction)
+    if (!getGithubToken()) {
+      const idbToken = await loadTokenFromDB();
+      if (idbToken) { localStorage.setItem(GITHUB_TOKEN_STORE, idbToken); }
+    }
     renderCards(); // Re-render with images loaded
   } catch (e) {
     console.warn('[VoiceMap] IndexedDB unavailable, using localStorage:', e.message);
