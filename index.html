@@ -3603,11 +3603,13 @@ function showGithubModal() {
   const input = document.getElementById('githubInput');
   const result = document.getElementById('githubTestResult');
   const token = getGithubToken();
-  _githubInputCache = '';
-  input.value = '';
-  input.placeholder = token ? token.slice(0, 10) + '… (leave blank to keep)' : 'ghp_...';
+  _githubInputCache = token;
+  input.value = token;
+  input.placeholder = 'ghp_...';
   input.oninput = () => { _githubInputCache = input.value; };
-  result.textContent = getGistId() ? 'Connected · gist ID: ' + getGistId() : '';
+  result.textContent = token
+    ? (getGistId() ? 'Connected · gist ID: ' + getGistId() : 'Token saved')
+    : '';
   document.getElementById('githubSave').textContent = 'Save & connect';
   modal.classList.remove('hidden');
   setTimeout(() => input.focus(), 100);
