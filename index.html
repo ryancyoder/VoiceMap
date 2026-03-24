@@ -3630,9 +3630,14 @@ async function testGithubToken() {
     const data = await res.json();
     if (res.ok) {
       // Save immediately on success — iOS can clear the field before a separate Save tap
-      localStorage.setItem(GITHUB_TOKEN_STORE, raw);
+      try { localStorage.setItem(GITHUB_TOKEN_STORE, raw); } catch(e) {
+        result.textContent = 'localStorage failed: ' + e.message; return;
+      }
       saveTokenToDB(raw);
-      result.textContent = 'Saved · logged in as @' + data.login;
+      const verified = localStorage.getItem(GITHUB_TOKEN_STORE);
+      result.textContent = verified
+        ? 'Saved · logged in as @' + data.login
+        : 'ERROR: token not readable after save — storage may be blocked';
       document.getElementById('githubSave').textContent = 'Close';
     } else {
       result.textContent = 'Error ' + res.status + ': ' + (data.message || 'unknown');
