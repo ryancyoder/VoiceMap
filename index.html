@@ -1176,9 +1176,16 @@
     </div>
     <input class="modal-input" id="githubInput" type="text"
            placeholder="ghp_..." autocomplete="off" autocorrect="off" autocapitalize="none" spellcheck="false" />
-    <div style="font-size:11px;color:#9ca3af;margin:-8px 0 4px">Optional: paste a Gist ID from another device to use the same gist</div>
+    <div id="githubGistDisplay" style="display:none;background:#1f2937;border-radius:8px;padding:10px 12px;margin-bottom:8px">
+      <div style="font-size:11px;color:#9ca3af;margin-bottom:4px">Your Gist ID — copy this to your other device:</div>
+      <div style="display:flex;align-items:center;gap:8px">
+        <code id="githubGistIdText" style="font-size:12px;color:#e5e7eb;flex:1;word-break:break-all;line-height:1.4"></code>
+        <button onclick="navigator.clipboard.writeText(document.getElementById('githubGistIdText').textContent).then(()=>showToast('Copied!'))" style="background:#3b82f6;color:#fff;border:none;border-radius:6px;padding:4px 10px;font-size:12px;cursor:pointer;white-space:nowrap">Copy</button>
+      </div>
+    </div>
+    <div style="font-size:11px;color:#9ca3af;margin-bottom:4px">Paste a Gist ID from another device (leave blank to auto-detect):</div>
     <input class="modal-input" id="githubGistInput" type="text"
-           placeholder="Gist ID (auto-detected if blank)" autocomplete="off" autocorrect="off" autocapitalize="none" spellcheck="false" style="font-size:13px" />
+           placeholder="Gist ID from other device" autocomplete="off" autocorrect="off" autocapitalize="none" spellcheck="false" style="font-size:13px;margin-bottom:8px" />
     <button class="modal-save" id="githubSave">Save &amp; connect</button>
     <button class="modal-save" id="githubTest" style="background:#6b7280">Test token</button>
     <div id="githubTestResult" style="font-size:12px;color:#6b7280;word-break:break-all;white-space:pre-wrap;max-height:120px;overflow-y:auto"></div>
@@ -3616,10 +3623,19 @@ function showGithubModal() {
     : '';
   document.getElementById('githubSave').textContent = 'Save & connect';
   modal.classList.remove('hidden');
+  // Show/hide the gist ID copy panel
+  const gistDisplay = document.getElementById('githubGistDisplay');
+  const gistIdText  = document.getElementById('githubGistIdText');
+  if (gistId) {
+    gistIdText.textContent = gistId;
+    gistDisplay.style.display = 'block';
+  } else {
+    gistDisplay.style.display = 'none';
+  }
   // Set values after a tick — iOS can visually wipe an input when focus fires
   setTimeout(() => {
     input.value = token;
-    document.getElementById('githubGistInput').value = gistId;
+    document.getElementById('githubGistInput').value = '';
     if (!token) input.focus();
   }, 100);
 }
