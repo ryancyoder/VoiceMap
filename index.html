@@ -3585,7 +3585,8 @@ function showGithubModal() {
   const input = document.getElementById('githubInput');
   const result = document.getElementById('githubTestResult');
   const token = getGithubToken();
-  input.value = token ? token.slice(0, 10) + '...' : '';
+  input.value = '';
+  input.placeholder = token ? token.slice(0, 10) + '… (leave blank to keep)' : 'ghp_...';
   result.textContent = getGistId() ? 'Connected · gist ID: ' + getGistId() : '';
   modal.classList.remove('hidden');
   setTimeout(() => input.focus(), 100);
@@ -3614,10 +3615,10 @@ async function testGithubToken() {
 
 function saveGithubToken() {
   const raw = document.getElementById('githubInput').value.trim();
-  // If user left the masked placeholder, keep existing token
-  if (raw.includes('...')) { hideGithubModal(); return; }
+  // Empty input = keep existing token (field is no longer pre-filled)
   if (!raw) {
-    // Clear sync
+    if (getGithubToken()) { hideGithubModal(); return; }
+    // No existing token and nothing entered — clear sync
     localStorage.removeItem(GITHUB_TOKEN_STORE);
     localStorage.removeItem(GITHUB_GIST_STORE);
     hideGithubModal();
