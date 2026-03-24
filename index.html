@@ -1024,6 +1024,7 @@
         <button class="menu-item" id="miPaste">Load from Clipboard</button>
         <button class="menu-item" id="miRename">Rename session</button>
         <button class="menu-item" id="miApiKey">API Key</button>
+        <button class="menu-item" id="miGithubSync">☁️ GitHub Sync</button>
         <button class="menu-item" id="miArchive">📁 View Archive</button>
         <button class="menu-item danger" id="miClear">Clear all</button>
       </div>
@@ -1165,6 +1166,22 @@
   </div>
 </div>
 
+<!-- GitHub Sync modal -->
+<div class="modal-overlay hidden" id="githubModal">
+  <div class="modal-sheet">
+    <div class="modal-title">☁️ GitHub Sync</div>
+    <div class="modal-desc">
+      Sync your session automatically between devices using a private GitHub Gist.<br><br>
+      Create a token at <a href="https://github.com/settings/tokens" target="_blank">github.com/settings/tokens</a> with the <strong>gist</strong> scope.
+    </div>
+    <input class="modal-input" id="githubInput" type="password"
+           placeholder="ghp_..." autocomplete="off" autocorrect="off" spellcheck="false" />
+    <button class="modal-save" id="githubSave">Save &amp; connect</button>
+    <button class="modal-save" id="githubTest" style="background:#6b7280">Test token</button>
+    <div id="githubTestResult" style="font-size:12px;color:#6b7280;word-break:break-all;white-space:pre-wrap;max-height:120px;overflow-y:auto"></div>
+  </div>
+</div>
+
 <div class="toast" id="toast"></div>
 <input type="file" id="fileInput"  accept=".json"       style="display:none" />
 <input type="file" id="imageInput" accept="image/*"
@@ -1175,8 +1192,10 @@
 
 // ─── CONSTANTS ──────────────────────────────────────────────────────────────
 const CLAUDE_MODEL   = 'claude-haiku-4-5-20251001';
-const API_KEY_STORE  = 'voicemap_api_key';
-const SESSION_STORE  = 'voicemap_session';
+const API_KEY_STORE      = 'voicemap_api_key';
+const SESSION_STORE      = 'voicemap_session';
+const GITHUB_TOKEN_STORE = 'voicemap_github_token';
+const GITHUB_GIST_STORE  = 'voicemap_gist_id';
 
 const R = { CHILD: 'child', SIBLING: 'sibling', ROOT: 'root' };
 
@@ -1257,6 +1276,8 @@ function saveSession() {
   try { localStorage.setItem(SESSION_STORE, JSON.stringify(session)); } catch {}
   // Async IndexedDB save (fire and forget)
   saveSessionToDB();
+  // Debounced push to GitHub Gist
+  scheduleSyncToGist();
 }
 
 function loadSavedSessionSync() {
@@ -3547,6 +3568,148 @@ function onDragCancel() {
   dragState = null;
 }
 
+// ─── GITHUB SYNC ─────────────────────────────────────────────────────────────
+function getGithubToken() { return localStorage.getItem(GITHUB_TOKEN_STORE) || ''; }
+function getGistId()      { return localStorage.getItem(GITHUB_GIST_STORE)  || ''; }
+
+function githubHeaders(token) {
+  return {
+    'Authorization': 'Bearer ' + token,
+    'Accept':        'application/vnd.github+json',
+    'Content-Type':  'application/json'
+  };
+}
+
+function showGithubModal() {
+  const modal = document.getElementById('githubModal');
+  const input = document.getElementById('githubInput');
+  const result = document.getElementById('githubTestResult');
+  const token = getGithubToken();
+  input.value = token ? token.slice(0, 10) + '...' : '';
+  result.textContent = getGistId() ? 'Connected · gist ID: ' + getGistId() : '';
+  modal.classList.remove('hidden');
+  setTimeout(() => input.focus(), 100);
+}
+
+function hideGithubModal() {
+  document.getElementById('githubModal').classList.add('hidden');
+  document.getElementById('githubTestResult').textContent = '';
+}
+
+async function testGithubToken() {
+  const raw = document.getElementById('githubInput').value.trim();
+  const result = document.getElementById('githubTestResult');
+  if (!raw || raw.includes('...')) { result.textContent = 'Enter a token first'; return; }
+  result.textContent = 'Testing…';
+  try {
+    const res = await fetch('https://api.github.com/user', { headers: githubHeaders(raw) });
+    const data = await res.json();
+    result.textContent = res.ok
+      ? 'OK · logged in as @' + data.login
+      : 'Error ' + res.status + ': ' + (data.message || 'unknown');
+  } catch (e) {
+    result.textContent = 'Network error: ' + e.message;
+  }
+}
+
+function saveGithubToken() {
+  const raw = document.getElementById('githubInput').value.trim();
+  // If user left the masked placeholder, keep existing token
+  if (raw.includes('...')) { hideGithubModal(); return; }
+  if (!raw) {
+    // Clear sync
+    localStorage.removeItem(GITHUB_TOKEN_STORE);
+    localStorage.removeItem(GITHUB_GIST_STORE);
+    hideGithubModal();
+    showToast('GitHub Sync disabled');
+    return;
+  }
+  if (!raw.startsWith('ghp_') && !raw.startsWith('github_pat_') && !raw.startsWith('gho_')) {
+    document.getElementById('githubTestResult').textContent = 'Token should start with ghp_, github_pat_, or gho_';
+    return;
+  }
+  localStorage.setItem(GITHUB_TOKEN_STORE, raw);
+  hideGithubModal();
+  showToast('GitHub token saved — syncing…');
+  pushToGist();
+}
+
+function buildSyncPayload() {
+  return {
+    session: session.session,
+    date:    session.date,
+    nodes:   session.nodes,
+    images:  Object.assign({}, imageCache),
+    meta:    { tool: 'VoiceMap', version: '0.3', synced: new Date().toISOString() }
+  };
+}
+
+async function pushToGist() {
+  const token = getGithubToken();
+  if (!token) return;
+  const content = JSON.stringify(buildSyncPayload());
+  const gistId  = getGistId();
+  const body    = JSON.stringify({
+    description: 'VoiceMap session',
+    public: false,
+    files: { 'voicemap.json': { content } }
+  });
+  try {
+    let res;
+    if (gistId) {
+      res = await fetch('https://api.github.com/gists/' + gistId,
+        { method: 'PATCH', headers: githubHeaders(token), body });
+    } else {
+      res = await fetch('https://api.github.com/gists',
+        { method: 'POST', headers: githubHeaders(token), body });
+      if (res.ok) {
+        const data = await res.json();
+        localStorage.setItem(GITHUB_GIST_STORE, data.id);
+      }
+    }
+    if (!res.ok) showToast('GitHub sync failed (' + res.status + ')');
+  } catch (e) {
+    showToast('GitHub sync error: ' + e.message);
+  }
+}
+
+async function pullFromGist() {
+  const token  = getGithubToken();
+  const gistId = getGistId();
+  if (!token || !gistId) return;
+  try {
+    const res = await fetch('https://api.github.com/gists/' + gistId,
+      { headers: githubHeaders(token) });
+    if (!res.ok) return;
+    const gist = await res.json();
+    const raw  = gist.files?.['voicemap.json']?.content;
+    if (!raw) return;
+    const data = JSON.parse(raw);
+    if (!Array.isArray(data.nodes)) return;
+    // Use whichever version has the newer synced timestamp
+    const remoteDate = new Date(data.meta?.synced || data.date || 0);
+    const localDate  = new Date(session.meta?.synced || session.date || 0);
+    if (remoteDate <= localDate) return;
+    session = data;
+    if (data.images && typeof data.images === 'object') {
+      for (const [id, url] of Object.entries(data.images)) {
+        await saveImageToDB(id, url);
+      }
+    }
+    saveSession();
+    updateNavBar();
+    renderCards();
+    showToast('Synced from GitHub ✓');
+  } catch {}
+}
+
+let _syncTimer = null;
+function scheduleSyncToGist() {
+  if (!getGithubToken()) return;
+  clearTimeout(_syncTimer);
+  _syncTimer = setTimeout(pushToGist, 3000);
+}
+
 // ─── MENU ───────────────────────────────────────────────────────────────────
 const toggleMenu = () => document.getElementById('menuDropdown').classList.toggle('open');
 const closeMenu  = () => document.getElementById('menuDropdown').classList.remove('open');
@@ -3583,6 +3746,8 @@ async function initApp() {
   } catch (e) {
     console.warn('[VoiceMap] IndexedDB unavailable, using localStorage:', e.message);
   }
+  // Pull latest data from GitHub Gist if configured
+  await pullFromGist();
 }
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -3629,6 +3794,10 @@ document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('miPaste').addEventListener('click', pasteJSON);
   document.getElementById('miRename').addEventListener('click', renameSession);
   document.getElementById('miApiKey').addEventListener('click', showKeyModal);
+  document.getElementById('miGithubSync').addEventListener('click', () => { closeMenu(); showGithubModal(); });
+  document.getElementById('githubSave').addEventListener('click', saveGithubToken);
+  document.getElementById('githubTest').addEventListener('click', testGithubToken);
+  document.getElementById('githubModal').addEventListener('click', e => { if (e.target === e.currentTarget) hideGithubModal(); });
   document.getElementById('miArchive').addEventListener('click', () => { closeMenu(); setView('archived'); });
   document.getElementById('miExportPrompt').addEventListener('click', () => { closeMenu(); exportPrompt(null); });
   document.getElementById('miPromptLog').addEventListener('click', () => { closeMenu(); openPromptLog(); });
