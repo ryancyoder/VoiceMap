@@ -3588,6 +3588,7 @@ function showGithubModal() {
   input.value = '';
   input.placeholder = token ? token.slice(0, 10) + '… (leave blank to keep)' : 'ghp_...';
   result.textContent = getGistId() ? 'Connected · gist ID: ' + getGistId() : '';
+  document.getElementById('githubSave').textContent = 'Save & connect';
   modal.classList.remove('hidden');
   setTimeout(() => input.focus(), 100);
 }
@@ -3605,9 +3606,14 @@ async function testGithubToken() {
   try {
     const res = await fetch('https://api.github.com/user', { headers: githubHeaders(raw) });
     const data = await res.json();
-    result.textContent = res.ok
-      ? 'OK · logged in as @' + data.login
-      : 'Error ' + res.status + ': ' + (data.message || 'unknown');
+    if (res.ok) {
+      // Save immediately on success — iOS can clear the field before a separate Save tap
+      localStorage.setItem(GITHUB_TOKEN_STORE, raw);
+      result.textContent = 'Saved · logged in as @' + data.login;
+      document.getElementById('githubSave').textContent = 'Close';
+    } else {
+      result.textContent = 'Error ' + res.status + ': ' + (data.message || 'unknown');
+    }
   } catch (e) {
     result.textContent = 'Network error: ' + e.message;
   }
