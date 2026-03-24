@@ -1176,6 +1176,9 @@
     </div>
     <input class="modal-input" id="githubInput" type="text"
            placeholder="ghp_..." autocomplete="off" autocorrect="off" autocapitalize="none" spellcheck="false" />
+    <div style="font-size:11px;color:#9ca3af;margin:-8px 0 4px">Optional: paste a Gist ID from another device to use the same gist</div>
+    <input class="modal-input" id="githubGistInput" type="text"
+           placeholder="Gist ID (auto-detected if blank)" autocomplete="off" autocorrect="off" autocapitalize="none" spellcheck="false" style="font-size:13px" />
     <button class="modal-save" id="githubSave">Save &amp; connect</button>
     <button class="modal-save" id="githubTest" style="background:#6b7280">Test token</button>
     <div id="githubTestResult" style="font-size:12px;color:#6b7280;word-break:break-all;white-space:pre-wrap;max-height:120px;overflow-y:auto"></div>
@@ -3604,17 +3607,19 @@ function showGithubModal() {
   const result = document.getElementById('githubTestResult');
   const stored = localStorage.getItem(GITHUB_TOKEN_STORE);
   const token = stored || '';
+  const gistId = getGistId();
   _githubInputCache = token;
   input.placeholder = 'ghp_...';
   input.oninput = () => { _githubInputCache = input.value; };
   result.textContent = stored
-    ? (getGistId() ? 'Connected · gist ID: ' + getGistId() : 'Token saved')
+    ? (gistId ? 'Connected · gist ID: ' + gistId : 'Token saved — will auto-detect gist on first sync')
     : '';
   document.getElementById('githubSave').textContent = 'Save & connect';
   modal.classList.remove('hidden');
-  // Set value after a tick — iOS can visually wipe an input when focus fires
+  // Set values after a tick — iOS can visually wipe an input when focus fires
   setTimeout(() => {
     input.value = token;
+    document.getElementById('githubGistInput').value = gistId;
     if (!token) input.focus();
   }, 100);
 }
@@ -3663,6 +3668,9 @@ function saveGithubToken() {
     document.getElementById('githubTestResult').textContent = 'Token should start with ghp_, github_pat_, or gho_';
     return;
   }
+  // Allow manually pasting a gist ID from another device
+  const gistOverride = document.getElementById('githubGistInput').value.trim();
+  if (gistOverride) localStorage.setItem(GITHUB_GIST_STORE, gistOverride);
   localStorage.setItem(GITHUB_TOKEN_STORE, raw);
   saveTokenToDB(raw);
   hideGithubModal();
@@ -3680,11 +3688,26 @@ function buildSyncPayload() {
   };
 }
 
+async function findExistingVoiceMapGist(token) {
+  try {
+    const res = await fetch('https://api.github.com/gists?per_page=100', { headers: githubHeaders(token) });
+    if (!res.ok) return null;
+    const gists = await res.json();
+    const found = gists.find(g => g.files && g.files['voicemap.json']);
+    return found ? found.id : null;
+  } catch { return null; }
+}
+
 async function pushToGist() {
   const token = getGithubToken();
   if (!token) return;
+  let gistId = getGistId();
+  // Auto-discover an existing VoiceMap gist so all devices share the same one
+  if (!gistId) {
+    gistId = await findExistingVoiceMapGist(token);
+    if (gistId) localStorage.setItem(GITHUB_GIST_STORE, gistId);
+  }
   const content = JSON.stringify(buildSyncPayload());
-  const gistId  = getGistId();
   const body    = JSON.stringify({
     description: 'VoiceMap session',
     public: false,
@@ -3710,9 +3733,14 @@ async function pushToGist() {
 }
 
 async function pullFromGist() {
-  const token  = getGithubToken();
-  const gistId = getGistId();
-  if (!token || !gistId) return;
+  const token = getGithubToken();
+  if (!token) return;
+  let gistId = getGistId();
+  if (!gistId) {
+    gistId = await findExistingVoiceMapGist(token);
+    if (gistId) localStorage.setItem(GITHUB_GIST_STORE, gistId);
+  }
+  if (!gistId) return;
   try {
     const res = await fetch('https://api.github.com/gists/' + gistId,
       { headers: githubHeaders(token) });
