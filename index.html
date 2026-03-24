@@ -649,6 +649,127 @@
     }
     .chat-voice-btn.listening { background: var(--accent); color: white; }
 
+    /* ── Prompt Log modal ─────────────────────────────────────── */
+    .plog-overlay {
+      position: fixed; inset: 0;
+      background: rgba(0,0,0,0.45);
+      backdrop-filter: blur(4px);
+      -webkit-backdrop-filter: blur(4px);
+      display: flex; flex-direction: column;
+      justify-content: flex-end;
+      z-index: 500;
+    }
+    .plog-overlay.hidden { display: none; }
+
+    .plog-sheet {
+      background: var(--bg);
+      border-radius: 20px 20px 0 0;
+      height: 88dvh;
+      display: flex; flex-direction: column;
+      overflow: hidden;
+    }
+
+    .plog-header {
+      display: flex; align-items: center;
+      padding: 14px 16px 10px;
+      background: var(--surface);
+      border-bottom: 0.5px solid var(--border);
+      gap: 8px; flex-shrink: 0;
+    }
+    .plog-close {
+      width: 30px; height: 30px; border-radius: 50%;
+      background: #e5e5ea; border: none;
+      font-size: 13px; cursor: pointer;
+      display: flex; align-items: center; justify-content: center;
+      flex-shrink: 0;
+    }
+    .plog-title {
+      flex: 1; font-size: 15px; font-weight: 600;
+      color: var(--text);
+    }
+    .plog-count {
+      font-size: 11px; color: var(--muted);
+      background: #f2f2f7; border-radius: 10px;
+      padding: 2px 8px; flex-shrink: 0;
+    }
+    .plog-clear-btn {
+      font-size: 12px; color: #ff3b30;
+      background: none; border: none;
+      cursor: pointer; padding: 4px 8px;
+      font-family: var(--font); flex-shrink: 0;
+    }
+    .plog-clear-btn:active { opacity: 0.6; }
+
+    .plog-list {
+      flex: 1; overflow-y: auto;
+      -webkit-overflow-scrolling: touch;
+      padding: 10px 14px 20px;
+      display: flex; flex-direction: column; gap: 8px;
+    }
+    .plog-empty {
+      text-align: center; color: var(--muted);
+      font-size: 14px; padding: 40px 0;
+    }
+
+    .plog-entry {
+      background: var(--surface);
+      border: 0.5px solid var(--border);
+      border-radius: 12px;
+      overflow: hidden;
+    }
+    .plog-entry-header {
+      display: flex; align-items: center; gap: 8px;
+      padding: 10px 12px;
+      cursor: pointer;
+      user-select: none; -webkit-user-select: none;
+    }
+    .plog-entry-header:active { background: rgba(0,0,0,0.04); }
+    .plog-op-label {
+      font-size: 13px; font-weight: 600; color: var(--text);
+      flex: 1;
+    }
+    .plog-meta {
+      font-size: 11px; color: var(--muted); flex-shrink: 0;
+    }
+    .plog-chevron {
+      font-size: 11px; color: var(--muted); flex-shrink: 0;
+      transition: transform 0.2s;
+    }
+    .plog-entry.open .plog-chevron { transform: rotate(90deg); }
+
+    .plog-body {
+      display: none;
+      border-top: 0.5px solid var(--border);
+      padding: 10px 12px;
+      gap: 10px;
+      flex-direction: column;
+    }
+    .plog-entry.open .plog-body { display: flex; }
+
+    .plog-section-label {
+      font-size: 11px; font-weight: 600; color: var(--muted);
+      text-transform: uppercase; letter-spacing: 0.04em;
+      margin-bottom: 4px;
+      display: flex; align-items: center; justify-content: space-between;
+    }
+    .plog-copy-btn {
+      font-size: 11px; color: #007aff;
+      background: none; border: none; cursor: pointer;
+      padding: 0; font-family: var(--font);
+      font-weight: 400; text-transform: none; letter-spacing: 0;
+    }
+    .plog-copy-btn:active { opacity: 0.6; }
+    .plog-text {
+      font-size: 12px; color: var(--text);
+      background: #f2f2f7; border-radius: 8px;
+      padding: 8px 10px;
+      white-space: pre-wrap; word-break: break-word;
+      font-family: ui-monospace, 'SF Mono', Menlo, monospace;
+      max-height: 200px; overflow-y: auto;
+      -webkit-overflow-scrolling: touch;
+    }
+    .plog-text.empty { color: var(--muted); font-style: italic; }
+
     /* ── API Key modal ────────────────────────────────────────── */
     .modal-overlay {
       position: fixed; inset: 0;
@@ -893,6 +1014,7 @@
     <div class="menu-wrap">
       <button class="menu-btn" id="menuBtn">···</button>
       <div class="menu-dropdown" id="menuDropdown">
+        <button class="menu-item" id="miPromptLog">🔍 Prompt Log</button>
         <button class="menu-item" id="miExportPrompt">📤 Export Prompt</button>
         <button class="menu-item" id="miCluster">⚡ Auto-cluster</button>
         <button class="menu-item" id="miSelect">⊙ Select to merge</button>
@@ -1011,6 +1133,19 @@
              autocorrect="on" autocapitalize="sentences" />
       <button class="chat-send-btn" id="chatSendBtn">↑</button>
     </div>
+  </div>
+</div>
+
+<!-- Prompt Log modal -->
+<div class="plog-overlay hidden" id="promptLogModal">
+  <div class="plog-sheet">
+    <div class="plog-header">
+      <button class="plog-close" id="plogClose">✕</button>
+      <div class="plog-title">Prompt Log</div>
+      <span class="plog-count" id="plogCount">0 calls</span>
+      <button class="plog-clear-btn" id="plogClear">Clear</button>
+    </div>
+    <div class="plog-list" id="plogList"></div>
   </div>
 </div>
 
@@ -1148,6 +1283,9 @@ let selectMode  = false;
 let selectedIds = new Set();
 let recognition = null;
 let isRecording = false;
+
+const promptLog    = []; // Array of logged Claude API calls
+const PROMPT_LOG_MAX = 100;
 
 // ─── HELPERS ────────────────────────────────────────────────────────────────
 const currentCtx      = ()   => navStack[navStack.length - 1];
@@ -1470,7 +1608,7 @@ async function refileNode(nodeId) {
   const sys = 'You organize a mind map. Choose the single best parent for the card from the candidates, or null for top level. Return ONLY valid JSON.';
 
   try {
-    const raw    = await callClaude(userMsg, sys, '{');
+    const raw    = await callClaude(userMsg, sys, '{', 'Re-file card');
     const parsed = extractJSON(raw);
     if (!parsed) throw new Error('Could not parse Claude response');
 
@@ -1547,7 +1685,7 @@ async function mergeSelected() {
   const sys      = 'You merge mind map cards. Create a single concise card combining all ideas. Return ONLY valid JSON.';
 
   try {
-    const raw    = await callClaude(userMsg, sys, '{');
+    const raw    = await callClaude(userMsg, sys, '{', 'Merge cards');
     const parsed = extractJSON(raw);
     if (!parsed?.label) throw new Error('Bad response from Claude');
 
@@ -1596,7 +1734,7 @@ async function autoCluster() {
   const sys     = 'You organize mind map cards into meaningful groups. Return ONLY a valid JSON array of groups.';
 
   try {
-    const raw = await callClaude(userMsg, sys, '[');
+    const raw = await callClaude(userMsg, sys, '[', 'Auto-cluster');
     let parsed;
     try { parsed = JSON.parse(raw.trim()); } catch {}
     if (!parsed) {
@@ -1653,7 +1791,7 @@ async function simplifyNode(nodeId) {
   const sys = `You simplify mind map structures. Merge overlapping ideas, remove redundancies, flatten excessive nesting, keep all distinct concepts. Return ONLY a valid JSON array: [{"label":"2-5 word title","summary":"1-2 sentence summary","children":[{"label":"...","summary":"...","children":[]}]}]. Max 2 levels deep.`;
 
   try {
-    const raw = await callClaude(userMsg, sys, '[');
+    const raw = await callClaude(userMsg, sys, '[', 'Simplify node');
     let parsed;
     try { parsed = JSON.parse(raw.trim()); } catch {}
     if (!parsed) {
@@ -1889,13 +2027,26 @@ function setStatus(msg, cls) {
 }
 
 // ─── CLAUDE API ─────────────────────────────────────────────────────────────
-async function callClaude(userContent, systemPrompt, prefill = '') {
+async function callClaude(userContent, systemPrompt, prefill = '', operationLabel = 'Claude') {
   const apiKey = getApiKey();
   if (!apiKey) throw new Error('No API key — tap ··· → API Key to add one');
   console.log('[VoiceMap] key length:', apiKey.length, 'starts:', apiKey.slice(0, 7));
 
   const messages = [{ role: 'user', content: userContent }];
   if (prefill) messages.push({ role: 'assistant', content: prefill });
+
+  const logEntry = {
+    id:        makeId(),
+    label:     operationLabel,
+    timestamp: new Date().toISOString(),
+    system:    systemPrompt || '',
+    user:      userContent  || '',
+    prefill:   prefill      || '',
+    response:  null,
+    error:     null,
+    durationMs: null,
+  };
+  const t0 = Date.now();
 
   const res = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
@@ -1917,13 +2068,21 @@ async function callClaude(userContent, systemPrompt, prefill = '') {
     const body = await res.text().catch(() => '');
     let msg = `HTTP ${res.status}`;
     try { const j = JSON.parse(body); msg = j.error?.message || j.error?.type || msg; } catch {}
+    logEntry.error      = `[${res.status}] ${msg}`;
+    logEntry.durationMs = Date.now() - t0;
+    addToPromptLog(logEntry);
     if (res.status === 401) {
       setStatus('⚠ API key invalid — tap ··· → API Key', 'error');
       throw new Error('API key invalid or revoked');
     }
     throw new Error(`[${res.status}] ${msg}`);
   }
-  return prefill + (await res.json()).content[0].text;
+
+  const result        = prefill + (await res.json()).content[0].text;
+  logEntry.response   = result;
+  logEntry.durationMs = Date.now() - t0;
+  addToPromptLog(logEntry);
+  return result;
 }
 
 function extractJSON(raw) {
@@ -1960,7 +2119,7 @@ Be concise but thorough — this summary provides context for all child ideas un
 Return JSON: {"summary": "<improved summary>"}`;
 
     try {
-      const raw    = await callClaude(elaboratePrompt, '', '{');
+      const raw    = await callClaude(elaboratePrompt, '', '{', isRename ? 'Rename card' : 'Elaborate card');
       const parsed = extractJSON(raw);
       if (isRename && parsed?.label) {
         node.label         = String(parsed.label).slice(0, 60);
@@ -2032,7 +2191,7 @@ Default action to "create", relationship to "${R.CHILD}". Good labels: "Backyard
   let parsed;
   let claudeError = null;
   try {
-    const raw = await callClaude(userMsg, systemPrompt, '{');
+    const raw = await callClaude(userMsg, systemPrompt, '{', 'New card');
     console.log('[VoiceMap] Claude raw response:', raw);
     parsed = extractJSON(raw);
     if (!parsed?.action) throw new Error('Bad JSON from Claude: ' + raw.slice(0, 120));
@@ -3034,6 +3193,19 @@ async function callChatClaude(userText, isSystem = false) {
     ? [{ role: 'user', content: userText }]
     : [...chatHistory];
 
+  const logEntry = {
+    id:        makeId(),
+    label:     isSystem ? 'Chat (seed)' : 'Chat',
+    timestamp: new Date().toISOString(),
+    system:    systemPrompt,
+    user:      userText,
+    prefill:   '',
+    response:  null,
+    error:     null,
+    durationMs: null,
+  };
+  const t0 = Date.now();
+
   try {
     const apiKey = getApiKey();
     if (!apiKey) throw new Error('No API key');
@@ -3051,14 +3223,25 @@ async function callChatClaude(userText, isSystem = false) {
 
     if (!res.ok) {
       const body = await res.text().catch(() => '');
+      logEntry.error      = `API error ${res.status}: ${body.slice(0, 80)}`;
+      logEntry.durationMs = Date.now() - t0;
+      addToPromptLog(logEntry);
       throw new Error(`API error ${res.status}: ${body.slice(0, 80)}`);
     }
 
     const text = (await res.json()).content[0].text.trim();
+    logEntry.response   = text;
+    logEntry.durationMs = Date.now() - t0;
+    addToPromptLog(logEntry);
     const msgId = makeId();
     chatHistory.push({ role: 'assistant', content: text });
     addChatBubble('assistant', text, msgId);
   } catch (err) {
+    if (!logEntry.error) {
+      logEntry.error      = err.message;
+      logEntry.durationMs = Date.now() - t0;
+      addToPromptLog(logEntry);
+    }
     addChatBubble('assistant', '⚠ ' + err.message);
   }
 }
@@ -3127,6 +3310,80 @@ function updateChatVoiceBtn() {
   if (!btn) return;
   btn.classList.toggle('listening', chatListening);
   btn.textContent = chatListening ? '■' : '⏺';
+}
+
+// ─── PROMPT LOG ──────────────────────────────────────────────────────────────
+function addToPromptLog(entry) {
+  promptLog.unshift(entry); // newest first
+  if (promptLog.length > PROMPT_LOG_MAX) promptLog.length = PROMPT_LOG_MAX;
+  // Refresh badge if modal is open
+  const modal = document.getElementById('promptLogModal');
+  if (modal && !modal.classList.contains('hidden')) renderPromptLog();
+  else updatePlogCount();
+}
+
+function updatePlogCount() {
+  const el = document.getElementById('plogCount');
+  if (el) el.textContent = `${promptLog.length} call${promptLog.length !== 1 ? 's' : ''}`;
+}
+
+function openPromptLog() {
+  document.getElementById('promptLogModal').classList.remove('hidden');
+  renderPromptLog();
+}
+
+function closePromptLog() {
+  document.getElementById('promptLogModal').classList.add('hidden');
+}
+
+function renderPromptLog() {
+  const list = document.getElementById('plogList');
+  updatePlogCount();
+
+  if (promptLog.length === 0) {
+    list.innerHTML = '<div class="plog-empty">No API calls recorded yet.<br>Make a voice capture or use an AI action.</div>';
+    return;
+  }
+
+  list.innerHTML = promptLog.map(entry => {
+    const time = new Date(entry.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+    const dur  = entry.durationMs != null ? `${entry.durationMs}ms` : '';
+    const meta = [time, dur].filter(Boolean).join(' · ');
+    const hasError = !!entry.error;
+
+    return `<div class="plog-entry" data-plog-id="${esc(entry.id)}">
+  <div class="plog-entry-header">
+    <span class="plog-op-label" style="${hasError ? 'color:#ff3b30' : ''}">${esc(entry.label)}${hasError ? ' ⚠' : ''}</span>
+    <span class="plog-meta">${esc(meta)}</span>
+    <span class="plog-chevron">›</span>
+  </div>
+  <div class="plog-body">
+    ${entry.system ? `
+    <div>
+      <div class="plog-section-label">System Prompt <button class="plog-copy-btn" data-copy="${esc(entry.system)}">Copy</button></div>
+      <div class="plog-text">${esc(entry.system)}</div>
+    </div>` : ''}
+    <div>
+      <div class="plog-section-label">User Message <button class="plog-copy-btn" data-copy="${esc(entry.user)}">Copy</button></div>
+      <div class="plog-text${entry.user ? '' : ' empty'}">${entry.user ? esc(entry.user) : '(empty)'}</div>
+    </div>
+    ${entry.prefill ? `
+    <div>
+      <div class="plog-section-label">Prefill</div>
+      <div class="plog-text">${esc(entry.prefill)}</div>
+    </div>` : ''}
+    <div>
+      <div class="plog-section-label">${hasError ? 'Error' : 'Response'} <button class="plog-copy-btn" data-copy="${esc(hasError ? entry.error : (entry.response || ''))}">Copy</button></div>
+      <div class="plog-text${hasError ? '" style="color:#ff3b30' : (entry.response ? '' : ' empty')}">${hasError ? esc(entry.error) : (entry.response ? esc(entry.response) : '(pending…)')}</div>
+    </div>
+  </div>
+</div>`;
+  }).join('');
+}
+
+function togglePlogEntry(id) {
+  const el = document.querySelector(`.plog-entry[data-plog-id="${id}"]`);
+  if (el) el.classList.toggle('open');
 }
 
 // ─── DRAG TO REORDER / REPARENT ──────────────────────────────────────────────
@@ -3374,6 +3631,7 @@ document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('miApiKey').addEventListener('click', showKeyModal);
   document.getElementById('miArchive').addEventListener('click', () => { closeMenu(); setView('archived'); });
   document.getElementById('miExportPrompt').addEventListener('click', () => { closeMenu(); exportPrompt(null); });
+  document.getElementById('miPromptLog').addEventListener('click', () => { closeMenu(); openPromptLog(); });
   document.getElementById('miClear').addEventListener('click', clearAll);
 
   // Mind map
@@ -3503,6 +3761,26 @@ document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('chatMessages').addEventListener('click', e => {
     const saveBtn = e.target.closest('[data-save-msg-id]');
     if (saveBtn) saveChatMessageAsCard(saveBtn.dataset.saveMsgId);
+  });
+
+  // Prompt log modal
+  document.getElementById('plogClose').addEventListener('click', closePromptLog);
+  document.getElementById('plogClear').addEventListener('click', () => {
+    promptLog.length = 0;
+    renderPromptLog();
+  });
+  document.getElementById('promptLogModal').addEventListener('click', e => {
+    if (e.target === document.getElementById('promptLogModal')) closePromptLog();
+    const header = e.target.closest('.plog-entry-header');
+    if (header) { togglePlogEntry(header.closest('.plog-entry').dataset.plogId); return; }
+    const copyBtn = e.target.closest('.plog-copy-btn');
+    if (copyBtn) {
+      navigator.clipboard.writeText(copyBtn.dataset.copy || '').then(() => {
+        const orig = copyBtn.textContent;
+        copyBtn.textContent = 'Copied!';
+        setTimeout(() => { copyBtn.textContent = orig; }, 1200);
+      }).catch(() => showToast('Copy failed'));
+    }
   });
 
   document.getElementById('keySave').addEventListener('click', saveApiKey);
