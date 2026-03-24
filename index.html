@@ -3605,18 +3605,18 @@ function showGithubModal() {
   const stored = localStorage.getItem(GITHUB_TOKEN_STORE);
   const token = stored || '';
   _githubInputCache = token;
-  input.value = token;
   input.placeholder = 'ghp_...';
   input.oninput = () => { _githubInputCache = input.value; };
-  if (stored) {
-    result.textContent = 'Storage: ' + stored.slice(0, 8) + '… (len=' + stored.length + ')' +
-      (getGistId() ? ' · gist ' + getGistId() : '');
-  } else {
-    result.textContent = 'No token in storage';
-  }
+  result.textContent = stored
+    ? (getGistId() ? 'Connected · gist ID: ' + getGistId() : 'Token saved')
+    : '';
   document.getElementById('githubSave').textContent = 'Save & connect';
   modal.classList.remove('hidden');
-  setTimeout(() => input.focus(), 100);
+  // Set value after a tick — iOS can visually wipe an input when focus fires
+  setTimeout(() => {
+    input.value = token;
+    if (!token) input.focus();
+  }, 100);
 }
 
 function hideGithubModal() {
