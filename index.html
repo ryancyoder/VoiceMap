@@ -3571,6 +3571,7 @@ function onDragCancel() {
 // ─── GITHUB SYNC ─────────────────────────────────────────────────────────────
 function getGithubToken() { return localStorage.getItem(GITHUB_TOKEN_STORE) || ''; }
 function getGistId()      { return localStorage.getItem(GITHUB_GIST_STORE)  || ''; }
+let _githubInputCache = ''; // cache typed value — iOS can clear input before button handler reads it
 
 function githubHeaders(token) {
   return {
@@ -3585,8 +3586,10 @@ function showGithubModal() {
   const input = document.getElementById('githubInput');
   const result = document.getElementById('githubTestResult');
   const token = getGithubToken();
+  _githubInputCache = '';
   input.value = '';
   input.placeholder = token ? token.slice(0, 10) + '… (leave blank to keep)' : 'ghp_...';
+  input.oninput = () => { _githubInputCache = input.value; };
   result.textContent = getGistId() ? 'Connected · gist ID: ' + getGistId() : '';
   document.getElementById('githubSave').textContent = 'Save & connect';
   modal.classList.remove('hidden');
@@ -3599,7 +3602,7 @@ function hideGithubModal() {
 }
 
 async function testGithubToken() {
-  const raw = document.getElementById('githubInput').value.trim();
+  const raw = document.getElementById('githubInput').value.trim() || _githubInputCache.trim();
   const result = document.getElementById('githubTestResult');
   if (!raw || raw.includes('...')) { result.textContent = 'Enter a token first'; return; }
   result.textContent = 'Testing…';
@@ -3620,15 +3623,11 @@ async function testGithubToken() {
 }
 
 function saveGithubToken() {
-  const raw = document.getElementById('githubInput').value.trim();
-  // Empty input = keep existing token (field is no longer pre-filled)
+  // Use cached value as fallback — iOS can clear the input field before this handler runs
+  const raw = (document.getElementById('githubInput').value.trim() || _githubInputCache.trim());
   if (!raw) {
-    if (getGithubToken()) { hideGithubModal(); return; }
-    // No existing token and nothing entered — clear sync
-    localStorage.removeItem(GITHUB_TOKEN_STORE);
-    localStorage.removeItem(GITHUB_GIST_STORE);
+    // Nothing entered — keep whatever token is already stored and close
     hideGithubModal();
-    showToast('GitHub Sync disabled');
     return;
   }
   if (!raw.startsWith('ghp_') && !raw.startsWith('github_pat_') && !raw.startsWith('gho_')) {
