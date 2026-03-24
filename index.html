@@ -1115,6 +1115,7 @@
       <button class="camera-btn" id="cameraBtn">📷</button>
     </div>
     <div class="status-text" id="statusText">Tap ⏺ to capture an idea</div>
+    <div id="syncStatus" style="display:none;font-size:10px;color:#6b7280;text-align:center;padding:2px 0;letter-spacing:0.02em"></div>
   </div>
 
 </div>
@@ -3692,6 +3693,7 @@ function saveGithubToken() {
   hideGithubModal();
   showToast('GitHub token saved — syncing…');
   pushToGist();
+  startGistPolling();
 }
 
 function buildSyncPayload() {
@@ -3742,7 +3744,8 @@ async function pushToGist() {
         localStorage.setItem(GITHUB_GIST_STORE, data.id);
       }
     }
-    if (!res.ok) showToast('GitHub sync failed (' + res.status + ')');
+    if (res.ok) updateSyncStatus('☁️ pushed');
+    else showToast('GitHub sync failed (' + res.status + ')');
   } catch (e) {
     showToast('GitHub sync error: ' + e.message);
   }
@@ -3769,7 +3772,10 @@ async function pullFromGist() {
     // Use whichever version has the newer synced timestamp
     const remoteDate = new Date(data.meta?.synced || data.date || 0);
     const localDate  = new Date(session.meta?.synced || session.date || 0);
-    if (remoteDate <= localDate) return;
+    if (remoteDate <= localDate) {
+      updateSyncStatus('☁️ up to date');
+      return;
+    }
     session = data;
     if (data.images && typeof data.images === 'object') {
       for (const [id, url] of Object.entries(data.images)) {
@@ -3780,7 +3786,16 @@ async function pullFromGist() {
     updateNavBar();
     renderCards();
     showToast('Synced from GitHub ✓');
+    updateSyncStatus('☁️ pulled');
   } catch {}
+}
+
+function updateSyncStatus(label) {
+  const el = document.getElementById('syncStatus');
+  if (!el) return;
+  const t = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  el.textContent = label + ' ' + t;
+  el.style.display = 'block';
 }
 
 let _syncTimer = null;
@@ -3788,6 +3803,19 @@ function scheduleSyncToGist() {
   if (!getGithubToken()) return;
   clearTimeout(_syncTimer);
   _syncTimer = setTimeout(pushToGist, 3000);
+}
+
+let _pollTimer = null;
+function startGistPolling() {
+  if (_pollTimer) return; // already running
+  _pollTimer = setInterval(async () => {
+    if (!getGithubToken()) return;
+    await pullFromGist();
+  }, 30000); // poll every 30 seconds
+}
+function stopGistPolling() {
+  clearInterval(_pollTimer);
+  _pollTimer = null;
 }
 
 // ─── MENU ───────────────────────────────────────────────────────────────────
@@ -3831,8 +3859,9 @@ async function initApp() {
   } catch (e) {
     console.warn('[VoiceMap] IndexedDB unavailable, using localStorage:', e.message);
   }
-  // Pull latest data from GitHub Gist if configured
+  // Pull latest data from GitHub Gist if configured, then start periodic polling
   await pullFromGist();
+  if (getGithubToken()) startGistPolling();
 }
 
 document.addEventListener('DOMContentLoaded', () => {
