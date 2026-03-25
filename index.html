@@ -1838,8 +1838,9 @@ function deferNode(nodeId, days) {
   if (!node) return;
   const until = new Date();
   until.setDate(until.getDate() + days);
-  node.deferred      = true;
-  node.deferredUntil = until.toISOString();
+  node.deferred       = true;
+  node.deferredUntil  = until.toISOString();
+  node.scheduled_date = toISODate(until);
   node.last_modified = new Date().toISOString();
   hideDeferModal();
   renderCards();
@@ -1942,6 +1943,7 @@ function scheduleRecurrence(nodeId, type, dayOfWeek = null) {
   node.archived            = false;
   node.deferred            = true;
   node.deferredUntil       = nextDate.toISOString();
+  node.scheduled_date      = toISODate(nextDate);
   node.recurrence          = type;
   node.recurrenceDayOfWeek = dayOfWeek;
   node.last_modified       = new Date().toISOString();
@@ -4296,16 +4298,13 @@ function renderCalendarWeek() {
   document.getElementById('calWeekLabel').textContent =
     fmt(weekDays[0]) + ' – ' + fmtY(weekDays[6]);
 
-  // Bucket scheduled + deferred nodes by local date
+  // Bucket all nodes that have a scheduled_date (deferred items included —
+  // deferNode now writes scheduled_date in YYYY-MM-DD format at deferral time)
   const bucket = {};
   for (const node of session.nodes) {
-    if (node.archived) continue;
-    if (node.scheduled_date) {
-      (bucket[node.scheduled_date] = bucket[node.scheduled_date] || []).push({ node, kind: 'scheduled' });
-    } else if (node.deferred && node.deferredUntil) {
-      const d = toISODate(new Date(node.deferredUntil));
-      (bucket[d] = bucket[d] || []).push({ node, kind: 'deferred' });
-    }
+    if (node.archived || !node.scheduled_date) continue;
+    const kind = node.deferred ? 'deferred' : 'scheduled';
+    (bucket[node.scheduled_date] = bucket[node.scheduled_date] || []).push({ node, kind });
   }
 
   const grid = document.getElementById('calGrid');
@@ -4353,12 +4352,7 @@ function renderMonthStrip() {
   const todayISO = toISODate(today);
 
   const scheduledDates = new Set(
-    session.nodes.filter(n => !n.archived).flatMap(n => {
-      const dates = [];
-      if (n.scheduled_date) dates.push(n.scheduled_date);
-      if (n.deferred && n.deferredUntil) dates.push(toISODate(new Date(n.deferredUntil)));
-      return dates;
-    })
+    session.nodes.filter(n => !n.archived && n.scheduled_date).map(n => n.scheduled_date)
   );
 
   const MONTH_NAMES = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
@@ -4527,7 +4521,7 @@ function onCalTouchEnd() {
   // Dropping a deferred card onto a new date converts it to a scheduled item
   if (kind === 'deferred') {
     const node = session.nodes.find(n => n.id === cardId);
-    if (node) { node.deferred = false; node.deferredUntil = null; }
+    if (node) { node.deferred = false; node.deferredUntil = null; node.last_modified = new Date().toISOString(); }
   }
   scheduleNode(cardId, targetDate);
 }
