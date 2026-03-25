@@ -5402,32 +5402,32 @@ document.addEventListener('DOMContentLoaded', () => {
     if (!mmVisible) return;
     if (!document.getElementById('editFieldModal').classList.contains('hidden')) return;
 
-    // Opt+Up/Down = zoom in/out; Opt+Left/Right = pan
+    // Opt+arrows = pan
     if (e.altKey && !e.metaKey && !e.ctrlKey &&
+        (e.key === 'ArrowUp' || e.key === 'ArrowDown' || e.key === 'ArrowLeft' || e.key === 'ArrowRight')) {
+      e.preventDefault();
+      e.stopPropagation();
+      const step = 80;
+      if (e.key === 'ArrowLeft')  mmTransform.x += step;
+      if (e.key === 'ArrowRight') mmTransform.x -= step;
+      if (e.key === 'ArrowUp')    mmTransform.y += step;
+      if (e.key === 'ArrowDown')  mmTransform.y -= step;
+      applyMmTransform();
+      return;
+    }
+
+    // Cmd+Up/Down = zoom in/out; Cmd+Left = collapse, Cmd+Right = expand
+    if ((e.metaKey || e.ctrlKey) && !e.altKey &&
         (e.key === 'ArrowUp' || e.key === 'ArrowDown' || e.key === 'ArrowLeft' || e.key === 'ArrowRight')) {
       e.preventDefault();
       e.stopPropagation();
       if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
         const factor = e.key === 'ArrowUp' ? 1.15 : (1 / 1.15);
         mmTransform.scale = Math.max(0.25, Math.min(4, mmTransform.scale * factor));
-      } else {
-        const step = 80;
-        mmTransform.x += e.key === 'ArrowLeft' ? step : -step;
-      }
-      applyMmTransform();
-      return;
-    }
-
-    // Cmd+Up = collapse selected node, Cmd+Down = expand selected node
-    if ((e.metaKey || e.ctrlKey) && !e.altKey && (e.key === 'ArrowUp' || e.key === 'ArrowDown')) {
-      e.preventDefault();
-      e.stopPropagation();
-      if (mmSelectedId) {
-        if (e.key === 'ArrowUp') {
-          mmCollapsed.add(mmSelectedId);
-        } else {
-          mmCollapsed.delete(mmSelectedId);
-        }
+        applyMmTransform();
+      } else if (mmSelectedId) {
+        if (e.key === 'ArrowLeft') mmCollapsed.add(mmSelectedId);
+        else                       mmCollapsed.delete(mmSelectedId);
         renderMindMap();
       }
     }
