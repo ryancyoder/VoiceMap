@@ -538,14 +538,13 @@
 
     /* ── Keyboard input ───────────────────────────────────────── */
     .keyboard-toggle-btn {
-      width: 44px; height: 44px; border-radius: 50%;
-      background: #f2f2f7; border: 0.5px solid var(--border);
-      font-size: 13px; font-weight: 700; cursor: pointer; flex-shrink: 0;
-      display: flex; align-items: center; justify-content: center;
-      transition: background 0.15s, border-color 0.15s; color: var(--text);
-      font-family: var(--font);
+      width: 100%; padding: 7px 16px; border-radius: 20px;
+      background: none; border: 1px solid var(--border);
+      font-size: 13px; font-weight: 600; cursor: pointer;
+      color: var(--muted); font-family: var(--font);
+      transition: background 0.15s, color 0.15s, border-color 0.15s;
     }
-    .keyboard-toggle-btn:active { background: #e5e5ea; }
+    .keyboard-toggle-btn:active { background: rgba(0,0,0,0.05); }
     .keyboard-toggle-btn.active {
       background: var(--accent); border-color: var(--accent); color: #fff;
     }
@@ -1500,13 +1499,13 @@
       <button class="stop-btn" id="stopBtn" disabled>■</button>
       <button class="record-btn" id="recordBtn">⏺</button>
       <button class="camera-btn" id="cameraBtn">📷</button>
-      <button class="keyboard-toggle-btn" id="keyboardToggleBtn" title="Type instead of speak">Aa</button>
     </div>
     <div class="keyboard-row hidden" id="keyboardRow">
       <textarea class="keyboard-input" id="keyboardInput" placeholder="Type your idea… (Enter to send)" rows="1"></textarea>
       <button class="keyboard-send-btn" id="keyboardSendBtn" disabled title="Send">↑</button>
     </div>
     <div class="status-text" id="statusText">Tap ⏺ to capture an idea</div>
+    <button class="keyboard-toggle-btn" id="keyboardToggleBtn">Aa Type instead</button>
     <div id="syncStatus" style="display:none;font-size:10px;color:#6b7280;text-align:center;padding:2px 0;letter-spacing:0.02em"></div>
   </div>
 
@@ -2746,6 +2745,7 @@ function setKeyboardMode(on) {
   const recordBtn = document.getElementById('recordBtn');
   const stopBtn   = document.getElementById('stopBtn');
   toggleBtn.classList.toggle('active', on);
+  toggleBtn.textContent = on ? '⏺ Switch to voice' : 'Aa Type instead';
   keyRow.classList.toggle('hidden', !on);
   recordBtn.style.display = on ? 'none' : '';
   stopBtn.style.display   = on ? 'none' : '';
