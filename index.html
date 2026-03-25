@@ -2842,6 +2842,7 @@ function applyMmAddChild(text) {
   const { parentId } = pendingMmAdd;
   pendingMmAdd = null;
   document.getElementById('editFieldModal').classList.add('hidden');
+  if (mmVisible) document.getElementById('mmCanvasWrap').focus();
   const now    = new Date().toISOString();
   const nodeId = makeId();
   session.nodes.push({
@@ -2894,6 +2895,7 @@ function cancelPendingEdit() {
   pendingEdit  = null;
   pendingMmAdd = null;
   document.getElementById('editFieldModal').classList.add('hidden');
+  if (mmVisible) document.getElementById('mmCanvasWrap').focus();
 }
 
 // ─── IMAGE CAPTURE ───────────────────────────────────────────────────────────
@@ -3309,32 +3311,36 @@ function renderMindMap() {
 
 function mmArrowNav(direction) {
   const visibleIds = new Set(mmVisibleNodes().map(n => n.id));
+  const prev = mmSelectedId;
 
   if (!mmSelectedId) {
     // Nothing selected — pick the first visible root (or focus root)
     const first = session.nodes.find(n =>
       visibleIds.has(n.id) && (mmFocusNodeId ? n.id === mmFocusNodeId : !n.parent_id));
-    if (first) selectMmNode(first.id);
+    if (first) { selectMmNode(first.id); mmZoomToCard(first.id); }
     return;
   }
 
   const node = session.nodes.find(n => n.id === mmSelectedId);
   if (!node) return;
 
+  let target = null;
   if (direction === 'left') {
-    // Move to parent
-    if (node.parent_id && visibleIds.has(node.parent_id)) selectMmNode(node.parent_id);
+    if (node.parent_id && visibleIds.has(node.parent_id)) target = node.parent_id;
   } else if (direction === 'right') {
-    // Move to first visible child
     const child = session.nodes.find(n => n.parent_id === mmSelectedId && visibleIds.has(n.id));
-    if (child) selectMmNode(child.id);
+    if (child) target = child.id;
   } else {
-    // Up / Down — move among visible siblings
     const parentId = node.parent_id ?? null;
     const siblings = session.nodes.filter(n => (n.parent_id ?? null) === parentId && visibleIds.has(n.id));
     const idx = siblings.findIndex(n => n.id === mmSelectedId);
-    if (direction === 'up'   && idx > 0)                  selectMmNode(siblings[idx - 1].id);
-    if (direction === 'down' && idx < siblings.length - 1) selectMmNode(siblings[idx + 1].id);
+    if (direction === 'up'   && idx > 0)                  target = siblings[idx - 1].id;
+    if (direction === 'down' && idx < siblings.length - 1) target = siblings[idx + 1].id;
+  }
+
+  if (target && target !== prev) {
+    selectMmNode(target);
+    mmZoomToCard(target);
   }
 }
 
@@ -3465,7 +3471,10 @@ function showMindMap() {
 
   renderMindMap();
   applyMmTransform();
-  setTimeout(() => mmZoomToFit(), 50);
+  setTimeout(() => {
+    mmZoomToFit();
+    document.getElementById('mmCanvasWrap').focus(); // enable arrow-key navigation
+  }, 50);
 }
 
 function buildNodePath(nodeId) {
@@ -5358,10 +5367,8 @@ document.addEventListener('DOMContentLoaded', () => {
   });
   document.getElementById('mmExitFocusBtn').addEventListener('click', mmExitFocus);
 
-  // Map view keyboard shortcuts
-  document.addEventListener('keydown', e => {
-    if (!mmVisible) return;
-    if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+  // Map view keyboard shortcuts — listener on the canvas so iPad external keyboard works
+  document.getElementById('mmCanvasWrap').addEventListener('keydown', e => {
     if (!document.getElementById('editFieldModal').classList.contains('hidden')) return;
 
     if ((e.metaKey || e.ctrlKey) && e.key === 'n') {
@@ -5575,7 +5582,7 @@ document.addEventListener('DOMContentLoaded', () => {
     </div>
   </div>
   <div class="mm-body">
-    <div class="mm-canvas-wrap" id="mmCanvasWrap">
+    <div class="mm-canvas-wrap" id="mmCanvasWrap" tabindex="0" style="outline:none">
       <div class="mm-canvas" id="mmCanvas">
         <svg class="mm-svg" id="mmSvg" xmlns="http://www.w3.org/2000/svg"></svg>
         <div class="mm-nodes" id="mmNodes"></div>
