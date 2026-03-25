@@ -872,29 +872,23 @@
     }
     .mm-view.hidden { display: none; }
     .mm-header {
-      display: flex; align-items: center; justify-content: space-between;
-      padding: calc(var(--safe-top) + 10px) 16px 10px;
+      display: flex; flex-direction: column;
       background: var(--surface); border-bottom: 0.5px solid var(--border);
       flex-shrink: 0;
     }
-    .mm-view-tabs {
-      display: flex; gap: 2px; flex-shrink: 0;
+    .mm-nav {
+      display: flex; align-items: center; gap: 10px;
+      padding: calc(var(--safe-top) + 10px) 14px 10px;
     }
-    .mm-view-tab {
-      background: none; border: none; font-family: var(--font);
-      font-size: 13px; font-weight: 500; color: var(--muted);
-      padding: 6px 11px; border-radius: 8px; cursor: pointer;
-      transition: background 0.15s, color 0.15s;
+    .mm-header-title {
+      flex: 1; font-size: 17px; font-weight: 600; color: var(--text);
+      overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
     }
-    .mm-view-tab.active {
-      background: rgba(226,75,74,0.1); color: var(--accent); font-weight: 600;
+    /* Reuse view-switcher-bar inside mm-header but without its own bottom border */
+    .mm-header .view-switcher-bar {
+      border-bottom: none;
+      padding-bottom: 0;
     }
-    .mm-back-btn {
-      background: none; border: none; color: var(--accent);
-      font-size: 17px; padding: 6px 10px; border-radius: 8px;
-      cursor: pointer; font-family: var(--font);
-    }
-    .mm-header-title { font-size: 17px; font-weight: 600; color: var(--text); }
     .mm-header-record {
       background: var(--accent); color: #fff; border: none; border-radius: 20px;
       padding: 6px 16px; font-size: 14px; font-weight: 600;
@@ -4651,12 +4645,18 @@ document.addEventListener('DOMContentLoaded', () => {
 <!-- Mind Map View -->
 <div class="mm-view hidden" id="mmView">
   <div class="mm-header">
-    <div class="mm-view-tabs">
-      <button class="mm-view-tab" id="mmBackBtn">≡ Cards</button>
-      <button class="mm-view-tab active" id="mmTabMap">🗺 Map</button>
-      <button class="mm-view-tab" id="mmKbBtn">⊞ Board</button>
+    <!-- Row 1: mirrors the main nav-bar -->
+    <div class="mm-nav">
+      <div class="mm-header-title" id="mmHeaderTitle">VoiceMap</div>
+      <button class="mm-header-fit" id="mmFitBtn" title="Zoom to fit">⊡</button>
+      <button class="mm-header-record" id="mmRecordBtn">⏺ Record</button>
     </div>
-    <div class="mm-header-title" id="mmHeaderTitle">VoiceMap</div>
+    <!-- Row 2: same view-switcher-bar as main view (Map active) -->
+    <div class="view-switcher-bar">
+      <button class="view-tab" id="mmBackBtn">≡ Cards</button>
+      <button class="view-tab active" id="mmTabMap">🗺 Map</button>
+      <button class="view-tab" id="mmKbBtn">⊞ Board</button>
+    </div>
     <div class="mm-focus-bar" id="mmFocusBar">
       <span>🔍 Focused:</span>
       <span class="mm-focus-label" id="mmFocusLabel"></span>
@@ -4671,8 +4671,6 @@ document.addEventListener('DOMContentLoaded', () => {
       <div class="mm-live-text" id="mmLiveText">Listening…</div>
       <button class="mm-stop-btn" id="mmStopBtn2">Stop</button>
     </div>
-    <button class="mm-header-fit" id="mmFitBtn" title="Zoom to fit">⊡</button>
-    <button class="mm-header-record" id="mmRecordBtn">⏺ Record</button>
   </div>
   <div class="mm-body">
     <div class="mm-canvas-wrap" id="mmCanvasWrap">
