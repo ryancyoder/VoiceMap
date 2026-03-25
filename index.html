@@ -3309,18 +3309,7 @@ function renderMindMap() {
   if (mmSelectedId) selectMmNode(mmSelectedId, false);
 }
 
-function mmNodeOnScreen(nodeId) {
-  const el   = document.querySelector(`[data-mmid="${nodeId}"]`);
-  const wrap = document.getElementById('mmCanvasWrap');
-  if (!el || !wrap) return false;
-  const margin = 100; // px — node must be this far inside all four edges
-  const { x: tx, y: ty, scale } = mmTransform;
-  const nx = (parseFloat(el.style.left) || 0) * scale + tx;
-  const ny = (parseFloat(el.style.top)  || 0) * scale + ty;
-  const nr = nx + (el.offsetWidth  || 160) * scale;
-  const nb = ny + (el.offsetHeight || 50)  * scale;
-  return nx >= margin && ny >= margin && nr <= wrap.clientWidth - margin && nb <= wrap.clientHeight - margin;
-}
+let mmNavPanTimer = null;
 
 function mmArrowNav(direction) {
   const visibleIds = new Set(mmVisibleNodes().map(n => n.id));
@@ -3353,7 +3342,9 @@ function mmArrowNav(direction) {
 
   if (target && target !== prev) {
     selectMmNode(target);
-    if (!mmNodeOnScreen(target)) mmZoomToCard(target); // pan only when node is at/beyond perimeter
+    // Debounce: pan to the selected node only after keys stop for 400ms
+    clearTimeout(mmNavPanTimer);
+    mmNavPanTimer = setTimeout(() => mmZoomToCard(mmSelectedId), 400);
   }
 }
 
