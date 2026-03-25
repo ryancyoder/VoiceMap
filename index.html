@@ -4580,8 +4580,6 @@ function showQuickFind() {
   input.value = '';
   _qfIdx = 0;
   _qfRender('');
-  // Blur mmCanvasWrap first — while it holds focus iOS won't give it to the input
-  document.getElementById('mmCanvasWrap')?.blur();
   input.focus();
 }
 
@@ -5346,7 +5344,7 @@ const toggleMenu = () => document.getElementById('menuDropdown').classList.toggl
 const closeMenu  = () => document.getElementById('menuDropdown').classList.remove('open');
 
 // ─── INIT ───────────────────────────────────────────────────────────────────
-const BUILD_TS = 'build:2026-03-26T00:00'; // bumped each deploy — confirms fresh load
+const BUILD_TS = 'build:2026-03-26T00:30'; // bumped each deploy — confirms fresh load
 
 async function initApp() {
   // Show immediately with localStorage data
@@ -5587,12 +5585,11 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // Capture-phase listener on document so we intercept Opt/Cmd+Arrow BEFORE
   // Safari's built-in scroll-to-top/bottom and page-navigation handlers.
-  // Also handles Cmd+O (Quick Find) globally from any view.
+  // Also handles Cmd+K (Quick Find) globally from any view.
   document.addEventListener('keydown', e => {
-    // Cmd+O = Quick Find (works from any view)
-    if ((e.metaKey || e.ctrlKey) && e.key === 'o') {
+    // Cmd+K = Quick Find (works from any view)
+    if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
       e.preventDefault();
-      e.stopPropagation();
       if (document.getElementById('quickFindModal').classList.contains('hidden')) {
         showQuickFind();
       } else {
