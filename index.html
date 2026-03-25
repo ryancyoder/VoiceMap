@@ -1245,8 +1245,9 @@
       word-break: break-word; touch-action: none;
       user-select: none; -webkit-user-select: none; cursor: grab;
     }
-    .cal-card.status-done { text-decoration: line-through; color: var(--muted); }
-    .cal-card.dragging    { opacity: 0.3; }
+    .cal-card.status-done      { text-decoration: line-through; color: var(--muted); }
+    .cal-card.cal-card-deferred { border-left: 3px solid var(--muted); color: var(--muted); }
+    .cal-card.dragging         { opacity: 0.3; }
     .cal-card-ghost {
       position: fixed; z-index: 9100;
       background: var(--surface); border: 1.5px solid var(--accent);
@@ -4295,11 +4296,15 @@ function renderCalendarWeek() {
   document.getElementById('calWeekLabel').textContent =
     fmt(weekDays[0]) + ' – ' + fmtY(weekDays[6]);
 
-  // Bucket scheduled nodes by date
+  // Bucket scheduled + deferred nodes by local date
   const bucket = {};
   for (const node of session.nodes) {
-    if (node.scheduled_date && !node.archived) {
-      (bucket[node.scheduled_date] = bucket[node.scheduled_date] || []).push(node);
+    if (node.archived) continue;
+    if (node.scheduled_date) {
+      (bucket[node.scheduled_date] = bucket[node.scheduled_date] || []).push({ node, kind: 'scheduled' });
+    } else if (node.deferred && node.deferredUntil) {
+      const d = toISODate(new Date(node.deferredUntil));
+      (bucket[d] = bucket[d] || []).push({ node, kind: 'deferred' });
     }
   }
 
@@ -4323,11 +4328,13 @@ function renderCalendarWeek() {
     cards.className = 'cal-day-cards';
     cards.dataset.calDate = iso;
 
-    nodes.forEach(node => {
+    nodes.forEach(({ node, kind }) => {
       const card = document.createElement('div');
-      card.className = 'cal-card' + (node.status === 'done' ? ' status-done' : '');
+      card.className = 'cal-card' + (node.status === 'done' ? ' status-done' : '') +
+                       (kind === 'deferred' ? ' cal-card-deferred' : '');
       card.dataset.calCardId = node.id;
-      card.textContent = node.label;
+      card.dataset.calKind   = kind;
+      card.textContent = (kind === 'deferred' ? '⏳ ' : '') + node.label;
       cards.appendChild(card);
     });
 
@@ -4346,7 +4353,12 @@ function renderMonthStrip() {
   const todayISO = toISODate(today);
 
   const scheduledDates = new Set(
-    session.nodes.filter(n => n.scheduled_date && !n.archived).map(n => n.scheduled_date)
+    session.nodes.filter(n => !n.archived).flatMap(n => {
+      const dates = [];
+      if (n.scheduled_date) dates.push(n.scheduled_date);
+      if (n.deferred && n.deferredUntil) dates.push(toISODate(new Date(n.deferredUntil)));
+      return dates;
+    })
   );
 
   const MONTH_NAMES = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
@@ -4451,6 +4463,7 @@ function onCalTouchStart(e) {
   calDragState = {
     card,
     cardId:    card.dataset.calCardId,
+    kind:      card.dataset.calKind || 'scheduled',
     fromDate:  card.closest('.cal-day-col')?.dataset.calDate,
     startX:    t.clientX, startY: t.clientY,
     phase:     'pending',
@@ -4511,6 +4524,11 @@ function onCalTouchEnd() {
 
   if (phase === 'pending') { showScheduleModal(cardId); return; }
   if (phase !== 'dragging' || !targetDate || targetDate === fromDate) { renderCalendarWeek(); return; }
+  // Dropping a deferred card onto a new date converts it to a scheduled item
+  if (kind === 'deferred') {
+    const node = session.nodes.find(n => n.id === cardId);
+    if (node) { node.deferred = false; node.deferredUntil = null; }
+  }
   scheduleNode(cardId, targetDate);
 }
 
