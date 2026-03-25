@@ -2773,8 +2773,8 @@ async function skipImageDescription() {
     const base64     = dataUrl.split(',')[1];
     const parentNode = currentParentId() ? session.nodes.find(n => n.id === currentParentId()) : null;
     const contextPrompt = parentNode
-      ? `Parent context: "${parentNode.label}"${parentNode.summary ? ` — ${parentNode.summary}` : ''}.\n\nDescribe this image as a child card under that context.`
-      : 'Describe this image as a mind map card.';
+      ? `Parent context: "${parentNode.label}"${parentNode.summary ? ` — ${parentNode.summary}` : ''}.\n\nAnalyze this image in that context.`
+      : 'Analyze this image.';
 
     const res = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
@@ -2785,8 +2785,23 @@ async function skipImageDescription() {
         'anthropic-dangerous-direct-browser-access': 'true',
       },
       body: JSON.stringify({
-        model: CLAUDE_MODEL, max_tokens: 500,
-        system: 'You analyze images for a voice brainstorming app. Use the parent context to interpret the image meaningfully — e.g. a photo of a banana under "Grocery list" should yield "Buy bananas". Return ONLY valid JSON: {"label":"2-4 word title","summary":"1-2 sentence description relevant as a brainstorm card."}',
+        model: CLAUDE_MODEL, max_tokens: 1200,
+        system: `You analyze images for a voice brainstorming app.
+
+STICKY NOTE DETECTION: If the image contains multiple sticky notes, index cards, or distinct handwritten items, create one card per note. Otherwise create one card for the whole image.
+
+Return ONLY valid JSON:
+{
+  "sticky_notes_detected": true,
+  "cards": [
+    {"label": "2-4 word title, max 60 chars", "summary": "1-2 sentence description"}
+  ]
+}
+
+Rules:
+- sticky_notes_detected is true only when there are clearly multiple separate notes/items
+- cards always has at least one entry
+- Use parent context to interpret ambiguous content (e.g. a banana photo under "Grocery list" → label "Buy bananas")`,
         messages: [
           { role: 'user', content: [
             { type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: base64 } },
@@ -2798,19 +2813,46 @@ async function skipImageDescription() {
     });
 
     const body = await res.text();
-    console.log('[VoiceMap] Vision response:', res.status, body.slice(0, 300));
+    console.log('[VoiceMap] Vision response:', res.status, body.slice(0, 400));
 
     if (res.ok) {
       const raw    = '{' + JSON.parse(body).content[0].text;
       const parsed = extractJSON(raw);
       console.log('[VoiceMap] Vision parsed:', parsed);
-      if (parsed?.label) {
-        node.label         = String(parsed.label).slice(0, 60);
-        node.summary       = parsed.summary || '';
-        node.last_modified = new Date().toISOString();
+
+      const cards = Array.isArray(parsed?.cards) ? parsed.cards.filter(c => c?.label) : null;
+
+      if (cards && cards.length > 0) {
+        if (!parsed.sticky_notes_detected || cards.length === 1) {
+          // Single card — update the placeholder node in place
+          node.label         = String(cards[0].label).slice(0, 60);
+          node.summary       = cards[0].summary || '';
+          node.last_modified = new Date().toISOString();
+          showToast(`Photo: "${node.label}"`);
+        } else {
+          // Multiple sticky notes — replace placeholder with one card per note
+          const placeholderIdx = session.nodes.indexOf(node);
+          if (placeholderIdx !== -1) session.nodes.splice(placeholderIdx, 1);
+          const parentId = node.parent_id;
+
+          cards.forEach((card, i) => {
+            const cardNode = {
+              id:            i === 0 ? node.id : makeId(),
+              label:         String(card.label).slice(0, 60),
+              summary:       card.summary || '',
+              transcript:    '',
+              parent_id:     parentId,
+              status:        'untouched',
+              created:       now,
+              last_modified: new Date().toISOString()
+            };
+            if (i === 0) cardNode.type = 'image'; // photo thumbnail on first card only
+            session.nodes.push(cardNode);
+          });
+          showToast(`${cards.length} sticky notes found`);
+        }
         renderCards();
         saveSession();
-        showToast(`Photo: "${node.label}"`);
       } else {
         visionError = 'Could not parse vision response';
       }
