@@ -3522,8 +3522,8 @@ function mmFocusOnNode(nodeId) {
   document.getElementById('mmFocusLabel').textContent = node?.label || '';
   document.getElementById('mmFocusBar').classList.add('visible');
   document.getElementById('mmFilterBar').style.display = 'none';
-  renderMindMap();          // renderMindMap re-applies mmSelectedId at its end via selectMmNode
-  setTimeout(mmZoomToFit, 50);
+  renderMindMap();
+  setTimeout(() => { mmZoomToFit(); selectMmNode(nodeId); }, 50);
 }
 
 function mmExitFocus() {
@@ -3644,6 +3644,8 @@ function initMmPanZoom() {
   let mmLongPressTimer = null, mmLongPressX = 0, mmLongPressY = 0;
 
   wrap.addEventListener('touchstart', e => {
+    // Ignore ghost clicks fired shortly after Quick Find closes
+    if (Date.now() - _qfCloseTime < 400) { e.preventDefault(); return; }
     if (e.touches.length === 2) {
       panning = false;
       pinchDist = Math.hypot(
@@ -4617,9 +4619,10 @@ async function pullFromGist() {
 }
 
 // ─── QUICK FIND ──────────────────────────────────────────────────────────────
-let _qfIdx      = 0;
-let _qfMatches  = [];
-let _qfOpenTime = 0;
+let _qfIdx       = 0;
+let _qfMatches   = [];
+let _qfOpenTime  = 0;
+let _qfCloseTime = 0;
 
 function _qfEsc(s) {
   return (s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
@@ -4636,6 +4639,7 @@ function showQuickFind() {
 }
 
 function hideQuickFind() {
+  _qfCloseTime = Date.now();
   document.getElementById('quickFindModal').classList.add('hidden');
   if (mmVisible) document.getElementById('mmCanvasWrap').focus();
 }
@@ -5406,7 +5410,7 @@ const toggleMenu = () => document.getElementById('menuDropdown').classList.toggl
 const closeMenu  = () => document.getElementById('menuDropdown').classList.remove('open');
 
 // ─── INIT ───────────────────────────────────────────────────────────────────
-const BUILD_TS = 'build:2026-03-26T04:00'; // bumped each deploy — confirms fresh load
+const BUILD_TS = 'build:2026-03-26T05:00'; // bumped each deploy — confirms fresh load
 
 async function initApp() {
   // Show immediately with localStorage data
