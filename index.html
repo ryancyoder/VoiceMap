@@ -493,6 +493,17 @@
       border-top: 0.5px solid var(--border);
     }
 
+    /* ── Markdown task list checkboxes ───────────────────────────── */
+    .md-task-list { list-style: none; padding-left: 0; margin: 4px 0; }
+    .md-task-item { display: flex; align-items: flex-start; gap: 7px; padding: 2px 0; }
+    .md-task-item label { display: flex; align-items: flex-start; gap: 7px; cursor: pointer; width: 100%; }
+    .md-checkbox {
+      width: 16px; height: 16px; margin-top: 1px;
+      accent-color: var(--accent); cursor: pointer; flex-shrink: 0;
+      border-radius: 3px;
+    }
+    .md-task-item input:checked + span { text-decoration: line-through; opacity: 0.5; }
+
     /* ── Empty state ──────────────────────────────────────────── */
     .empty-state {
       display: flex;
@@ -3389,7 +3400,7 @@ function mdToHtml(text) {
   const safe = text.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
   const lines = safe.split('\n');
   const out = [];
-  let inUl = false, inOl = false;
+  let inUl = false, inOl = false, cbIdx = 0;
 
   const closeLists = () => {
     if (inUl) { out.push('</ul>'); inUl = false; }
@@ -3400,9 +3411,22 @@ function mdToHtml(text) {
     if (/^### /.test(raw))       { closeLists(); out.push(`<h3>${inlineMd(raw.slice(4))}</h3>`); continue; }
     if (/^## /.test(raw))        { closeLists(); out.push(`<h2>${inlineMd(raw.slice(3))}</h2>`); continue; }
     if (/^# /.test(raw))         { closeLists(); out.push(`<h1>${inlineMd(raw.slice(2))}</h1>`); continue; }
-    if (/^[-*+] /.test(raw))     {
-      if (!inUl) { closeLists(); out.push('<ul>'); inUl = true; }
-      out.push(`<li>${inlineMd(raw.slice(2))}</li>`); continue;
+    const listM = raw.match(/^(\s*)[-*+] (.*)/);
+    if (listM) {
+      const indent = Math.floor(listM[1].length / 2);
+      const content = listM[2];
+      const cbM = content.match(/^\[([ xX])\] (.*)/);
+      if (cbM) {
+        // Checkbox item
+        const checked = cbM[1] !== ' ';
+        if (!inUl) { closeLists(); out.push('<ul class="md-task-list">'); inUl = true; }
+        out.push(`<li class="md-task-item" style="padding-left:${indent * 20}px"><label><input type="checkbox" class="md-checkbox" data-cb-idx="${cbIdx++}"${checked ? ' checked' : ''}><span>${inlineMd(cbM[2])}</span></label></li>`);
+      } else {
+        // Regular bullet
+        if (!inUl) { closeLists(); out.push('<ul>'); inUl = true; }
+        out.push(`<li style="padding-left:${indent * 20}px">${inlineMd(content)}</li>`);
+      }
+      continue;
     }
     if (/^\d+\.\s/.test(raw))    {
       if (!inOl) { closeLists(); out.push('<ol>'); inOl = true; }
@@ -3611,7 +3635,9 @@ function selectMmNode(nodeId, scroll = true) {
   const panel = document.getElementById('mmPanel');
   panel.classList.remove('hidden');
   document.getElementById('mmPanelTitle').textContent   = node.label;
-  document.getElementById('mmPanelSummary').innerHTML = mdToHtml(node.summary || node.transcript || '');
+  const panelSummary = document.getElementById('mmPanelSummary');
+  panelSummary.dataset.nodeId = nodeId;
+  panelSummary.innerHTML = mdToHtml(node.summary || node.transcript || '');
   const children = session.nodes.filter(n => n.parent_id === nodeId).length;
   document.getElementById('mmPanelMeta').textContent = [
     children ? `${children} sub-card${children !== 1 ? 's' : ''}` : 'No sub-cards',
@@ -5650,7 +5676,7 @@ const toggleMenu = () => document.getElementById('menuDropdown').classList.toggl
 const closeMenu  = () => document.getElementById('menuDropdown').classList.remove('open');
 
 // ─── INIT ───────────────────────────────────────────────────────────────────
-const BUILD_TS = 'build:2026-03-26T11:00'; // bumped each deploy — confirms fresh load
+const BUILD_TS = 'build:2026-03-26T12:00'; // bumped each deploy — confirms fresh load
 
 async function initApp() {
   // Show immediately with localStorage data
@@ -5785,6 +5811,25 @@ document.addEventListener('DOMContentLoaded', () => {
 
   initNodeCtxMenu();
   initConsolidateModal();
+
+  // Persist markdown checkbox toggles (- [ ] / - [x]) when clicked
+  document.addEventListener('change', e => {
+    const cb = e.target;
+    if (!cb.classList.contains('md-checkbox')) return;
+    const container = cb.closest('[data-node-id]');
+    if (!container) return;
+    const node = session.nodes.find(n => n.id === container.dataset.nodeId);
+    if (!node) return;
+    const cbIdx = parseInt(cb.dataset.cbIdx);
+    const nowChecked = cb.checked;
+    let count = 0;
+    node.summary = (node.summary || '').replace(/(\s*[-*+] \[)([ xX])(\])/g, (m, pre, _state, post) => {
+      if (count++ === cbIdx) return pre + (nowChecked ? 'x' : ' ') + post;
+      return m;
+    });
+    node.last_modified = new Date().toISOString();
+    saveSession();
+  });
   initQuickFind();
 
   // Mind map
