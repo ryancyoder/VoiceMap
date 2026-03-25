@@ -540,13 +540,14 @@
     .keyboard-toggle-btn {
       width: 44px; height: 44px; border-radius: 50%;
       background: #f2f2f7; border: 0.5px solid var(--border);
-      font-size: 19px; cursor: pointer; flex-shrink: 0;
+      font-size: 13px; font-weight: 700; cursor: pointer; flex-shrink: 0;
       display: flex; align-items: center; justify-content: center;
-      transition: background 0.15s, border-color 0.15s;
+      transition: background 0.15s, border-color 0.15s; color: var(--text);
+      font-family: var(--font);
     }
     .keyboard-toggle-btn:active { background: #e5e5ea; }
     .keyboard-toggle-btn.active {
-      background: var(--accent); border-color: var(--accent); font-size: 16px;
+      background: var(--accent); border-color: var(--accent); color: #fff;
     }
     .keyboard-row {
       display: flex; align-items: flex-end; gap: 10px;
@@ -1499,7 +1500,7 @@
       <button class="stop-btn" id="stopBtn" disabled>■</button>
       <button class="record-btn" id="recordBtn">⏺</button>
       <button class="camera-btn" id="cameraBtn">📷</button>
-      <button class="keyboard-toggle-btn" id="keyboardToggleBtn" title="Type instead of speak">⌨</button>
+      <button class="keyboard-toggle-btn" id="keyboardToggleBtn" title="Type instead of speak">Aa</button>
     </div>
     <div class="keyboard-row hidden" id="keyboardRow">
       <textarea class="keyboard-input" id="keyboardInput" placeholder="Type your idea… (Enter to send)" rows="1"></textarea>
