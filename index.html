@@ -2539,6 +2539,13 @@ function extractJSON(raw) {
 }
 
 async function handleTranscript(transcript) {
+  // Direct field edit path — replace title or description as spoken, no AI
+  if (pendingEdit) {
+    applyDirectEdit(transcript);
+    setRecordingState(isRecording);
+    return;
+  }
+
   // Elaborate path — update existing card summary instead of creating a new card
   if (pendingElaborate) {
     const { nodeId } = pendingElaborate;
@@ -2784,7 +2791,9 @@ async function submitKeyboardInput(useAI = false) {
   input.value = '';
   input.style.height = '';
   document.getElementById('keyboardSendBtn').disabled = true;
-  if (useAI) {
+  if (pendingEdit) {
+    applyDirectEdit(text); // always direct — no AI for explicit field edits
+  } else if (useAI) {
     if (!getApiKey()) { showKeyModal(); input.value = text; return; }
     await handleTranscript(text);
   } else {
@@ -2792,6 +2801,74 @@ async function submitKeyboardInput(useAI = false) {
   }
   document.getElementById('keyboardSendBtn').disabled = false;
   input.focus();
+}
+
+// ─── DIRECT FIELD EDITING ────────────────────────────────────────────────────
+let pendingEdit = null; // { nodeId, field: 'label'|'summary' } — set when editing a card field
+
+function startEditField(nodeId, field) {
+  const node = session.nodes.find(n => n.id === nodeId);
+  if (!node) return;
+  if (pendingImage)     clearPendingImage();
+  if (pendingElaborate) pendingElaborate = null;
+  pendingEdit = { nodeId, field };
+
+  const fieldLabel = field === 'label' ? 'title' : 'description';
+  const current    = field === 'label' ? node.label : (node.summary || '');
+
+  { // always show keyboard row for direct field editing
+    const keyRow = document.getElementById('keyboardRow');
+    const input  = document.getElementById('keyboardInput');
+    keyRow.classList.remove('hidden');
+    input.value = current;
+    input.style.height = 'auto';
+    input.style.height = Math.min(input.scrollHeight, 120) + 'px';
+    document.getElementById('keyboardSendBtn').disabled = !current.trim();
+    setStatus(`Editing ${fieldLabel} — Enter to save · Esc to cancel`);
+    input.focus();
+    // Select all so user can replace instantly
+    requestAnimationFrame(() => input.select());
+  } else {
+    setStatus(`Speak the new ${fieldLabel} for "${node.label.slice(0, 30)}"`, 'processing');
+  }
+}
+
+function applyDirectEdit(text) {
+  if (!pendingEdit) return;
+  const { nodeId, field } = pendingEdit;
+  pendingEdit = null;
+  const node = session.nodes.find(n => n.id === nodeId);
+  if (!node) return;
+  if (field === 'label') {
+    node.label = text.slice(0, 60);
+  } else {
+    node.summary = text;
+  }
+  node.last_modified = new Date().toISOString();
+  saveSession();
+  renderCards();
+  showToast(`${field === 'label' ? 'Title' : 'Description'} updated`);
+  // Hide keyboard row if keyboard mode is not globally on
+  if (!keyboardMode) {
+    document.getElementById('keyboardRow').classList.add('hidden');
+    setStatus('Tap ⏺ to capture an idea');
+  } else {
+    setStatus('Enter adds card directly · ⌘Enter uses AI');
+  }
+}
+
+function cancelPendingEdit() {
+  if (!pendingEdit) return;
+  pendingEdit = null;
+  document.getElementById('keyboardInput').value = '';
+  document.getElementById('keyboardInput').style.height = '';
+  document.getElementById('keyboardSendBtn').disabled = true;
+  if (!keyboardMode) {
+    document.getElementById('keyboardRow').classList.add('hidden');
+    setStatus('Tap ⏺ to capture an idea');
+  } else {
+    setStatus('Enter adds card directly · ⌘Enter uses AI');
+  }
 }
 
 // ─── IMAGE CAPTURE ───────────────────────────────────────────────────────────
@@ -4388,6 +4465,8 @@ function initNodeCtxMenu() {
   document.getElementById('ctxDefer').addEventListener('click',     () => { closeNodeCtxMenu(); showDeferModal(getCtxNode()); });
   document.getElementById('ctxSchedule').addEventListener('click',  () => { closeNodeCtxMenu(); showScheduleModal(getCtxNode()); });
   document.getElementById('ctxQueue').addEventListener('click',     () => { closeNodeCtxMenu(); queueNode(getCtxNode()); });
+  document.getElementById('ctxEditTitle').addEventListener('click', () => { closeNodeCtxMenu(); startEditField(getCtxNode(), 'label'); });
+  document.getElementById('ctxEditDesc').addEventListener('click',  () => { closeNodeCtxMenu(); startEditField(getCtxNode(), 'summary'); });
   document.getElementById('ctxElaborate').addEventListener('click', () => { closeNodeCtxMenu(); startElaborate(getCtxNode()); });
   document.getElementById('ctxExplore').addEventListener('click',   () => { closeNodeCtxMenu(); openChatModal(getCtxNode()); });
   document.getElementById('ctxRefile').addEventListener('click',    () => { closeNodeCtxMenu(); refileNode(getCtxNode()); });
@@ -5078,6 +5157,11 @@ document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('keyboardToggleBtn').addEventListener('click', () => setKeyboardMode(!keyboardMode));
   document.getElementById('keyboardSendBtn').addEventListener('click', () => submitKeyboardInput(false));
   document.getElementById('keyboardInput').addEventListener('keydown', e => {
+    if (e.key === 'Escape') {
+      e.preventDefault();
+      cancelPendingEdit();
+      return;
+    }
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
       submitKeyboardInput(e.metaKey || e.ctrlKey); // Cmd/Ctrl+Enter → AI, plain Enter → direct
@@ -5442,7 +5526,9 @@ document.addEventListener('DOMContentLoaded', () => {
   <button class="node-ctx-item" id="ctxDefer">⏳ Defer</button>
   <button class="node-ctx-item" id="ctxSchedule">📅 Schedule</button>
   <button class="node-ctx-item" id="ctxQueue">📋 Queue for scheduling</button>
-  <button class="node-ctx-item" id="ctxElaborate">✏ Elaborate</button>
+  <button class="node-ctx-item" id="ctxEditTitle">✎ Edit Title</button>
+  <button class="node-ctx-item" id="ctxEditDesc">📝 Edit Description</button>
+  <button class="node-ctx-item" id="ctxElaborate">✨ Elaborate with AI</button>
   <button class="node-ctx-item" id="ctxExplore">💬 Explore with AI</button>
   <button class="node-ctx-item" id="ctxRefile">↗ Re-file</button>
   <div class="node-ctx-sep"></div>
