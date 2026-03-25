@@ -394,6 +394,18 @@
     .simplify-btn.working { color: #f5c842; }
 
     /* ── Drag & drop ───────────────────────────────────────────── */
+    .drag-handle {
+      width: 22px; height: 32px;
+      display: flex; align-items: center; justify-content: center;
+      flex-shrink: 0;
+      color: #c4c4c4;
+      font-size: 15px;
+      letter-spacing: -1px;
+      cursor: grab;
+      touch-action: none;
+      user-select: none;
+      margin-right: -4px;
+    }
     .card-swipe-wrap.drag-source { opacity: 0.35; }
     .card-swipe-wrap.drop-child-target > .card {
       outline: 2.5px solid #30d158;
@@ -2445,6 +2457,7 @@ function renderCards(animDir) {
             <div class="card-actions">
               ${!selectMode ? `<button class="info-btn" data-toggle-id="${nid}">ⓘ</button>` : ''}
               ${!selectMode ? `<span class="chevron">›</span>` : ''}
+              ${!selectMode ? `<div class="drag-handle">⠿</div>` : ''}
             </div>
           </div>
           ${!selectMode ? `
@@ -4048,6 +4061,7 @@ function initSwipeHandlers() {
     if (selectMode || dragState?.phase === 'dragging') return;
     const card = e.target.closest('.card');
     if (!card) return;
+    if (e.target.closest('.drag-handle')) return;
     const nodeId = card.dataset.nodeId;
     if (!nodeId) return;
 
@@ -4392,8 +4406,6 @@ function togglePlogEntry(id) {
 
 // ─── DRAG TO REORDER / REPARENT ──────────────────────────────────────────────
 let dragState         = null;
-let dragLongPressTimer = null;
-const DRAG_LONG_PRESS  = 480;
 
 function initDragHandlers() {
   document.getElementById('cardList').addEventListener('touchstart', onDragTouchStart, { passive: true });
@@ -4404,8 +4416,8 @@ function initDragHandlers() {
 
 function onDragTouchStart(e) {
   if (selectMode) return;
-  // Ignore taps on action buttons
-  if (e.target.closest('.swipe-btn,.info-btn,.refile-btn,.simplify-btn')) return;
+  // Only start drag when touching the grab handle
+  if (!e.target.closest('.drag-handle')) return;
   const wrap = e.target.closest('.card-swipe-wrap');
   if (!wrap) return;
   const card = wrap.querySelector('.card');
@@ -4415,7 +4427,7 @@ function onDragTouchStart(e) {
 
   const t = e.touches[0];
   dragState = { nodeId, wrap, card, startX: t.clientX, startY: t.clientY, phase: 'pending' };
-  dragLongPressTimer = setTimeout(activateDrag, DRAG_LONG_PRESS);
+  // No long-press timer — drag activates immediately on first significant move
 }
 
 function activateDrag() {
@@ -4449,10 +4461,9 @@ function onDragTouchMove(e) {
   const t = e.touches[0];
 
   if (dragState.phase === 'pending') {
-    if (Math.abs(t.clientX - dragState.startX) > 10 ||
-        Math.abs(t.clientY - dragState.startY) > 10) {
-      clearTimeout(dragLongPressTimer);
-      dragState = null;
+    if (Math.abs(t.clientX - dragState.startX) > 4 ||
+        Math.abs(t.clientY - dragState.startY) > 4) {
+      activateDrag();
     }
     return;
   }
@@ -4497,7 +4508,6 @@ function onDragTouchMove(e) {
 }
 
 function onDragTouchEnd() {
-  clearTimeout(dragLongPressTimer);
   if (!dragState || dragState.phase !== 'dragging') { dragState = null; return; }
 
   const { nodeId, lastConfirmedDrop, ghost, indicator, wrap } = dragState;
@@ -4542,7 +4552,6 @@ function onDragTouchEnd() {
 }
 
 function onDragCancel() {
-  clearTimeout(dragLongPressTimer);
   if (!dragState) return;
   if (dragState.ghost)     { dragState.ghost.remove(); }
   if (dragState.indicator) { dragState.indicator.remove(); }
@@ -5537,7 +5546,7 @@ const toggleMenu = () => document.getElementById('menuDropdown').classList.toggl
 const closeMenu  = () => document.getElementById('menuDropdown').classList.remove('open');
 
 // ─── INIT ───────────────────────────────────────────────────────────────────
-const BUILD_TS = 'build:2026-03-26T07:00'; // bumped each deploy — confirms fresh load
+const BUILD_TS = 'build:2026-03-26T08:00'; // bumped each deploy — confirms fresh load
 
 async function initApp() {
   // Show immediately with localStorage data
