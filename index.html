@@ -765,6 +765,30 @@
     }
     .mm-node-meta { font-size: 11px; color: var(--muted); margin-top: 3px; }
     .mm-node-thumb { width: 100%; height: 60px; object-fit: cover; border-radius: 6px; margin-top: 6px; }
+    .mm-collapse-btn {
+      position: absolute; top: 4px; right: 4px;
+      width: 16px; height: 16px; border-radius: 3px;
+      background: rgba(255,255,255,0.07); border: none;
+      color: var(--muted); font-size: 9px; cursor: pointer;
+      display: flex; align-items: center; justify-content: center;
+      padding: 0; line-height: 1; user-select: none; flex-shrink: 0;
+    }
+    .mm-collapse-btn:active { background: rgba(255,255,255,0.18); }
+    .mm-node-collapsed { opacity: 0.7; }
+    .node-ctx-menu {
+      background: var(--surface); border: 0.5px solid var(--border);
+      border-radius: 14px; padding: 6px; min-width: 190px;
+      box-shadow: 0 8px 32px rgba(0,0,0,0.55);
+    }
+    .node-ctx-item {
+      display: block; width: 100%; padding: 11px 14px;
+      background: none; border: none; border-radius: 8px;
+      color: var(--text); font-size: 15px; text-align: left;
+      font-family: var(--font); cursor: pointer;
+    }
+    .node-ctx-item:active { background: rgba(255,255,255,0.08); }
+    .node-ctx-item.danger { color: #ff3b30; }
+    .node-ctx-sep { height: 0.5px; background: var(--border); margin: 4px 2px; }
     .mm-panel {
       width: 300px; flex-shrink: 0; background: var(--surface);
       border-left: 0.5px solid var(--border);
@@ -2375,6 +2399,7 @@ let mmHideDeferred   = false;
 let mmHideArchived   = false;
 let mmFocusNodeId    = null;
 let mmPanelPinned    = false;
+const mmCollapsed    = new Set();   // nodeIds whose children are hidden
 
 function mmVisibleNodes() {
   let allowed = null;
@@ -2385,10 +2410,18 @@ function mmVisibleNodes() {
       .forEach(n => { allowed.add(n.id); addDesc(n.id); });
     addDesc(mmFocusNodeId);
   }
+  // Build set of nodes hidden because an ancestor is collapsed
+  const hiddenByCollapse = new Set();
+  const markHidden = id => session.nodes
+    .filter(n => n.parent_id === id)
+    .forEach(n => { hiddenByCollapse.add(n.id); markHidden(n.id); });
+  mmCollapsed.forEach(id => markHidden(id));
+
   return session.nodes.filter(n => {
     if (allowed && !allowed.has(n.id)) return false;
     if (mmHideDeferred && n.deferred) return false;
     if (mmHideArchived && n.archived) return false;
+    if (hiddenByCollapse.has(n.id)) return false;
     return true;
   });
 }
@@ -2453,23 +2486,27 @@ function renderMindMap() {
   nodesEl.innerHTML = nodes.map(n => {
     if (!pos[n.id]) return '';
     const { x, y } = pos[n.id];
-    const children = nodes.filter(c => c.parent_id === n.id).length;
-    const img = imageCache[n.id];
+    const children    = nodes.filter(c => c.parent_id === n.id).length;
+    const allChildren = session.nodes.filter(c => c.parent_id === n.id).length;
+    const isCollapsed = mmCollapsed.has(n.id);
+    const img      = imageCache[n.id];
     const selected = mmSelectedId === n.id ? ' selected' : '';
     const hasImg   = img ? ' has-image' : '';
     const done     = n.status === 'done' ? ' status-done' : '';
+    const collapsed = isCollapsed ? ' mm-node-collapsed' : '';
     const meta = [
-      children ? `${children} sub-card${children !== 1 ? 's' : ''}` : '',
+      allChildren ? `${isCollapsed ? '▶ ' : ''}${allChildren} sub-card${allChildren !== 1 ? 's' : ''}` : '',
       n.deferred ? `⏳ ${formatDeferDate(n.deferredUntil)}` : '',
       n.archived ? '📁 archived' : '',
       n.pinned   ? '📌' : ''
     ].filter(Boolean).join(' · ');
-    return `<div class="mm-node${selected}${hasImg}${done}"
+    return `<div class="mm-node${selected}${hasImg}${done}${collapsed}"
          id="mmn-${esc(n.id)}" data-mmid="${esc(n.id)}"
          style="left:${x}px;top:${y}px;width:${MM_W}px">
       ${img ? `<img class="mm-node-thumb" src="${img}" alt="">` : ''}
       <div class="mm-node-title">${esc(n.label)}</div>
       ${meta ? `<div class="mm-node-meta">${esc(meta)}</div>` : ''}
+      ${allChildren ? `<button class="mm-collapse-btn" data-collapse-id="${esc(n.id)}" title="${isCollapsed ? 'Expand' : 'Collapse'}">${isCollapsed ? '▶' : '▼'}</button>` : ''}
     </div>`;
   }).join('');
 
@@ -2549,6 +2586,12 @@ function mmExitFocus() {
   document.getElementById('mmFilterBar').style.display = '';
   renderMindMap();
   setTimeout(() => mmZoomToFit(), 50);
+}
+
+function mmToggleCollapse(nodeId) {
+  if (mmCollapsed.has(nodeId)) mmCollapsed.delete(nodeId);
+  else mmCollapsed.add(nodeId);
+  renderMindMap();
 }
 
 function mmFocusUp() {
@@ -2645,6 +2688,7 @@ function initMmPanZoom() {
   const wrap = document.getElementById('mmCanvasWrap');
   let panning = false, lastT = null, pinchDist = null, tapNode = null;
   let lastTapTime = 0, lastTapNodeId = undefined, singleTapTimer = null, touchDblHandled = false;
+  let mmLongPressTimer = null, mmLongPressX = 0, mmLongPressY = 0;
 
   wrap.addEventListener('touchstart', e => {
     if (e.touches.length === 2) {
@@ -2653,12 +2697,24 @@ function initMmPanZoom() {
         e.touches[0].clientX - e.touches[1].clientX,
         e.touches[0].clientY - e.touches[1].clientY
       );
+      clearTimeout(mmLongPressTimer); mmLongPressTimer = null;
     } else if (e.touches.length === 1) {
       lastT = { x: e.touches[0].clientX, y: e.touches[0].clientY };
       panning = true;
       pinchDist = null;
       const node = e.target.closest('[data-mmid]');
       tapNode = node ? node.dataset.mmid : null;
+      if (tapNode) {
+        mmLongPressX = e.touches[0].clientX;
+        mmLongPressY = e.touches[0].clientY;
+        const capturedId = tapNode;
+        mmLongPressTimer = setTimeout(() => {
+          tapNode = null;
+          clearTimeout(singleTapTimer); singleTapTimer = null;
+          showNodeCtxMenu(capturedId, mmLongPressX, mmLongPressY);
+          navigator.vibrate?.(40);
+        }, 500);
+      }
     }
   }, { passive: true });
 
@@ -2677,7 +2733,10 @@ function initMmPanZoom() {
       e.preventDefault();
       const dx = e.touches[0].clientX - lastT.x;
       const dy = e.touches[0].clientY - lastT.y;
-      if (Math.abs(dx) > 4 || Math.abs(dy) > 4) tapNode = null;
+      if (Math.abs(dx) > 4 || Math.abs(dy) > 4) {
+        tapNode = null;
+        clearTimeout(mmLongPressTimer); mmLongPressTimer = null;
+      }
       mmTransform.x += dx;
       mmTransform.y += dy;
       lastT = { x: e.touches[0].clientX, y: e.touches[0].clientY };
@@ -2686,6 +2745,16 @@ function initMmPanZoom() {
   }, { passive: false });
 
   wrap.addEventListener('touchend', e => {
+    clearTimeout(mmLongPressTimer); mmLongPressTimer = null;
+    // Handle collapse button tap directly
+    if (e.changedTouches.length === 1) {
+      const collapseBtn = e.target.closest('.mm-collapse-btn');
+      if (collapseBtn) {
+        tapNode = null;
+        mmToggleCollapse(collapseBtn.dataset.collapseId);
+        return;
+      }
+    }
     if (e.changedTouches.length === 1) {
       const now = Date.now();
       const captured = tapNode;
@@ -2731,6 +2800,8 @@ function initMmPanZoom() {
   wrap.addEventListener('mouseup', e => {
     wrap.classList.remove('panning');
     if (!mouseMoved) {
+      const collapseBtn = e.target.closest('.mm-collapse-btn');
+      if (collapseBtn) { mmToggleCollapse(collapseBtn.dataset.collapseId); mouseDown = false; mouseStart = null; return; }
       const node = e.target.closest('[data-mmid]');
       if (node) selectMmNode(node.dataset.mmid);
     }
@@ -2993,6 +3064,7 @@ function closeOpenSwipe() {
 
 function initSwipeHandlers() {
   const list = document.getElementById('cardList');
+  let swipeLongPressTimer = null;
 
   list.addEventListener('touchstart', e => {
     if (selectMode || dragState?.phase === 'dragging') return;
@@ -3008,10 +3080,18 @@ function initSwipeHandlers() {
       return;
     }
 
+    const touchX = e.touches[0].clientX;
+    const touchY = e.touches[0].clientY;
+    swipeLongPressTimer = setTimeout(() => {
+      swipeState = null;
+      showNodeCtxMenu(nodeId, touchX, touchY);
+      navigator.vibrate?.(40);
+    }, 500);
+
     swipeState = {
       nodeId,
-      startX: e.touches[0].clientX,
-      startY: e.touches[0].clientY,
+      startX: touchX,
+      startY: touchY,
       dx: 0,
       dir: null,
     };
@@ -3026,6 +3106,7 @@ function initSwipeHandlers() {
     if (!swipeState.dir) {
       if (Math.abs(dx) < 4 && Math.abs(dy) < 4) return;
       swipeState.dir = Math.abs(dx) > Math.abs(dy) ? 'h' : 'v';
+      clearTimeout(swipeLongPressTimer); swipeLongPressTimer = null;
     }
     if (swipeState.dir === 'v') return;
 
@@ -3042,6 +3123,7 @@ function initSwipeHandlers() {
   }, { passive: false });
 
   document.addEventListener('touchend', () => {
+    clearTimeout(swipeLongPressTimer); swipeLongPressTimer = null;
     if (!swipeState || swipeState.dir !== 'h') { swipeState = null; return; }
     const { nodeId, dx } = swipeState;
     swipeState = null;
@@ -3393,6 +3475,41 @@ function onDragCancel() {
   dragState = null;
 }
 
+// ─── NODE CONTEXT MENU ───────────────────────────────────────────────────────
+function showNodeCtxMenu(nodeId, x, y) {
+  const node = session.nodes.find(n => n.id === nodeId);
+  if (!node) return;
+  const menu = document.getElementById('nodeCtxMenu');
+  const overlay = document.getElementById('nodeCtxOverlay');
+  menu.dataset.ctxNode = nodeId;
+  document.getElementById('ctxPin').textContent     = node.pinned   ? '📌 Unpin'    : '📌 Pin';
+  document.getElementById('ctxArchive').textContent = node.archived ? '📂 Unarchive' : '📁 Archive';
+  const menuW = 200, menuH = 300;
+  const left = Math.min(x, window.innerWidth  - menuW - 12);
+  const top  = Math.min(y, window.innerHeight - menuH - 12);
+  menu.style.left = Math.max(8, left) + 'px';
+  menu.style.top  = Math.max(8, top)  + 'px';
+  overlay.style.display = 'block';
+  menu.style.display    = 'block';
+}
+
+function closeNodeCtxMenu() {
+  document.getElementById('nodeCtxMenu').style.display    = 'none';
+  document.getElementById('nodeCtxOverlay').style.display = 'none';
+}
+
+function initNodeCtxMenu() {
+  const getCtxNode = () => document.getElementById('nodeCtxMenu').dataset.ctxNode;
+  document.getElementById('ctxPin').addEventListener('click',      () => { closeNodeCtxMenu(); pinNode(getCtxNode()); });
+  document.getElementById('ctxArchive').addEventListener('click',  () => { closeNodeCtxMenu(); archiveNode(getCtxNode()); });
+  document.getElementById('ctxDefer').addEventListener('click',    () => { closeNodeCtxMenu(); showDeferModal(getCtxNode()); });
+  document.getElementById('ctxElaborate').addEventListener('click',() => { closeNodeCtxMenu(); startElaborate(getCtxNode()); });
+  document.getElementById('ctxExplore').addEventListener('click',  () => { closeNodeCtxMenu(); openChatModal(getCtxNode()); });
+  document.getElementById('ctxRefile').addEventListener('click',   () => { closeNodeCtxMenu(); refileNode(getCtxNode()); });
+  document.getElementById('ctxDelete').addEventListener('click',   () => { closeNodeCtxMenu(); deleteNode(getCtxNode()); });
+  document.getElementById('nodeCtxOverlay').addEventListener('click', closeNodeCtxMenu);
+}
+
 // ─── MENU ───────────────────────────────────────────────────────────────────
 const toggleMenu = () => document.getElementById('menuDropdown').classList.toggle('open');
 const closeMenu  = () => document.getElementById('menuDropdown').classList.remove('open');
@@ -3481,6 +3598,8 @@ document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('miArchive').addEventListener('click', () => { closeMenu(); setView('archived'); });
   document.getElementById('miExportPrompt').addEventListener('click', () => { closeMenu(); exportPrompt(null); });
   document.getElementById('miClear').addEventListener('click', clearAll);
+
+  initNodeCtxMenu();
 
   // Mind map
   initMmPanZoom();
@@ -3732,6 +3851,19 @@ document.addEventListener('DOMContentLoaded', () => {
       </div>
     </div>
   </div>
+</div>
+
+<!-- Long-press node context menu -->
+<div id="nodeCtxOverlay" style="display:none;position:fixed;inset:0;z-index:9998"></div>
+<div id="nodeCtxMenu" class="node-ctx-menu" style="display:none;position:fixed;z-index:9999" data-ctx-node="">
+  <button class="node-ctx-item" id="ctxPin">📌 Pin</button>
+  <button class="node-ctx-item" id="ctxArchive">📁 Archive</button>
+  <button class="node-ctx-item" id="ctxDefer">⏳ Defer</button>
+  <button class="node-ctx-item" id="ctxElaborate">✏ Elaborate</button>
+  <button class="node-ctx-item" id="ctxExplore">💬 Explore with AI</button>
+  <button class="node-ctx-item" id="ctxRefile">↗ Re-file</button>
+  <div class="node-ctx-sep"></div>
+  <button class="node-ctx-item danger" id="ctxDelete">✕ Delete</button>
 </div>
 
 <!-- Tap-to-record overlay (shown when ?record=1 in URL) -->
