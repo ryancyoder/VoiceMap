@@ -1213,9 +1213,27 @@
       padding: 5px 9px; font-size: 11px; font-weight: 600;
       color: var(--accent); cursor: pointer; font-family: var(--font);
     }
+    .cal-body {
+      flex: 1; display: flex; min-height: 0; overflow: hidden;
+    }
+    .cal-sidebar {
+      width: 112px; flex-shrink: 0; display: flex; flex-direction: column;
+      border-right: 0.5px solid var(--border); background: var(--surface);
+    }
+    .cal-sidebar-hdr {
+      padding: 6px 8px; font-size: 11px; font-weight: 700;
+      color: var(--muted); text-transform: uppercase; letter-spacing: 0.5px;
+      border-bottom: 0.5px solid var(--border); flex-shrink: 0;
+    }
+    .cal-sidebar-cards {
+      flex: 1; overflow-y: auto; padding: 4px;
+      display: flex; flex-direction: column; gap: 4px;
+    }
+    .cal-sidebar.cal-drop-active .cal-sidebar-cards {
+      background: rgba(226,75,74,0.08);
+    }
     .cal-grid {
-      flex: 1; display: flex; min-height: 0;
-      overflow-x: auto; -webkit-overflow-scrolling: touch;
+      flex: 1; display: flex; min-height: 0; overflow-x: auto;
     }
     .cal-day-col {
       flex: 1; min-width: 46px; display: flex; flex-direction: column;
@@ -1356,7 +1374,13 @@
       <button class="cal-nav-btn" id="calNextBtn">›</button>
       <button class="cal-today-btn" id="calTodayBtn">Today</button>
     </div>
-    <div class="cal-grid" id="calGrid"></div>
+    <div class="cal-body" id="calBody">
+      <div class="cal-sidebar" id="calSidebar">
+        <div class="cal-sidebar-hdr">📋 Queue</div>
+        <div class="cal-sidebar-cards" id="calSidebarCards"></div>
+      </div>
+      <div class="cal-grid" id="calGrid"></div>
+    </div>
     <div class="cal-month-strip" id="calMonthStrip"></div>
   </div>
 
@@ -4205,6 +4229,7 @@ function initNodeCtxMenu() {
   document.getElementById('ctxArchive').addEventListener('click',   () => { closeNodeCtxMenu(); archiveNode(getCtxNode()); });
   document.getElementById('ctxDefer').addEventListener('click',     () => { closeNodeCtxMenu(); showDeferModal(getCtxNode()); });
   document.getElementById('ctxSchedule').addEventListener('click',  () => { closeNodeCtxMenu(); showScheduleModal(getCtxNode()); });
+  document.getElementById('ctxQueue').addEventListener('click',     () => { closeNodeCtxMenu(); queueNode(getCtxNode()); });
   document.getElementById('ctxElaborate').addEventListener('click', () => { closeNodeCtxMenu(); startElaborate(getCtxNode()); });
   document.getElementById('ctxExplore').addEventListener('click',   () => { closeNodeCtxMenu(); openChatModal(getCtxNode()); });
   document.getElementById('ctxRefile').addEventListener('click',    () => { closeNodeCtxMenu(); refileNode(getCtxNode()); });
@@ -4277,8 +4302,28 @@ function hideCalendar() {
 
 function renderCalendar() {
   if (!calVisible) return;
+  renderCalendarSidebar();
   renderCalendarWeek();
   renderMonthStrip();
+}
+
+function renderCalendarSidebar() {
+  const container = document.getElementById('calSidebarCards');
+  if (!container) return;
+  const queued = session.nodes.filter(n => n.needs_scheduling && !n.scheduled_date && !n.archived);
+  container.innerHTML = '';
+  if (queued.length === 0) {
+    container.innerHTML = '<div style="font-size:10px;color:var(--muted);padding:6px;text-align:center">Long-press a card → Queue for scheduling</div>';
+    return;
+  }
+  queued.forEach(node => {
+    const card = document.createElement('div');
+    card.className = 'cal-card';
+    card.dataset.calCardId = node.id;
+    card.dataset.calKind   = 'queued';
+    card.textContent = node.label;
+    container.appendChild(card);
+  });
 }
 
 function renderCalendarWeek() {
@@ -4418,6 +4463,17 @@ function renderMonthStrip() {
 // ── Schedule a node to a specific date ───────────────────────────────────────
 let schedPendingNodeId = null;
 
+function queueNode(nodeId) {
+  const node = session.nodes.find(n => n.id === nodeId);
+  if (!node) return;
+  node.needs_scheduling = true;
+  node.scheduled_date   = null;  // remove any existing date so it lands in the sidebar
+  node.last_modified    = new Date().toISOString();
+  saveSession();
+  if (calVisible) renderCalendar(); else renderCards();
+  showToast('📋 Added to schedule queue');
+}
+
 function scheduleNode(nodeId, isoDate) {
   const node = session.nodes.find(n => n.id === nodeId);
   if (!node) return;
@@ -4444,11 +4500,11 @@ function hideScheduleModal() {
 
 // ── Drag-to-reschedule (touch events, mirrors kanban pattern) ────────────────
 function initCalendarDrag() {
-  const grid = document.getElementById('calGrid');
-  if (!grid) return;
-  // One listener on the grid container, same pattern as kanban board
-  grid.removeEventListener('touchstart', onCalTouchStart);
-  grid.addEventListener('touchstart', onCalTouchStart, { passive: true });
+  // Listen on calBody so sidebar cards and grid cards are both covered
+  const body = document.getElementById('calBody');
+  if (!body) return;
+  body.removeEventListener('touchstart', onCalTouchStart);
+  body.addEventListener('touchstart', onCalTouchStart, { passive: true });
 }
 
 function onCalTouchStart(e) {
@@ -4501,9 +4557,20 @@ function onCalTouchMove(e) {
   const el = document.elementFromPoint(t.clientX, t.clientY);
   ghost.style.visibility = '';
   document.querySelectorAll('.cal-day-col').forEach(c => c.classList.remove('cal-drop-active'));
+  document.getElementById('calSidebar')?.classList.remove('cal-drop-active');
+
   const col = el?.closest('.cal-day-col');
-  if (col) { col.classList.add('cal-drop-active'); calDragState.targetDate = col.dataset.calDate; }
-  else calDragState.targetDate = null;
+  const sidebar = el?.closest('#calSidebar');
+  if (col) {
+    col.classList.add('cal-drop-active');
+    calDragState.targetDate = col.dataset.calDate;
+  } else if (sidebar && calDragState.kind !== 'queued') {
+    // Dragging a scheduled card back to the sidebar removes its date
+    sidebar.classList.add('cal-drop-active');
+    calDragState.targetDate = '__sidebar__';
+  } else {
+    calDragState.targetDate = null;
+  }
 }
 
 function _calActivateDrag(touch) {
@@ -4534,14 +4601,34 @@ function onCalTouchEnd() {
   calDragState = null;
   if (ghost) ghost.remove();
   card.classList.remove('dragging');
-  document.querySelectorAll('.cal-drop-active').forEach(c => c.classList.remove('cal-drop-active'));
+  document.querySelectorAll('.cal-day-col').forEach(c => c.classList.remove('cal-drop-active'));
+  document.getElementById('calSidebar')?.classList.remove('cal-drop-active');
 
-  if (phase === 'pending') { showScheduleModal(cardId); return; }
-  if (phase !== 'dragging' || !targetDate || targetDate === fromDate) { renderCalendarWeek(); return; }
-  if (kind === 'deferred') {
-    const node = session.nodes.find(n => n.id === cardId);
-    if (node) { node.deferred = false; node.deferredUntil = null; node.last_modified = new Date().toISOString(); }
+  if (phase === 'pending') {
+    if (kind !== 'queued') showScheduleModal(cardId);
+    return;
   }
+  if (phase !== 'dragging' || !targetDate) { renderCalendar(); return; }
+  if (kind !== 'queued' && targetDate === fromDate) { renderCalendar(); return; }
+
+  const node = session.nodes.find(n => n.id === cardId);
+  if (!node) { renderCalendar(); return; }
+
+  if (targetDate === '__sidebar__') {
+    // Drop back to queue: remove date, mark as needs_scheduling
+    node.scheduled_date   = null;
+    node.needs_scheduling = true;
+    if (kind === 'deferred') { node.deferred = false; node.deferredUntil = null; }
+    node.last_modified = new Date().toISOString();
+    saveSession();
+    renderCalendar();
+    showToast('📋 Returned to queue');
+    return;
+  }
+
+  if (kind === 'deferred') { node.deferred = false; node.deferredUntil = null; }
+  if (kind === 'queued')   { node.needs_scheduling = false; }
+  node.last_modified = new Date().toISOString();
   scheduleNode(cardId, targetDate);
 }
 
@@ -5180,6 +5267,7 @@ document.addEventListener('DOMContentLoaded', () => {
   <button class="node-ctx-item" id="ctxArchive">📁 Archive</button>
   <button class="node-ctx-item" id="ctxDefer">⏳ Defer</button>
   <button class="node-ctx-item" id="ctxSchedule">📅 Schedule</button>
+  <button class="node-ctx-item" id="ctxQueue">📋 Queue for scheduling</button>
   <button class="node-ctx-item" id="ctxElaborate">✏ Elaborate</button>
   <button class="node-ctx-item" id="ctxExplore">💬 Explore with AI</button>
   <button class="node-ctx-item" id="ctxRefile">↗ Re-file</button>
