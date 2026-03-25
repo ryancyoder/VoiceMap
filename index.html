@@ -236,6 +236,23 @@
     }
     .filter-pill.active { background: var(--accent); color: #fff; border-color: var(--accent); }
 
+    /* ── Consolidate modal ────────────────────────────────────── */
+    #consolidateModal .defer-sheet { max-height: 80vh; display: flex; flex-direction: column; gap: 12px; }
+    #consolidatePreview {
+      flex: 1; min-height: 140px; max-height: 40vh;
+      border-radius: 10px; border: 1px solid var(--border);
+      padding: 12px; font-size: 13px; font-family: 'SF Mono', 'Menlo', monospace;
+      background: var(--bg); color: var(--text);
+      resize: none; line-height: 1.5; box-sizing: border-box;
+      overflow-y: auto; white-space: pre-wrap;
+    }
+    .consolidate-btns { display: flex; gap: 8px; }
+    .consolidate-btns button { flex: 1; padding: 13px; border-radius: 10px; border: none;
+      font-size: 15px; font-family: var(--font); cursor: pointer; }
+    #consolidateCancel  { background: rgba(0,0,0,0.06); color: var(--text); }
+    #consolidateAppend  { background: var(--surface); border: 1.5px solid var(--accent) !important; color: var(--accent); font-weight: 600; }
+    #consolidateReplace { background: var(--accent); color: #fff; font-weight: 600; }
+
     /* ── Defer modal ──────────────────────────────────────────── */
     .defer-overlay {
       position: fixed; inset: 0; background: rgba(0,0,0,0.45);
@@ -2370,6 +2387,68 @@ async function simplifyNode(nodeId) {
     if (btn) { btn.textContent = '⚡ Simplify'; btn.classList.remove('working'); btn.disabled = false; }
     setStatus('⚠ ' + err.message, 'error');
   }
+}
+
+// ─── CONSOLIDATE ─────────────────────────────────────────────────────────────
+let _consolidatePending = null; // { nodeId }
+
+function _consolidateBuildMd(nodeId, depth) {
+  const children = childrenOf(nodeId).filter(n => !n.archived);
+  if (!children.length) return '';
+  const hashes = '#'.repeat(Math.min(depth + 1, 6)); // ## at depth 1, ### at 2, etc.
+  return children.map(child => {
+    const body = (child.summary || child.transcript || '').trim();
+    let md = `${hashes} ${child.label}\n`;
+    if (body) md += `\n${body}\n`;
+    md += '\n' + _consolidateBuildMd(child.id, depth + 1);
+    return md;
+  }).join('');
+}
+
+function consolidateNode(nodeId) {
+  const node = session.nodes.find(n => n.id === nodeId);
+  if (!node) return;
+  const md = _consolidateBuildMd(nodeId, 1).trimEnd();
+  if (!md) { showToast('No child cards to consolidate'); return; }
+  _consolidatePending = { nodeId };
+  document.getElementById('consolidateTitle').textContent =
+    `Consolidate: "${node.label.slice(0, 40)}"`;
+  document.getElementById('consolidatePreview').value = md;
+  document.getElementById('consolidateModal').classList.remove('hidden');
+}
+
+function _consolidateApply(mode) {
+  if (!_consolidatePending) return;
+  const { nodeId } = _consolidatePending;
+  _consolidatePending = null;
+  document.getElementById('consolidateModal').classList.add('hidden');
+  const node = session.nodes.find(n => n.id === nodeId);
+  if (!node) return;
+  const md = document.getElementById('consolidatePreview').value;
+  if (mode === 'replace') {
+    node.summary = md;
+  } else {
+    node.summary = node.summary ? node.summary + '\n\n' + md : md;
+  }
+  node.last_modified = new Date().toISOString();
+  saveSession();
+  renderCards();
+  showToast(mode === 'replace' ? 'Description replaced' : 'Description updated');
+}
+
+function initConsolidateModal() {
+  document.getElementById('consolidateCancel').addEventListener('click', () => {
+    _consolidatePending = null;
+    document.getElementById('consolidateModal').classList.add('hidden');
+  });
+  document.getElementById('consolidateAppend').addEventListener('click',  () => _consolidateApply('append'));
+  document.getElementById('consolidateReplace').addEventListener('click', () => _consolidateApply('replace'));
+  document.getElementById('consolidateModal').addEventListener('click', e => {
+    if (e.target === document.getElementById('consolidateModal')) {
+      _consolidatePending = null;
+      document.getElementById('consolidateModal').classList.add('hidden');
+    }
+  });
 }
 
 function renderCards(animDir) {
@@ -4924,7 +5003,8 @@ function initNodeCtxMenu() {
   document.getElementById('ctxQueue').addEventListener('click',     () => { closeNodeCtxMenu(); queueNode(getCtxNode()); });
   document.getElementById('ctxEditTitle').addEventListener('click', () => { closeNodeCtxMenu(); startEditField(getCtxNode(), 'label'); });
   document.getElementById('ctxEditDesc').addEventListener('click',  () => { closeNodeCtxMenu(); startEditField(getCtxNode(), 'summary'); });
-  document.getElementById('ctxElaborate').addEventListener('click', () => { closeNodeCtxMenu(); startElaborate(getCtxNode()); });
+  document.getElementById('ctxConsolidate').addEventListener('click', () => { closeNodeCtxMenu(); consolidateNode(getCtxNode()); });
+  document.getElementById('ctxElaborate').addEventListener('click',  () => { closeNodeCtxMenu(); startElaborate(getCtxNode()); });
   document.getElementById('ctxExplore').addEventListener('click',   () => { closeNodeCtxMenu(); openChatModal(getCtxNode()); });
   document.getElementById('ctxRefile').addEventListener('click',    () => { closeNodeCtxMenu(); refileNode(getCtxNode()); });
   document.getElementById('ctxDelete').addEventListener('click',    () => { closeNodeCtxMenu(); deleteNode(getCtxNode()); });
@@ -5546,7 +5626,7 @@ const toggleMenu = () => document.getElementById('menuDropdown').classList.toggl
 const closeMenu  = () => document.getElementById('menuDropdown').classList.remove('open');
 
 // ─── INIT ───────────────────────────────────────────────────────────────────
-const BUILD_TS = 'build:2026-03-26T08:00'; // bumped each deploy — confirms fresh load
+const BUILD_TS = 'build:2026-03-26T09:00'; // bumped each deploy — confirms fresh load
 
 async function initApp() {
   // Show immediately with localStorage data
@@ -5680,6 +5760,7 @@ document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('miClear').addEventListener('click', clearAll);
 
   initNodeCtxMenu();
+  initConsolidateModal();
   initQuickFind();
 
   // Mind map
@@ -6085,6 +6166,19 @@ document.addEventListener('DOMContentLoaded', () => {
   </div>
 </div>
 
+<!-- Consolidate preview modal -->
+<div class="defer-overlay hidden" id="consolidateModal">
+  <div class="defer-sheet" style="width:100%;max-width:600px;display:flex;flex-direction:column;gap:12px">
+    <div style="font-size:13px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:0.5px" id="consolidateTitle">Consolidate</div>
+    <textarea id="consolidatePreview" readonly></textarea>
+    <div class="consolidate-btns">
+      <button id="consolidateCancel">Cancel</button>
+      <button id="consolidateAppend">Append</button>
+      <button id="consolidateReplace">Replace</button>
+    </div>
+  </div>
+</div>
+
 <!-- Long-press node context menu -->
 <div id="nodeCtxOverlay" style="display:none;position:fixed;inset:0;z-index:9998"></div>
 <div id="nodeCtxMenu" class="node-ctx-menu" style="display:none;position:fixed;z-index:9999" data-ctx-node="">
@@ -6095,6 +6189,7 @@ document.addEventListener('DOMContentLoaded', () => {
   <button class="node-ctx-item" id="ctxQueue">📋 Queue for scheduling</button>
   <button class="node-ctx-item" id="ctxEditTitle">✎ Edit Title</button>
   <button class="node-ctx-item" id="ctxEditDesc">📝 Edit Description</button>
+  <button class="node-ctx-item" id="ctxConsolidate">⊞ Consolidate to Markdown</button>
   <button class="node-ctx-item" id="ctxElaborate">✨ Elaborate with AI</button>
   <button class="node-ctx-item" id="ctxExplore">💬 Explore with AI</button>
   <button class="node-ctx-item" id="ctxRefile">↗ Re-file</button>
