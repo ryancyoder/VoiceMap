@@ -2417,6 +2417,27 @@ function consolidateNode(nodeId) {
   document.getElementById('consolidateModal').classList.remove('hidden');
 }
 
+function _taskListBuildMd(nodeId, depth) {
+  const children = childrenOf(nodeId).filter(n => !n.archived);
+  if (!children.length) return '';
+  const indent = '  '.repeat(depth);
+  return children.map(child => {
+    return `${indent}- [ ] ${child.label}\n` + _taskListBuildMd(child.id, depth + 1);
+  }).join('');
+}
+
+function taskListNode(nodeId) {
+  const node = session.nodes.find(n => n.id === nodeId);
+  if (!node) return;
+  const md = _taskListBuildMd(nodeId, 0).trimEnd();
+  if (!md) { showToast('No child cards to convert'); return; }
+  _consolidatePending = { nodeId };
+  document.getElementById('consolidateTitle').textContent =
+    `Task List: "${node.label.slice(0, 40)}"`;
+  document.getElementById('consolidatePreview').value = md;
+  document.getElementById('consolidateModal').classList.remove('hidden');
+}
+
 function _consolidateApply(mode) {
   if (!_consolidatePending) return;
   const { nodeId } = _consolidatePending;
@@ -5006,6 +5027,7 @@ function initNodeCtxMenu() {
   document.getElementById('ctxEditTitle').addEventListener('click', () => { closeNodeCtxMenu(); startEditField(getCtxNode(), 'label'); });
   document.getElementById('ctxEditDesc').addEventListener('click',  () => { closeNodeCtxMenu(); startEditField(getCtxNode(), 'summary'); });
   document.getElementById('ctxConsolidate').addEventListener('click', () => { closeNodeCtxMenu(); consolidateNode(getCtxNode()); });
+  document.getElementById('ctxTaskList').addEventListener('click',   () => { closeNodeCtxMenu(); taskListNode(getCtxNode()); });
   document.getElementById('ctxElaborate').addEventListener('click',  () => { closeNodeCtxMenu(); startElaborate(getCtxNode()); });
   document.getElementById('ctxExplore').addEventListener('click',   () => { closeNodeCtxMenu(); openChatModal(getCtxNode()); });
   document.getElementById('ctxRefile').addEventListener('click',    () => { closeNodeCtxMenu(); refileNode(getCtxNode()); });
@@ -5628,7 +5650,7 @@ const toggleMenu = () => document.getElementById('menuDropdown').classList.toggl
 const closeMenu  = () => document.getElementById('menuDropdown').classList.remove('open');
 
 // ─── INIT ───────────────────────────────────────────────────────────────────
-const BUILD_TS = 'build:2026-03-26T10:00'; // bumped each deploy — confirms fresh load
+const BUILD_TS = 'build:2026-03-26T11:00'; // bumped each deploy — confirms fresh load
 
 async function initApp() {
   // Show immediately with localStorage data
@@ -6192,6 +6214,7 @@ document.addEventListener('DOMContentLoaded', () => {
   <button class="node-ctx-item" id="ctxEditTitle">✎ Edit Title</button>
   <button class="node-ctx-item" id="ctxEditDesc">📝 Edit Description</button>
   <button class="node-ctx-item" id="ctxConsolidate">⊞ Consolidate to Markdown</button>
+  <button class="node-ctx-item" id="ctxTaskList">☑ Convert to Task List</button>
   <button class="node-ctx-item" id="ctxElaborate">✨ Elaborate with AI</button>
   <button class="node-ctx-item" id="ctxExplore">💬 Explore with AI</button>
   <button class="node-ctx-item" id="ctxRefile">↗ Re-file</button>
