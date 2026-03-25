@@ -649,6 +649,127 @@
     }
     .chat-voice-btn.listening { background: var(--accent); color: white; }
 
+    /* ── Prompt Log modal ─────────────────────────────────────── */
+    .plog-overlay {
+      position: fixed; inset: 0;
+      background: rgba(0,0,0,0.45);
+      backdrop-filter: blur(4px);
+      -webkit-backdrop-filter: blur(4px);
+      display: flex; flex-direction: column;
+      justify-content: flex-end;
+      z-index: 500;
+    }
+    .plog-overlay.hidden { display: none; }
+
+    .plog-sheet {
+      background: var(--bg);
+      border-radius: 20px 20px 0 0;
+      height: 88dvh;
+      display: flex; flex-direction: column;
+      overflow: hidden;
+    }
+
+    .plog-header {
+      display: flex; align-items: center;
+      padding: 14px 16px 10px;
+      background: var(--surface);
+      border-bottom: 0.5px solid var(--border);
+      gap: 8px; flex-shrink: 0;
+    }
+    .plog-close {
+      width: 30px; height: 30px; border-radius: 50%;
+      background: #e5e5ea; border: none;
+      font-size: 13px; cursor: pointer;
+      display: flex; align-items: center; justify-content: center;
+      flex-shrink: 0;
+    }
+    .plog-title {
+      flex: 1; font-size: 15px; font-weight: 600;
+      color: var(--text);
+    }
+    .plog-count {
+      font-size: 11px; color: var(--muted);
+      background: #f2f2f7; border-radius: 10px;
+      padding: 2px 8px; flex-shrink: 0;
+    }
+    .plog-clear-btn {
+      font-size: 12px; color: #ff3b30;
+      background: none; border: none;
+      cursor: pointer; padding: 4px 8px;
+      font-family: var(--font); flex-shrink: 0;
+    }
+    .plog-clear-btn:active { opacity: 0.6; }
+
+    .plog-list {
+      flex: 1; overflow-y: auto;
+      -webkit-overflow-scrolling: touch;
+      padding: 10px 14px 20px;
+      display: flex; flex-direction: column; gap: 8px;
+    }
+    .plog-empty {
+      text-align: center; color: var(--muted);
+      font-size: 14px; padding: 40px 0;
+    }
+
+    .plog-entry {
+      background: var(--surface);
+      border: 0.5px solid var(--border);
+      border-radius: 12px;
+      overflow: hidden;
+    }
+    .plog-entry-header {
+      display: flex; align-items: center; gap: 8px;
+      padding: 10px 12px;
+      cursor: pointer;
+      user-select: none; -webkit-user-select: none;
+    }
+    .plog-entry-header:active { background: rgba(0,0,0,0.04); }
+    .plog-op-label {
+      font-size: 13px; font-weight: 600; color: var(--text);
+      flex: 1;
+    }
+    .plog-meta {
+      font-size: 11px; color: var(--muted); flex-shrink: 0;
+    }
+    .plog-chevron {
+      font-size: 11px; color: var(--muted); flex-shrink: 0;
+      transition: transform 0.2s;
+    }
+    .plog-entry.open .plog-chevron { transform: rotate(90deg); }
+
+    .plog-body {
+      display: none;
+      border-top: 0.5px solid var(--border);
+      padding: 10px 12px;
+      gap: 10px;
+      flex-direction: column;
+    }
+    .plog-entry.open .plog-body { display: flex; }
+
+    .plog-section-label {
+      font-size: 11px; font-weight: 600; color: var(--muted);
+      text-transform: uppercase; letter-spacing: 0.04em;
+      margin-bottom: 4px;
+      display: flex; align-items: center; justify-content: space-between;
+    }
+    .plog-copy-btn {
+      font-size: 11px; color: #007aff;
+      background: none; border: none; cursor: pointer;
+      padding: 0; font-family: var(--font);
+      font-weight: 400; text-transform: none; letter-spacing: 0;
+    }
+    .plog-copy-btn:active { opacity: 0.6; }
+    .plog-text {
+      font-size: 12px; color: var(--text);
+      background: #f2f2f7; border-radius: 8px;
+      padding: 8px 10px;
+      white-space: pre-wrap; word-break: break-word;
+      font-family: ui-monospace, 'SF Mono', Menlo, monospace;
+      max-height: 200px; overflow-y: auto;
+      -webkit-overflow-scrolling: touch;
+    }
+    .plog-text.empty { color: var(--muted); font-style: italic; }
+
     /* ── API Key modal ────────────────────────────────────────── */
     .modal-overlay {
       position: fixed; inset: 0;
@@ -917,18 +1038,17 @@
     <div class="menu-wrap">
       <button class="menu-btn" id="menuBtn">···</button>
       <div class="menu-dropdown" id="menuDropdown">
+        <button class="menu-item" id="miPromptLog">🔍 Prompt Log</button>
         <button class="menu-item" id="miExportPrompt">📤 Export Prompt</button>
         <button class="menu-item" id="miCluster">⚡ Auto-cluster</button>
         <button class="menu-item" id="miSelect">⊙ Select to merge</button>
-        <button class="menu-item" id="miCopyImportPrompt">📋 Copy AI Import Prompt</button>
-        <button class="menu-item" id="miImport">Import JSON (replace)</button>
-        <button class="menu-item" id="miMerge">Import JSON (merge)</button>
-        <button class="menu-item" id="miMergeClip">Merge from Clipboard</button>
+        <button class="menu-item" id="miImport">Import JSON</button>
         <button class="menu-item" id="miExport">Export JSON</button>
         <button class="menu-item" id="miCopy">Copy JSON</button>
         <button class="menu-item" id="miPaste">Load from Clipboard</button>
         <button class="menu-item" id="miRename">Rename session</button>
         <button class="menu-item" id="miApiKey">API Key</button>
+        <button class="menu-item" id="miGithubSync">☁️ GitHub Sync</button>
         <button class="menu-item" id="miArchive">📁 View Archive</button>
         <button class="menu-item danger" id="miClear">Clear all</button>
       </div>
@@ -1019,6 +1139,7 @@
       <button class="camera-btn" id="cameraBtn">📷</button>
     </div>
     <div class="status-text" id="statusText">Tap ⏺ to capture an idea</div>
+    <div id="syncStatus" style="display:none;font-size:10px;color:#6b7280;text-align:center;padding:2px 0;letter-spacing:0.02em"></div>
   </div>
 
 </div>
@@ -1041,6 +1162,19 @@
   </div>
 </div>
 
+<!-- Prompt Log modal -->
+<div class="plog-overlay hidden" id="promptLogModal">
+  <div class="plog-sheet">
+    <div class="plog-header">
+      <button class="plog-close" id="plogClose">✕</button>
+      <div class="plog-title">Prompt Log</div>
+      <span class="plog-count" id="plogCount">0 calls</span>
+      <button class="plog-clear-btn" id="plogClear">Clear</button>
+    </div>
+    <div class="plog-list" id="plogList"></div>
+  </div>
+</div>
+
 <!-- API Key modal -->
 <div class="modal-overlay hidden" id="keyModal">
   <div class="modal-sheet">
@@ -1057,9 +1191,34 @@
   </div>
 </div>
 
+<!-- GitHub Sync modal -->
+<div class="modal-overlay hidden" id="githubModal">
+  <div class="modal-sheet">
+    <div class="modal-title">☁️ GitHub Sync</div>
+    <div class="modal-desc">
+      Sync your session automatically between devices using a private GitHub Gist.<br><br>
+      Create a token at <a href="https://github.com/settings/tokens" target="_blank">github.com/settings/tokens</a> with the <strong>gist</strong> scope.
+    </div>
+    <input class="modal-input" id="githubInput" type="text"
+           placeholder="ghp_..." autocomplete="off" autocorrect="off" autocapitalize="none" spellcheck="false" />
+    <div id="githubGistDisplay" style="display:none;background:#1f2937;border-radius:8px;padding:10px 12px;margin-bottom:8px">
+      <div style="font-size:11px;color:#9ca3af;margin-bottom:4px">Your Gist ID — copy this to your other device:</div>
+      <div style="display:flex;align-items:center;gap:8px">
+        <code id="githubGistIdText" style="font-size:12px;color:#e5e7eb;flex:1;word-break:break-all;line-height:1.4"></code>
+        <button onclick="navigator.clipboard.writeText(document.getElementById('githubGistIdText').textContent).then(()=>showToast('Copied!'))" style="background:#3b82f6;color:#fff;border:none;border-radius:6px;padding:4px 10px;font-size:12px;cursor:pointer;white-space:nowrap">Copy</button>
+      </div>
+    </div>
+    <div style="font-size:11px;color:#9ca3af;margin-bottom:4px">Paste a Gist ID from another device (leave blank to auto-detect):</div>
+    <input class="modal-input" id="githubGistInput" type="text"
+           placeholder="Gist ID from other device" autocomplete="off" autocorrect="off" autocapitalize="none" spellcheck="false" style="font-size:13px;margin-bottom:8px" />
+    <button class="modal-save" id="githubSave">Save &amp; connect</button>
+    <button class="modal-save" id="githubTest" style="background:#6b7280">Test token</button>
+    <div id="githubTestResult" style="font-size:12px;color:#6b7280;word-break:break-all;white-space:pre-wrap;max-height:120px;overflow-y:auto"></div>
+  </div>
+</div>
+
 <div class="toast" id="toast"></div>
-<input type="file" id="fileInput"       accept=".json" style="display:none" />
-<input type="file" id="mergeFileInput"  accept=".json" style="display:none" />
+<input type="file" id="fileInput"  accept=".json"       style="display:none" />
 <input type="file" id="imageInput" accept="image/*"
        style="opacity:0;position:absolute;width:1px;height:1px;pointer-events:none" />
 
@@ -1068,14 +1227,16 @@
 
 // ─── CONSTANTS ──────────────────────────────────────────────────────────────
 const CLAUDE_MODEL   = 'claude-haiku-4-5-20251001';
-const API_KEY_STORE  = 'voicemap_api_key';
-const SESSION_STORE  = 'voicemap_session';
+const API_KEY_STORE      = 'voicemap_api_key';
+const SESSION_STORE      = 'voicemap_session';
+const GITHUB_TOKEN_STORE = 'voicemap_github_token';
+const GITHUB_GIST_STORE  = 'voicemap_gist_id';
 
 const R = { CHILD: 'child', SIBLING: 'sibling', ROOT: 'root' };
 
 // ─── INDEXEDDB ───────────────────────────────────────────────────────────────
 const DB_NAME    = 'VoiceMapDB';
-const DB_VERSION = 1;
+const DB_VERSION = 2;
 let db = null;
 
 function openDB() {
@@ -1085,6 +1246,7 @@ function openDB() {
       const d = e.target.result;
       if (!d.objectStoreNames.contains('sessions')) d.createObjectStore('sessions');
       if (!d.objectStoreNames.contains('images'))   d.createObjectStore('images');
+      if (!d.objectStoreNames.contains('settings')) d.createObjectStore('settings');
     };
     req.onsuccess = e => { db = e.target.result; resolve(db); };
     req.onerror   = e => reject(e.target.error);
@@ -1145,11 +1307,29 @@ function loadImagesFromDB() {
 }
 
 // ─── PERSISTENCE ─────────────────────────────────────────────────────────────
+function saveTokenToDB(token) {
+  if (!db) return;
+  try { db.transaction('settings', 'readwrite').objectStore('settings').put(token, GITHUB_TOKEN_STORE); } catch {}
+}
+
+function loadTokenFromDB() {
+  if (!db) return Promise.resolve(null);
+  return new Promise(resolve => {
+    try {
+      const req = db.transaction('settings', 'readonly').objectStore('settings').get(GITHUB_TOKEN_STORE);
+      req.onsuccess = e => resolve(e.target.result || null);
+      req.onerror   = () => resolve(null);
+    } catch { resolve(null); }
+  });
+}
+
 function saveSession() {
   // Sync localStorage backup (text only, no images)
   try { localStorage.setItem(SESSION_STORE, JSON.stringify(session)); } catch {}
   // Async IndexedDB save (fire and forget)
   saveSessionToDB();
+  // Debounced push to GitHub Gist
+  scheduleSyncToGist();
 }
 
 function loadSavedSessionSync() {
@@ -1176,6 +1356,9 @@ let selectMode  = false;
 let selectedIds = new Set();
 let recognition = null;
 let isRecording = false;
+
+const promptLog    = []; // Array of logged Claude API calls
+const PROMPT_LOG_MAX = 100;
 
 // ─── HELPERS ────────────────────────────────────────────────────────────────
 const currentCtx      = ()   => navStack[navStack.length - 1];
@@ -1498,7 +1681,7 @@ async function refileNode(nodeId) {
   const sys = 'You organize a mind map. Choose the single best parent for the card from the candidates, or null for top level. Return ONLY valid JSON.';
 
   try {
-    const raw    = await callClaude(userMsg, sys, '{');
+    const raw    = await callClaude(userMsg, sys, '{', 'Re-file card');
     const parsed = extractJSON(raw);
     if (!parsed) throw new Error('Could not parse Claude response');
 
@@ -1575,7 +1758,7 @@ async function mergeSelected() {
   const sys      = 'You merge mind map cards. Create a single concise card combining all ideas. Return ONLY valid JSON.';
 
   try {
-    const raw    = await callClaude(userMsg, sys, '{');
+    const raw    = await callClaude(userMsg, sys, '{', 'Merge cards');
     const parsed = extractJSON(raw);
     if (!parsed?.label) throw new Error('Bad response from Claude');
 
@@ -1624,7 +1807,7 @@ async function autoCluster() {
   const sys     = 'You organize mind map cards into meaningful groups. Return ONLY a valid JSON array of groups.';
 
   try {
-    const raw = await callClaude(userMsg, sys, '[');
+    const raw = await callClaude(userMsg, sys, '[', 'Auto-cluster');
     let parsed;
     try { parsed = JSON.parse(raw.trim()); } catch {}
     if (!parsed) {
@@ -1681,7 +1864,7 @@ async function simplifyNode(nodeId) {
   const sys = `You simplify mind map structures. Merge overlapping ideas, remove redundancies, flatten excessive nesting, keep all distinct concepts. Return ONLY a valid JSON array: [{"label":"2-5 word title","summary":"1-2 sentence summary","children":[{"label":"...","summary":"...","children":[]}]}]. Max 2 levels deep.`;
 
   try {
-    const raw = await callClaude(userMsg, sys, '[');
+    const raw = await callClaude(userMsg, sys, '[', 'Simplify node');
     let parsed;
     try { parsed = JSON.parse(raw.trim()); } catch {}
     if (!parsed) {
@@ -1917,13 +2100,26 @@ function setStatus(msg, cls) {
 }
 
 // ─── CLAUDE API ─────────────────────────────────────────────────────────────
-async function callClaude(userContent, systemPrompt, prefill = '') {
+async function callClaude(userContent, systemPrompt, prefill = '', operationLabel = 'Claude') {
   const apiKey = getApiKey();
   if (!apiKey) throw new Error('No API key — tap ··· → API Key to add one');
   console.log('[VoiceMap] key length:', apiKey.length, 'starts:', apiKey.slice(0, 7));
 
   const messages = [{ role: 'user', content: userContent }];
   if (prefill) messages.push({ role: 'assistant', content: prefill });
+
+  const logEntry = {
+    id:        makeId(),
+    label:     operationLabel,
+    timestamp: new Date().toISOString(),
+    system:    systemPrompt || '',
+    user:      userContent  || '',
+    prefill:   prefill      || '',
+    response:  null,
+    error:     null,
+    durationMs: null,
+  };
+  const t0 = Date.now();
 
   const res = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
@@ -1945,13 +2141,21 @@ async function callClaude(userContent, systemPrompt, prefill = '') {
     const body = await res.text().catch(() => '');
     let msg = `HTTP ${res.status}`;
     try { const j = JSON.parse(body); msg = j.error?.message || j.error?.type || msg; } catch {}
+    logEntry.error      = `[${res.status}] ${msg}`;
+    logEntry.durationMs = Date.now() - t0;
+    addToPromptLog(logEntry);
     if (res.status === 401) {
       setStatus('⚠ API key invalid — tap ··· → API Key', 'error');
       throw new Error('API key invalid or revoked');
     }
     throw new Error(`[${res.status}] ${msg}`);
   }
-  return prefill + (await res.json()).content[0].text;
+
+  const result        = prefill + (await res.json()).content[0].text;
+  logEntry.response   = result;
+  logEntry.durationMs = Date.now() - t0;
+  addToPromptLog(logEntry);
+  return result;
 }
 
 function extractJSON(raw) {
@@ -1988,7 +2192,7 @@ Be concise but thorough — this summary provides context for all child ideas un
 Return JSON: {"summary": "<improved summary>"}`;
 
     try {
-      const raw    = await callClaude(elaboratePrompt, '', '{');
+      const raw    = await callClaude(elaboratePrompt, '', '{', isRename ? 'Rename card' : 'Elaborate card');
       const parsed = extractJSON(raw);
       if (isRename && parsed?.label) {
         node.label         = String(parsed.label).slice(0, 60);
@@ -2060,7 +2264,7 @@ Default action to "create", relationship to "${R.CHILD}". Good labels: "Backyard
   let parsed;
   let claudeError = null;
   try {
-    const raw = await callClaude(userMsg, systemPrompt, '{');
+    const raw = await callClaude(userMsg, systemPrompt, '{', 'New card');
     console.log('[VoiceMap] Claude raw response:', raw);
     parsed = extractJSON(raw);
     if (!parsed?.action) throw new Error('Bad JSON from Claude: ' + raw.slice(0, 120));
@@ -2410,7 +2614,6 @@ function mmVisibleNodes() {
       .forEach(n => { allowed.add(n.id); addDesc(n.id); });
     addDesc(mmFocusNodeId);
   }
-  // Build set of nodes hidden because an ancestor is collapsed
   const hiddenByCollapse = new Set();
   const markHidden = id => session.nodes
     .filter(n => n.parent_id === id)
@@ -2746,14 +2949,9 @@ function initMmPanZoom() {
 
   wrap.addEventListener('touchend', e => {
     clearTimeout(mmLongPressTimer); mmLongPressTimer = null;
-    // Handle collapse button tap directly
     if (e.changedTouches.length === 1) {
       const collapseBtn = e.target.closest('.mm-collapse-btn');
-      if (collapseBtn) {
-        tapNode = null;
-        mmToggleCollapse(collapseBtn.dataset.collapseId);
-        return;
-      }
+      if (collapseBtn) { tapNode = null; mmToggleCollapse(collapseBtn.dataset.collapseId); return; }
     }
     if (e.changedTouches.length === 1) {
       const now = Date.now();
@@ -2859,105 +3057,6 @@ function importJSON(event) {
   };
   reader.readAsText(file);
   event.target.value = '';
-}
-
-function mergeNodes(data) {
-  // Normalise v1 format
-  if (data.ideas && !data.nodes) {
-    data.nodes = data.ideas.map((idea, i) => ({
-      id: 'v1-' + i, label: idea.text.slice(0, 60),
-      summary: idea.text, transcript: idea.text,
-      parent_id: null, status: 'untouched',
-      created: new Date().toISOString(), last_modified: new Date().toISOString()
-    }));
-  }
-  if (!Array.isArray(data.nodes)) { showToast('Invalid JSON — no nodes found'); return; }
-
-  // Remap all IDs to avoid collisions with existing nodes
-  const idMap = {};
-  data.nodes.forEach(n => { idMap[n.id] = makeId(); });
-
-  const existingIds = new Set(session.nodes.map(n => n.id));
-  let added = 0;
-
-  data.nodes.forEach(n => {
-    const newId       = idMap[n.id];
-    const newParentId = n.parent_id ? (idMap[n.parent_id] ?? n.parent_id) : null;
-    // Only attach to existing parent if it exists, otherwise make top-level
-    const resolvedParent = (newParentId && (idMap[n.parent_id] || existingIds.has(n.parent_id)))
-      ? newParentId : null;
-    session.nodes.push({ ...n, id: newId, parent_id: resolvedParent });
-    added++;
-  });
-
-  saveSession();
-  renderCards();
-  if (mmVisible) renderMindMap();
-  showToast(`✓ Merged ${added} node${added !== 1 ? 's' : ''} into session`);
-}
-
-function mergeFromFile(event) {
-  const file = event.target.files[0];
-  if (!file) return;
-  const reader = new FileReader();
-  reader.onload = e => {
-    try { mergeNodes(JSON.parse(e.target.result)); }
-    catch (err) { showToast('JSON error: ' + err.message); }
-  };
-  reader.readAsText(file);
-  event.target.value = '';
-}
-
-async function copyImportPrompt() {
-  const prompt = `Please format your response as a VoiceMap JSON file that I can import directly into my brainstorming app. Return ONLY raw JSON — no markdown, no code fences, no explanation before or after.
-
-The structure is:
-{
-  "session": "A short descriptive title for this content",
-  "nodes": [ ... ]
-}
-
-Each node in the "nodes" array must have these fields:
-{
-  "id": "a unique short string, e.g. n1, n2, n3 — just needs to be unique within this file",
-  "label": "2 to 4 word title — ultra concise",
-  "summary": "1 to 3 sentence summary of this idea",
-  "transcript": "the full original text or detail for this node, if any",
-  "parent_id": null,
-  "status": "untouched",
-  "created": "${new Date().toISOString()}",
-  "last_modified": "${new Date().toISOString()}"
-}
-
-To create hierarchy, set "parent_id" on a child node to the "id" of its parent node. Top-level nodes have "parent_id": null. You may nest as many levels deep as makes sense for the content.
-
-Example of a small hierarchy:
-{
-  "session": "Product Roadmap",
-  "nodes": [
-    { "id": "n1", "label": "Q1 Goals", "summary": "Key priorities for Q1.", "transcript": "", "parent_id": null, "status": "untouched", "created": "${new Date().toISOString()}", "last_modified": "${new Date().toISOString()}" },
-    { "id": "n2", "label": "Launch Beta", "summary": "Ship the beta to 100 users.", "transcript": "", "parent_id": "n1", "status": "untouched", "created": "${new Date().toISOString()}", "last_modified": "${new Date().toISOString()}" },
-    { "id": "n3", "label": "Fix Auth Bugs", "summary": "Resolve outstanding login issues.", "transcript": "", "parent_id": "n1", "status": "untouched", "created": "${new Date().toISOString()}", "last_modified": "${new Date().toISOString()}" }
-  ]
-}
-
-Now apply this format to the following request:`;
-
-  try {
-    await navigator.clipboard.writeText(prompt);
-    showToast('📋 Import prompt copied — paste into your AI tool');
-  } catch {
-    showToast('⚠ Could not copy — check clipboard permission');
-  }
-}
-
-async function mergeFromClipboard() {
-  try {
-    const text = await navigator.clipboard.readText();
-    mergeNodes(JSON.parse(text));
-  } catch (err) {
-    showToast('Could not read clipboard: ' + err.message);
-  }
 }
 
 function buildExport() {
@@ -3219,6 +3318,19 @@ async function callChatClaude(userText, isSystem = false) {
     ? [{ role: 'user', content: userText }]
     : [...chatHistory];
 
+  const logEntry = {
+    id:        makeId(),
+    label:     isSystem ? 'Chat (seed)' : 'Chat',
+    timestamp: new Date().toISOString(),
+    system:    systemPrompt,
+    user:      userText,
+    prefill:   '',
+    response:  null,
+    error:     null,
+    durationMs: null,
+  };
+  const t0 = Date.now();
+
   try {
     const apiKey = getApiKey();
     if (!apiKey) throw new Error('No API key');
@@ -3236,14 +3348,25 @@ async function callChatClaude(userText, isSystem = false) {
 
     if (!res.ok) {
       const body = await res.text().catch(() => '');
+      logEntry.error      = `API error ${res.status}: ${body.slice(0, 80)}`;
+      logEntry.durationMs = Date.now() - t0;
+      addToPromptLog(logEntry);
       throw new Error(`API error ${res.status}: ${body.slice(0, 80)}`);
     }
 
     const text = (await res.json()).content[0].text.trim();
+    logEntry.response   = text;
+    logEntry.durationMs = Date.now() - t0;
+    addToPromptLog(logEntry);
     const msgId = makeId();
     chatHistory.push({ role: 'assistant', content: text });
     addChatBubble('assistant', text, msgId);
   } catch (err) {
+    if (!logEntry.error) {
+      logEntry.error      = err.message;
+      logEntry.durationMs = Date.now() - t0;
+      addToPromptLog(logEntry);
+    }
     addChatBubble('assistant', '⚠ ' + err.message);
   }
 }
@@ -3312,6 +3435,80 @@ function updateChatVoiceBtn() {
   if (!btn) return;
   btn.classList.toggle('listening', chatListening);
   btn.textContent = chatListening ? '■' : '⏺';
+}
+
+// ─── PROMPT LOG ──────────────────────────────────────────────────────────────
+function addToPromptLog(entry) {
+  promptLog.unshift(entry); // newest first
+  if (promptLog.length > PROMPT_LOG_MAX) promptLog.length = PROMPT_LOG_MAX;
+  // Refresh badge if modal is open
+  const modal = document.getElementById('promptLogModal');
+  if (modal && !modal.classList.contains('hidden')) renderPromptLog();
+  else updatePlogCount();
+}
+
+function updatePlogCount() {
+  const el = document.getElementById('plogCount');
+  if (el) el.textContent = `${promptLog.length} call${promptLog.length !== 1 ? 's' : ''}`;
+}
+
+function openPromptLog() {
+  document.getElementById('promptLogModal').classList.remove('hidden');
+  renderPromptLog();
+}
+
+function closePromptLog() {
+  document.getElementById('promptLogModal').classList.add('hidden');
+}
+
+function renderPromptLog() {
+  const list = document.getElementById('plogList');
+  updatePlogCount();
+
+  if (promptLog.length === 0) {
+    list.innerHTML = '<div class="plog-empty">No API calls recorded yet.<br>Make a voice capture or use an AI action.</div>';
+    return;
+  }
+
+  list.innerHTML = promptLog.map(entry => {
+    const time = new Date(entry.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+    const dur  = entry.durationMs != null ? `${entry.durationMs}ms` : '';
+    const meta = [time, dur].filter(Boolean).join(' · ');
+    const hasError = !!entry.error;
+
+    return `<div class="plog-entry" data-plog-id="${esc(entry.id)}">
+  <div class="plog-entry-header">
+    <span class="plog-op-label" style="${hasError ? 'color:#ff3b30' : ''}">${esc(entry.label)}${hasError ? ' ⚠' : ''}</span>
+    <span class="plog-meta">${esc(meta)}</span>
+    <span class="plog-chevron">›</span>
+  </div>
+  <div class="plog-body">
+    ${entry.system ? `
+    <div>
+      <div class="plog-section-label">System Prompt <button class="plog-copy-btn" data-copy="${esc(entry.system)}">Copy</button></div>
+      <div class="plog-text">${esc(entry.system)}</div>
+    </div>` : ''}
+    <div>
+      <div class="plog-section-label">User Message <button class="plog-copy-btn" data-copy="${esc(entry.user)}">Copy</button></div>
+      <div class="plog-text${entry.user ? '' : ' empty'}">${entry.user ? esc(entry.user) : '(empty)'}</div>
+    </div>
+    ${entry.prefill ? `
+    <div>
+      <div class="plog-section-label">Prefill</div>
+      <div class="plog-text">${esc(entry.prefill)}</div>
+    </div>` : ''}
+    <div>
+      <div class="plog-section-label">${hasError ? 'Error' : 'Response'} <button class="plog-copy-btn" data-copy="${esc(hasError ? entry.error : (entry.response || ''))}">Copy</button></div>
+      <div class="plog-text${hasError ? '" style="color:#ff3b30' : (entry.response ? '' : ' empty')}">${hasError ? esc(entry.error) : (entry.response ? esc(entry.response) : '(pending…)')}</div>
+    </div>
+  </div>
+</div>`;
+  }).join('');
+}
+
+function togglePlogEntry(id) {
+  const el = document.querySelector(`.plog-entry[data-plog-id="${id}"]`);
+  if (el) el.classList.toggle('open');
 }
 
 // ─── DRAG TO REORDER / REPARENT ──────────────────────────────────────────────
@@ -3475,6 +3672,200 @@ function onDragCancel() {
   dragState = null;
 }
 
+// ─── GITHUB SYNC ─────────────────────────────────────────────────────────────
+function getGithubToken() { return localStorage.getItem(GITHUB_TOKEN_STORE) || ''; }
+function getGistId()      { return localStorage.getItem(GITHUB_GIST_STORE)  || ''; }
+let _githubInputCache = ''; // cache typed value — iOS can clear input before button handler reads it
+
+function githubHeaders(token) {
+  return {
+    'Authorization': 'Bearer ' + token,
+    'Accept':        'application/vnd.github+json',
+    'Content-Type':  'application/json'
+  };
+}
+
+function showGithubModal() {
+  const modal = document.getElementById('githubModal');
+  const input = document.getElementById('githubInput');
+  const result = document.getElementById('githubTestResult');
+  const stored = localStorage.getItem(GITHUB_TOKEN_STORE);
+  const token = stored || '';
+  const gistId = getGistId();
+  _githubInputCache = token;
+  input.placeholder = 'ghp_...';
+  input.oninput = () => { _githubInputCache = input.value; };
+  result.textContent = stored
+    ? (gistId ? 'Connected · gist ID: ' + gistId : 'Token saved — will auto-detect gist on first sync')
+    : '';
+  document.getElementById('githubSave').textContent = 'Save & connect';
+  modal.classList.remove('hidden');
+  // Show/hide the gist ID copy panel
+  const gistDisplay = document.getElementById('githubGistDisplay');
+  const gistIdText  = document.getElementById('githubGistIdText');
+  if (gistId) {
+    gistIdText.textContent = gistId;
+    gistDisplay.style.display = 'block';
+  } else {
+    gistDisplay.style.display = 'none';
+  }
+  // Set values after a tick — iOS can visually wipe an input when focus fires
+  setTimeout(() => {
+    input.value = token;
+    document.getElementById('githubGistInput').value = '';
+    if (!token) input.focus();
+  }, 100);
+}
+
+function hideGithubModal() {
+  document.getElementById('githubModal').classList.add('hidden');
+  document.getElementById('githubTestResult').textContent = '';
+}
+
+async function testGithubToken() {
+  const raw = document.getElementById('githubInput').value.trim() || _githubInputCache.trim();
+  const result = document.getElementById('githubTestResult');
+  if (!raw || raw.includes('...')) { result.textContent = 'Enter a token first'; return; }
+  result.textContent = 'Testing…';
+  try {
+    const res = await fetch('https://api.github.com/user', { headers: githubHeaders(raw) });
+    const data = await res.json();
+    if (res.ok) {
+      // Save immediately on success — iOS can clear the field before a separate Save tap
+      try { localStorage.setItem(GITHUB_TOKEN_STORE, raw); } catch(e) {
+        result.textContent = 'localStorage failed: ' + e.message; return;
+      }
+      saveTokenToDB(raw);
+      const verified = localStorage.getItem(GITHUB_TOKEN_STORE);
+      result.textContent = verified
+        ? 'Saved · logged in as @' + data.login
+        : 'ERROR: token not readable after save — storage may be blocked';
+      document.getElementById('githubSave').textContent = 'Close';
+    } else {
+      result.textContent = 'Error ' + res.status + ': ' + (data.message || 'unknown');
+    }
+  } catch (e) {
+    result.textContent = 'Network error: ' + e.message;
+  }
+}
+
+function saveGithubToken() {
+  // Use cached value as fallback — iOS can clear the input field before this handler runs
+  const raw = (document.getElementById('githubInput').value.trim() || _githubInputCache.trim());
+  if (!raw) {
+    // Nothing entered — keep whatever token is already stored and close
+    hideGithubModal();
+    return;
+  }
+  if (!raw.startsWith('ghp_') && !raw.startsWith('github_pat_') && !raw.startsWith('gho_')) {
+    document.getElementById('githubTestResult').textContent = 'Token should start with ghp_, github_pat_, or gho_';
+    return;
+  }
+  // Allow manually pasting a gist ID from another device
+  const gistOverride = document.getElementById('githubGistInput').value.trim();
+  if (gistOverride) localStorage.setItem(GITHUB_GIST_STORE, gistOverride);
+  localStorage.setItem(GITHUB_TOKEN_STORE, raw);
+  saveTokenToDB(raw);
+  hideGithubModal();
+  showToast('GitHub token saved — syncing…');
+  pushToGist();
+  startGistPolling();
+}
+
+function buildSyncPayload() {
+  return {
+    session: session.session,
+    date:    session.date,
+    nodes:   session.nodes,
+    images:  Object.assign({}, imageCache),
+    meta:    { tool: 'VoiceMap', version: '0.3', synced: new Date().toISOString() }
+  };
+}
+
+async function findExistingVoiceMapGist(token) {
+  try {
+    const res = await fetch('https://api.github.com/gists?per_page=100', { headers: githubHeaders(token) });
+    if (!res.ok) return null;
+    const gists = await res.json();
+    const found = gists.find(g => g.files && g.files['voicemap.json']);
+    return found ? found.id : null;
+  } catch { return null; }
+}
+
+async function pushToGist() {
+  const token = getGithubToken();
+  if (!token) return;
+  let gistId = getGistId();
+  // Auto-discover an existing VoiceMap gist so all devices share the same one
+  if (!gistId) {
+    gistId = await findExistingVoiceMapGist(token);
+    if (gistId) localStorage.setItem(GITHUB_GIST_STORE, gistId);
+  }
+  const content = JSON.stringify(buildSyncPayload());
+  const body    = JSON.stringify({
+    description: 'VoiceMap session',
+    public: false,
+    files: { 'voicemap.json': { content } }
+  });
+  try {
+    let res;
+    if (gistId) {
+      res = await fetch('https://api.github.com/gists/' + gistId,
+        { method: 'PATCH', headers: githubHeaders(token), body });
+    } else {
+      res = await fetch('https://api.github.com/gists',
+        { method: 'POST', headers: githubHeaders(token), body });
+      if (res.ok) {
+        const data = await res.json();
+        localStorage.setItem(GITHUB_GIST_STORE, data.id);
+      }
+    }
+    if (res.ok) updateSyncStatus('☁️ pushed');
+    else showToast('GitHub sync failed (' + res.status + ')');
+  } catch (e) {
+    showToast('GitHub sync error: ' + e.message);
+  }
+}
+
+async function pullFromGist() {
+  const token = getGithubToken();
+  if (!token) return;
+  let gistId = getGistId();
+  if (!gistId) {
+    gistId = await findExistingVoiceMapGist(token);
+    if (gistId) localStorage.setItem(GITHUB_GIST_STORE, gistId);
+  }
+  if (!gistId) return;
+  try {
+    const res = await fetch('https://api.github.com/gists/' + gistId,
+      { headers: githubHeaders(token) });
+    if (!res.ok) return;
+    const gist = await res.json();
+    const raw  = gist.files?.['voicemap.json']?.content;
+    if (!raw) return;
+    const data = JSON.parse(raw);
+    if (!Array.isArray(data.nodes)) return;
+    // Use whichever version has the newer synced timestamp
+    const remoteDate = new Date(data.meta?.synced || data.date || 0);
+    const localDate  = new Date(session.meta?.synced || session.date || 0);
+    if (remoteDate <= localDate) {
+      updateSyncStatus('☁️ up to date');
+      return;
+    }
+    session = data;
+    if (data.images && typeof data.images === 'object') {
+      for (const [id, url] of Object.entries(data.images)) {
+        await saveImageToDB(id, url);
+      }
+    }
+    saveSession();
+    updateNavBar();
+    renderCards();
+    showToast('Synced from GitHub ✓');
+    updateSyncStatus('☁️ pulled');
+  } catch {}
+}
+
 // ─── NODE CONTEXT MENU ───────────────────────────────────────────────────────
 function showNodeCtxMenu(nodeId, x, y) {
   const node = session.nodes.find(n => n.id === nodeId);
@@ -3482,7 +3873,7 @@ function showNodeCtxMenu(nodeId, x, y) {
   const menu = document.getElementById('nodeCtxMenu');
   const overlay = document.getElementById('nodeCtxOverlay');
   menu.dataset.ctxNode = nodeId;
-  document.getElementById('ctxPin').textContent     = node.pinned   ? '📌 Unpin'    : '📌 Pin';
+  document.getElementById('ctxPin').textContent     = node.pinned   ? '📌 Unpin'     : '📌 Pin';
   document.getElementById('ctxArchive').textContent = node.archived ? '📂 Unarchive' : '📁 Archive';
   const menuW = 200, menuH = 300;
   const left = Math.min(x, window.innerWidth  - menuW - 12);
@@ -3500,14 +3891,42 @@ function closeNodeCtxMenu() {
 
 function initNodeCtxMenu() {
   const getCtxNode = () => document.getElementById('nodeCtxMenu').dataset.ctxNode;
-  document.getElementById('ctxPin').addEventListener('click',      () => { closeNodeCtxMenu(); pinNode(getCtxNode()); });
-  document.getElementById('ctxArchive').addEventListener('click',  () => { closeNodeCtxMenu(); archiveNode(getCtxNode()); });
-  document.getElementById('ctxDefer').addEventListener('click',    () => { closeNodeCtxMenu(); showDeferModal(getCtxNode()); });
-  document.getElementById('ctxElaborate').addEventListener('click',() => { closeNodeCtxMenu(); startElaborate(getCtxNode()); });
-  document.getElementById('ctxExplore').addEventListener('click',  () => { closeNodeCtxMenu(); openChatModal(getCtxNode()); });
-  document.getElementById('ctxRefile').addEventListener('click',   () => { closeNodeCtxMenu(); refileNode(getCtxNode()); });
-  document.getElementById('ctxDelete').addEventListener('click',   () => { closeNodeCtxMenu(); deleteNode(getCtxNode()); });
+  document.getElementById('ctxPin').addEventListener('click',       () => { closeNodeCtxMenu(); pinNode(getCtxNode()); });
+  document.getElementById('ctxArchive').addEventListener('click',   () => { closeNodeCtxMenu(); archiveNode(getCtxNode()); });
+  document.getElementById('ctxDefer').addEventListener('click',     () => { closeNodeCtxMenu(); showDeferModal(getCtxNode()); });
+  document.getElementById('ctxElaborate').addEventListener('click', () => { closeNodeCtxMenu(); startElaborate(getCtxNode()); });
+  document.getElementById('ctxExplore').addEventListener('click',   () => { closeNodeCtxMenu(); openChatModal(getCtxNode()); });
+  document.getElementById('ctxRefile').addEventListener('click',    () => { closeNodeCtxMenu(); refileNode(getCtxNode()); });
+  document.getElementById('ctxDelete').addEventListener('click',    () => { closeNodeCtxMenu(); deleteNode(getCtxNode()); });
   document.getElementById('nodeCtxOverlay').addEventListener('click', closeNodeCtxMenu);
+}
+
+function updateSyncStatus(label) {
+  const el = document.getElementById('syncStatus');
+  if (!el) return;
+  const t = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  el.textContent = label + ' ' + t;
+  el.style.display = 'block';
+}
+
+let _syncTimer = null;
+function scheduleSyncToGist() {
+  if (!getGithubToken()) return;
+  clearTimeout(_syncTimer);
+  _syncTimer = setTimeout(pushToGist, 3000);
+}
+
+let _pollTimer = null;
+function startGistPolling() {
+  if (_pollTimer) return; // already running
+  _pollTimer = setInterval(async () => {
+    if (!getGithubToken()) return;
+    await pullFromGist();
+  }, 30000); // poll every 30 seconds
+}
+function stopGistPolling() {
+  clearInterval(_pollTimer);
+  _pollTimer = null;
 }
 
 // ─── MENU ───────────────────────────────────────────────────────────────────
@@ -3542,10 +3961,18 @@ async function initApp() {
       saveSessionToDB();
     }
     await loadImagesFromDB();
+    // Restore GitHub token from IndexedDB if localStorage lost it (iOS standalone eviction)
+    if (!getGithubToken()) {
+      const idbToken = await loadTokenFromDB();
+      if (idbToken) { localStorage.setItem(GITHUB_TOKEN_STORE, idbToken); }
+    }
     renderCards(); // Re-render with images loaded
   } catch (e) {
     console.warn('[VoiceMap] IndexedDB unavailable, using localStorage:', e.message);
   }
+  // Pull latest data from GitHub Gist if configured, then start periodic polling
+  await pullFromGist();
+  if (getGithubToken()) startGistPolling();
 }
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -3586,17 +4013,19 @@ document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('menuBtn').addEventListener('click', e => { e.stopPropagation(); toggleMenu(); });
   document.getElementById('miCluster').addEventListener('click', () => { closeMenu(); autoCluster(); });
   document.getElementById('miSelect').addEventListener('click',  () => { closeMenu(); selectMode ? exitSelectMode() : enterSelectMode(); });
-  document.getElementById('miCopyImportPrompt').addEventListener('click', () => { closeMenu(); copyImportPrompt(); });
-  document.getElementById('miImport').addEventListener('click',   () => { closeMenu(); document.getElementById('fileInput').click(); });
-  document.getElementById('miMerge').addEventListener('click',    () => { closeMenu(); document.getElementById('mergeFileInput').click(); });
-  document.getElementById('miMergeClip').addEventListener('click',() => { closeMenu(); mergeFromClipboard(); });
+  document.getElementById('miImport').addEventListener('click', () => { closeMenu(); document.getElementById('fileInput').click(); });
   document.getElementById('miExport').addEventListener('click', downloadJSON);
   document.getElementById('miCopy').addEventListener('click', copyJSON);
   document.getElementById('miPaste').addEventListener('click', pasteJSON);
   document.getElementById('miRename').addEventListener('click', renameSession);
   document.getElementById('miApiKey').addEventListener('click', showKeyModal);
+  document.getElementById('miGithubSync').addEventListener('click', () => { closeMenu(); showGithubModal(); });
+  document.getElementById('githubSave').addEventListener('click', saveGithubToken);
+  document.getElementById('githubTest').addEventListener('click', testGithubToken);
+  document.getElementById('githubModal').addEventListener('click', e => { if (e.target === e.currentTarget) hideGithubModal(); });
   document.getElementById('miArchive').addEventListener('click', () => { closeMenu(); setView('archived'); });
   document.getElementById('miExportPrompt').addEventListener('click', () => { closeMenu(); exportPrompt(null); });
+  document.getElementById('miPromptLog').addEventListener('click', () => { closeMenu(); openPromptLog(); });
   document.getElementById('miClear').addEventListener('click', clearAll);
 
   initNodeCtxMenu();
@@ -3718,7 +4147,6 @@ document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('mergeDoBtn').addEventListener('click', mergeSelected);
   document.getElementById('mergeCancelBtn').addEventListener('click', exitSelectMode);
   document.getElementById('fileInput').addEventListener('change', importJSON);
-  document.getElementById('mergeFileInput').addEventListener('change', mergeFromFile);
 
   document.getElementById('chatClose').addEventListener('click', closeChatModal);
   document.getElementById('chatSendBtn').addEventListener('click', sendChatMessage);
@@ -3729,6 +4157,26 @@ document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('chatMessages').addEventListener('click', e => {
     const saveBtn = e.target.closest('[data-save-msg-id]');
     if (saveBtn) saveChatMessageAsCard(saveBtn.dataset.saveMsgId);
+  });
+
+  // Prompt log modal
+  document.getElementById('plogClose').addEventListener('click', closePromptLog);
+  document.getElementById('plogClear').addEventListener('click', () => {
+    promptLog.length = 0;
+    renderPromptLog();
+  });
+  document.getElementById('promptLogModal').addEventListener('click', e => {
+    if (e.target === document.getElementById('promptLogModal')) closePromptLog();
+    const header = e.target.closest('.plog-entry-header');
+    if (header) { togglePlogEntry(header.closest('.plog-entry').dataset.plogId); return; }
+    const copyBtn = e.target.closest('.plog-copy-btn');
+    if (copyBtn) {
+      navigator.clipboard.writeText(copyBtn.dataset.copy || '').then(() => {
+        const orig = copyBtn.textContent;
+        copyBtn.textContent = 'Copied!';
+        setTimeout(() => { copyBtn.textContent = orig; }, 1200);
+      }).catch(() => showToast('Copy failed'));
+    }
   });
 
   document.getElementById('keySave').addEventListener('click', saveApiKey);
