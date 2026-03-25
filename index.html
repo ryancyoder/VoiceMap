@@ -85,6 +85,16 @@
     /* ── Menu ─────────────────────────────────────────────────── */
     .menu-wrap { position: relative; flex-shrink: 0; }
 
+    .search-btn {
+      font-size: 20px;
+      color: var(--muted);
+      background: none;
+      border: none;
+      padding: 4px 6px;
+      cursor: pointer;
+      flex-shrink: 0;
+      -webkit-tap-highlight-color: transparent;
+    }
     .menu-btn {
       font-size: 22px;
       color: var(--muted);
@@ -1402,6 +1412,7 @@
   <div class="nav-bar">
     <button class="back-btn" id="backBtn">‹ Back</button>
     <div class="nav-title" id="navTitle">Home</div>
+    <button class="search-btn" id="searchBtn" title="Quick Find (Cmd+K)">🔍</button>
     <div class="menu-wrap">
       <button class="menu-btn" id="menuBtn">···</button>
       <div class="menu-dropdown" id="menuDropdown">
@@ -5344,7 +5355,7 @@ const toggleMenu = () => document.getElementById('menuDropdown').classList.toggl
 const closeMenu  = () => document.getElementById('menuDropdown').classList.remove('open');
 
 // ─── INIT ───────────────────────────────────────────────────────────────────
-const BUILD_TS = 'build:2026-03-26T00:30'; // bumped each deploy — confirms fresh load
+const BUILD_TS = 'build:2026-03-26T01:00'; // bumped each deploy — confirms fresh load
 
 async function initApp() {
   // Show immediately with localStorage data
@@ -5466,6 +5477,7 @@ document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('miPaste').addEventListener('click', pasteJSON);
   document.getElementById('miRename').addEventListener('click', renameSession);
   document.getElementById('miApiKey').addEventListener('click', showKeyModal);
+  document.getElementById('searchBtn').addEventListener('click', showQuickFind);
   document.getElementById('miGithubSync').addEventListener('click', () => { closeMenu(); showGithubModal(); });
   document.getElementById('githubSave').addEventListener('click', saveGithubToken);
   document.getElementById('githubTest').addEventListener('click', testGithubToken);
@@ -5570,6 +5582,12 @@ document.addEventListener('DOMContentLoaded', () => {
     if ((e.metaKey || e.ctrlKey) && e.key === 'n') {
       e.preventDefault();
       startMmAddChild();
+      return;
+    }
+
+    if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
+      e.preventDefault();
+      showQuickFind();
       return;
     }
 
