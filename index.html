@@ -986,11 +986,16 @@
       font-size: 14px; font-weight: 600; font-family: var(--font); cursor: pointer; padding: 2px 8px;
     }
     .mm-toggle-btn {
-      display: none; background: none; border: 1px solid var(--border);
-      color: var(--accent); font-size: 13px; padding: 5px 10px;
-      border-radius: 8px; cursor: pointer; font-family: var(--font);
+      background: none;
+      border: 1px solid var(--border);
+      color: var(--accent);
+      font-size: 13px;
+      padding: 5px 10px;
+      border-radius: 8px;
+      cursor: pointer;
+      font-family: var(--font);
+      flex-shrink: 0;
     }
-    @media (min-width: 768px) { .mm-toggle-btn { display: block; } }
     .mm-filter-bar {
       display: flex; gap: 8px; align-items: center;
     }
@@ -4388,6 +4393,7 @@ document.addEventListener('DOMContentLoaded', () => {
     renderMindMap();
   });
   document.getElementById('mmBackBtn').addEventListener('click', hideMindMap);
+  document.getElementById('mmKbBtn').addEventListener('click', () => { hideMindMap(); showKanban(); });
   document.getElementById('mmPanelPin').addEventListener('click', () => {
     mmPanelPinned = !mmPanelPinned;
     document.getElementById('mmPanelPin').classList.toggle('pinned', mmPanelPinned);
@@ -4599,6 +4605,7 @@ document.addEventListener('DOMContentLoaded', () => {
 <div class="mm-view hidden" id="mmView">
   <div class="mm-header">
     <button class="mm-back-btn" id="mmBackBtn">‹ Cards</button>
+    <button class="kb-toggle-btn" id="mmKbBtn">⊞ Board</button>
     <div class="mm-header-title" id="mmHeaderTitle">VoiceMap</div>
     <div class="mm-focus-bar" id="mmFocusBar">
       <span>🔍 Focused:</span>
