@@ -536,6 +536,42 @@
     .status-text.processing { color: #f59e0b; }
     .status-text.error      { color: var(--accent); }
 
+    /* ── Keyboard input ───────────────────────────────────────── */
+    .keyboard-toggle-btn {
+      width: 44px; height: 44px; border-radius: 50%;
+      background: #f2f2f7; border: 0.5px solid var(--border);
+      font-size: 19px; cursor: pointer; flex-shrink: 0;
+      display: flex; align-items: center; justify-content: center;
+      transition: background 0.15s, border-color 0.15s;
+    }
+    .keyboard-toggle-btn:active { background: #e5e5ea; }
+    .keyboard-toggle-btn.active {
+      background: var(--accent); border-color: var(--accent); font-size: 16px;
+    }
+    .keyboard-row {
+      display: flex; align-items: flex-end; gap: 10px;
+      width: 100%; box-sizing: border-box;
+    }
+    .keyboard-row.hidden { display: none; }
+    .keyboard-input {
+      flex: 1; border-radius: 14px; border: 1px solid var(--border);
+      padding: 10px 14px; font-size: 15px; font-family: var(--font);
+      background: var(--surface); color: var(--text);
+      resize: none; line-height: 1.45; min-height: 44px; max-height: 120px;
+      box-sizing: border-box; -webkit-appearance: none; overflow-y: auto;
+    }
+    .keyboard-input:focus { outline: none; border-color: var(--accent); }
+    .keyboard-input::placeholder { color: var(--muted); }
+    .keyboard-send-btn {
+      width: 44px; height: 44px; flex-shrink: 0; border-radius: 50%;
+      background: var(--accent); border: none; color: #fff;
+      font-size: 22px; line-height: 1; cursor: pointer;
+      display: flex; align-items: center; justify-content: center;
+      transition: opacity 0.15s;
+    }
+    .keyboard-send-btn:active { opacity: 0.75; }
+    .keyboard-send-btn:disabled { opacity: 0.35; cursor: not-allowed; }
+
     /* ── Camera / image cards ─────────────────────────────────── */
     .camera-btn {
       width: 44px; height: 44px; border-radius: 50%;
@@ -1463,6 +1499,11 @@
       <button class="stop-btn" id="stopBtn" disabled>■</button>
       <button class="record-btn" id="recordBtn">⏺</button>
       <button class="camera-btn" id="cameraBtn">📷</button>
+      <button class="keyboard-toggle-btn" id="keyboardToggleBtn" title="Type instead of speak">⌨</button>
+    </div>
+    <div class="keyboard-row hidden" id="keyboardRow">
+      <textarea class="keyboard-input" id="keyboardInput" placeholder="Type your idea… (Enter to send)" rows="1"></textarea>
+      <button class="keyboard-send-btn" id="keyboardSendBtn" disabled title="Send">↑</button>
     </div>
     <div class="status-text" id="statusText">Tap ⏺ to capture an idea</div>
     <div id="syncStatus" style="display:none;font-size:10px;color:#6b7280;text-align:center;padding:2px 0;letter-spacing:0.02em"></div>
@@ -2691,6 +2732,41 @@ function addNode(parsed, transcript) {
     showToast(`Added: "${parsed.label || transcript.slice(0, 32)}"`);
   }
   return nodeId;
+}
+
+// ─── KEYBOARD INPUT ──────────────────────────────────────────────────────────
+let keyboardMode = localStorage.getItem('voicemap_keyboard_mode') === '1';
+
+function setKeyboardMode(on) {
+  keyboardMode = on;
+  localStorage.setItem('voicemap_keyboard_mode', on ? '1' : '0');
+  const toggleBtn = document.getElementById('keyboardToggleBtn');
+  const keyRow    = document.getElementById('keyboardRow');
+  const recordBtn = document.getElementById('recordBtn');
+  const stopBtn   = document.getElementById('stopBtn');
+  toggleBtn.classList.toggle('active', on);
+  keyRow.classList.toggle('hidden', !on);
+  recordBtn.style.display = on ? 'none' : '';
+  stopBtn.style.display   = on ? 'none' : '';
+  if (on) {
+    setStatus('Type your idea and press Enter');
+    document.getElementById('keyboardInput').focus();
+  } else {
+    setStatus('Tap ⏺ to capture an idea');
+  }
+}
+
+async function submitKeyboardInput() {
+  const input = document.getElementById('keyboardInput');
+  const text  = input.value.trim();
+  if (!text) return;
+  if (!getApiKey()) { showKeyModal(); return; }
+  input.value = '';
+  input.style.height = '';
+  document.getElementById('keyboardSendBtn').disabled = true;
+  await handleTranscript(text);
+  document.getElementById('keyboardSendBtn').disabled = false;
+  input.focus();
 }
 
 // ─── IMAGE CAPTURE ───────────────────────────────────────────────────────────
@@ -4974,6 +5050,16 @@ document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('recordBtn').addEventListener('click', startRecording);
   document.getElementById('stopBtn').addEventListener('click', stopRecording);
   document.getElementById('backBtn').addEventListener('click', navigateBack);
+  document.getElementById('keyboardToggleBtn').addEventListener('click', () => setKeyboardMode(!keyboardMode));
+  document.getElementById('keyboardSendBtn').addEventListener('click', submitKeyboardInput);
+  document.getElementById('keyboardInput').addEventListener('keydown', e => {
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); submitKeyboardInput(); }
+  });
+  document.getElementById('keyboardInput').addEventListener('input', function() {
+    this.style.height = 'auto';
+    this.style.height = Math.min(this.scrollHeight, 120) + 'px';
+    document.getElementById('keyboardSendBtn').disabled = !this.value.trim();
+  });
   document.getElementById('cameraBtn').addEventListener('click', () => {
     if (pendingElaborate) { pendingElaborate = null; setRecordingState(isRecording); }
     else if (pendingImage) { skipImageDescription(); }
@@ -5101,6 +5187,9 @@ document.addEventListener('DOMContentLoaded', () => {
   const mmMediaQuery = window.matchMedia('(min-width: 900px) and (orientation: landscape)');
   mmMediaQuery.addEventListener('change', e => { if (e.matches) showMindMap(); else hideMindMap(); });
   if (mmMediaQuery.matches) showMindMap();
+
+  // Restore keyboard input mode if it was active last session
+  if (keyboardMode) setKeyboardMode(true);
 
   // Complete modal
   document.getElementById('archiveBtn').addEventListener('click', () => {
