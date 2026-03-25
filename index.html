@@ -1004,6 +1004,144 @@
       background: var(--accent); color: #fff; border-color: var(--accent);
     }
 
+    /* ── Kanban Board ────────────────────────────────────────── */
+    .kb-view {
+      flex: 1;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+      min-height: 0;
+    }
+    .kb-view.hidden { display: none; }
+    .kb-board {
+      flex: 1;
+      display: flex;
+      flex-direction: row;
+      gap: 10px;
+      padding: 10px 12px calc(var(--safe-bottom) + 10px);
+      overflow-x: auto;
+      overflow-y: hidden;
+      -webkit-overflow-scrolling: touch;
+      align-items: stretch;
+      min-height: 0;
+    }
+    .kb-board::-webkit-scrollbar { display: none; }
+    .kb-column {
+      flex-shrink: 0;
+      width: 240px;
+      display: flex;
+      flex-direction: column;
+      background: rgba(0,0,0,0.04);
+      border-radius: var(--radius);
+      overflow: hidden;
+      min-height: 0;
+    }
+    .kb-col-header {
+      padding: 10px 12px 8px;
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--text);
+      background: rgba(0,0,0,0.05);
+      border-bottom: 0.5px solid var(--border);
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      flex-shrink: 0;
+      cursor: pointer;
+    }
+    .kb-col-header:active { background: rgba(0,0,0,0.09); }
+    .kb-col-title {
+      flex: 1;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .kb-col-count {
+      font-size: 11px;
+      font-weight: 500;
+      color: var(--muted);
+      background: rgba(0,0,0,0.08);
+      padding: 1px 6px;
+      border-radius: 99px;
+      flex-shrink: 0;
+    }
+    .kb-cards {
+      flex: 1;
+      overflow-y: auto;
+      -webkit-overflow-scrolling: touch;
+      padding: 8px;
+      display: flex;
+      flex-direction: column;
+      gap: 7px;
+      min-height: 60px;
+    }
+    .kb-cards::-webkit-scrollbar { display: none; }
+    .kb-cards.kb-drop-active {
+      background: rgba(226,75,74,0.06);
+      outline: 2px dashed rgba(226,75,74,0.35);
+      outline-offset: -3px;
+      border-radius: 0 0 var(--radius) var(--radius);
+    }
+    .kb-card {
+      background: var(--surface);
+      border-radius: 10px;
+      padding: 10px 11px;
+      box-shadow: 0 1px 4px rgba(0,0,0,0.07);
+      cursor: pointer;
+      touch-action: none;
+      transition: opacity 0.15s;
+    }
+    .kb-card.kb-dragging { opacity: 0.3; }
+    .kb-card-ghost {
+      position: fixed;
+      z-index: 900;
+      pointer-events: none;
+      border-radius: 10px;
+      background: var(--surface);
+      box-shadow: 0 8px 28px rgba(0,0,0,0.18);
+      padding: 10px 11px;
+      opacity: 0.92;
+    }
+    .kb-card-title {
+      font-size: 13px;
+      font-weight: 500;
+      color: var(--text);
+      line-height: 1.35;
+    }
+    .kb-card-meta {
+      font-size: 11px;
+      color: var(--muted);
+      margin-top: 3px;
+    }
+    .kb-empty {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      flex: 1;
+      padding: 24px;
+      color: var(--muted);
+      font-size: 14px;
+      text-align: center;
+      gap: 6px;
+    }
+    .kb-toggle-btn {
+      background: none;
+      border: 1px solid var(--border);
+      color: var(--accent);
+      font-size: 13px;
+      padding: 5px 10px;
+      border-radius: 8px;
+      cursor: pointer;
+      font-family: var(--font);
+      flex-shrink: 0;
+    }
+    .kb-toggle-btn.active {
+      background: var(--accent);
+      color: #fff;
+      border-color: var(--accent);
+    }
+
     /* ── Toast ────────────────────────────────────────────────── */
     .toast {
       position: fixed;
@@ -1034,6 +1172,7 @@
   <div class="nav-bar">
     <button class="back-btn" id="backBtn">‹ Back</button>
     <div class="nav-title" id="navTitle">Home</div>
+    <button class="kb-toggle-btn" id="kbToggleBtn">⊞ Board</button>
     <button class="mm-toggle-btn" id="mmToggleBtn">🗺 Map</button>
     <div class="menu-wrap">
       <button class="menu-btn" id="menuBtn">···</button>
@@ -1063,13 +1202,18 @@
   </div>
 
   <!-- Card list -->
-  <div class="card-scroll">
+  <div class="card-scroll" id="cardScroll">
     <div id="cardList"></div>
     <div class="empty-state" id="emptyState" style="display:none">
       <div class="empty-icon">💭</div>
       <div class="empty-text">No ideas here yet</div>
       <div class="empty-hint">Tap the red button and start speaking</div>
     </div>
+  </div>
+
+  <!-- Kanban board view -->
+  <div class="kb-view hidden" id="kbView">
+    <div class="kb-board" id="kbBoard"></div>
   </div>
 
   <!-- Defer modal -->
@@ -2000,11 +2144,12 @@ function renderCards(animDir) {
   }
 }
 
-// Keep mind map in sync whenever cards re-render
+// Keep mind map and kanban in sync whenever cards re-render
 const _renderCards = renderCards;
 renderCards = function(animDir) {
   _renderCards(animDir);
   if (mmVisible) renderMindMap();
+  if (kbVisible) renderKanban();
 };
 
 function toggleSummary(nodeId) {
@@ -2599,6 +2744,7 @@ const MM_PAD = 48;    // canvas padding
 let mmTransform      = { x: 0, y: 0, scale: 1 };
 let mmSelectedId     = null;
 let mmVisible        = false;
+let kbVisible        = false;
 let mmHideDeferred   = false;
 let mmHideArchived   = false;
 let mmFocusNodeId    = null;
@@ -2819,6 +2965,7 @@ function mmStartRecording() {
 }
 
 function showMindMap() {
+  if (kbVisible) hideKanban();
   mmVisible = true;
   mmTransform = { x: 40, y: 40, scale: 1 };
   document.getElementById('mmView').classList.remove('hidden');
@@ -3929,6 +4076,201 @@ function stopGistPolling() {
   _pollTimer = null;
 }
 
+// ─── KANBAN BOARD ───────────────────────────────────────────────────────────
+let kbDragState = null;
+
+function showKanban() {
+  if (mmVisible) hideMindMap();
+  kbVisible = true;
+  document.getElementById('cardScroll').style.display = 'none';
+  document.getElementById('kbView').classList.remove('hidden');
+  document.getElementById('kbToggleBtn').classList.add('active');
+  renderKanban();
+}
+
+function hideKanban() {
+  kbVisible = false;
+  document.getElementById('kbView').classList.add('hidden');
+  document.getElementById('cardScroll').style.display = '';
+  document.getElementById('kbToggleBtn').classList.remove('active');
+  renderCards();
+}
+
+function toggleKanban() {
+  kbVisible ? hideKanban() : showKanban();
+}
+
+function renderKanban() {
+  if (!kbVisible) return;
+  const columns = childrenOf(currentParentId()).filter(n => !isArchivedBeforeToday(n));
+  const board = document.getElementById('kbBoard');
+
+  if (columns.length === 0) {
+    board.innerHTML = '<div class="kb-empty"><div style="font-size:32px">⊞</div><div>No columns yet</div><div style="font-size:12px">Children of the current node become columns</div></div>';
+    return;
+  }
+
+  board.innerHTML = columns.map(col => {
+    const cards = childrenOf(col.id).filter(n => !isArchivedBeforeToday(n));
+    const nid = esc(col.id);
+    return `
+      <div class="kb-column" data-col-id="${nid}">
+        <div class="kb-col-header" data-kb-nav-id="${nid}">
+          <span class="kb-col-title">${esc(col.label)}</span>
+          <span class="kb-col-count">${cards.length}</span>
+        </div>
+        <div class="kb-cards" data-drop-col="${nid}">
+          ${cards.map(card => {
+            const childCount = childrenOf(card.id).length;
+            const cid = esc(card.id);
+            return `<div class="kb-card" data-kb-card-id="${cid}" data-kb-col-id="${nid}">
+              <div class="kb-card-title">${esc(card.label)}</div>
+              ${childCount ? `<div class="kb-card-meta">${childCount} idea${childCount !== 1 ? 's' : ''} inside</div>` : ''}
+            </div>`;
+          }).join('')}
+        </div>
+      </div>`;
+  }).join('');
+
+}
+
+function initKbBoard() {
+  document.getElementById('kbBoard').addEventListener('touchstart', onKbTouchStart, { passive: true });
+  document.getElementById('kbBoard').addEventListener('click', onKbClick);
+}
+
+function onKbClick(e) {
+  // Column header → navigate into that node
+  const navEl = e.target.closest('[data-kb-nav-id]');
+  if (navEl) {
+    const node = session.nodes.find(n => n.id === navEl.dataset.kbNavId);
+    if (node) { navigateInto(node.id, node.label); return; }
+  }
+}
+
+function onKbTouchStart(e) {
+  const card = e.target.closest('.kb-card');
+  if (!card) return;
+  const t = e.touches[0];
+  kbDragState = {
+    card,
+    cardId:    card.dataset.kbCardId,
+    fromColId: card.dataset.kbColId,
+    startX:    t.clientX,
+    startY:    t.clientY,
+    phase:     'pending',
+    targetColId: null,
+    ghost:     null
+  };
+  document.addEventListener('touchmove',   onKbTouchMove,   { passive: false });
+  document.addEventListener('touchend',    onKbTouchEnd,    { passive: true  });
+  document.addEventListener('touchcancel', onKbTouchCancel, { passive: true  });
+}
+
+function activateKbDrag(touch) {
+  const { card } = kbDragState;
+  const rect = card.getBoundingClientRect();
+  if (navigator.vibrate) navigator.vibrate(10);
+  card.classList.add('kb-dragging');
+
+  const ghost = document.createElement('div');
+  ghost.className = 'kb-card-ghost';
+  ghost.style.width  = rect.width  + 'px';
+  ghost.style.left   = rect.left   + 'px';
+  ghost.style.top    = rect.top    + 'px';
+  ghost.innerHTML    = card.innerHTML;
+  document.body.appendChild(ghost);
+
+  kbDragState = {
+    ...kbDragState,
+    phase:   'dragging',
+    ghost,
+    offsetX: touch.clientX - rect.left,
+    offsetY: touch.clientY - rect.top
+  };
+}
+
+function onKbTouchMove(e) {
+  if (!kbDragState) return;
+  const t = e.touches[0];
+
+  if (kbDragState.phase === 'pending') {
+    const dx = Math.abs(t.clientX - kbDragState.startX);
+    const dy = Math.abs(t.clientY - kbDragState.startY);
+    if (dx > 8 || dy > 8) activateKbDrag(t);
+    return;
+  }
+  if (kbDragState.phase !== 'dragging') return;
+  e.preventDefault();
+
+  const { ghost, offsetX, offsetY } = kbDragState;
+  ghost.style.left = (t.clientX - offsetX) + 'px';
+  ghost.style.top  = (t.clientY - offsetY) + 'px';
+
+  // Detect which column's drop zone is under the pointer
+  ghost.style.visibility = 'hidden';
+  const el = document.elementFromPoint(t.clientX, t.clientY);
+  ghost.style.visibility = '';
+
+  document.querySelectorAll('.kb-cards').forEach(c => c.classList.remove('kb-drop-active'));
+  const targetCards = el?.closest('.kb-cards');
+  if (targetCards) {
+    targetCards.classList.add('kb-drop-active');
+    kbDragState.targetColId = targetCards.dataset.dropCol;
+  } else {
+    kbDragState.targetColId = null;
+  }
+}
+
+function onKbTouchEnd() {
+  document.removeEventListener('touchmove',   onKbTouchMove);
+  document.removeEventListener('touchend',    onKbTouchEnd);
+  document.removeEventListener('touchcancel', onKbTouchCancel);
+  if (!kbDragState) return;
+
+  const { card, cardId, fromColId, targetColId, ghost, phase } = kbDragState;
+  kbDragState = null;
+
+  if (ghost) ghost.remove();
+  card.classList.remove('kb-dragging');
+  document.querySelectorAll('.kb-drop-active').forEach(c => c.classList.remove('kb-drop-active'));
+
+  if (phase === 'pending') {
+    // Tap — navigate into the card
+    const node = session.nodes.find(n => n.id === cardId);
+    if (node) navigateInto(node.id, node.label);
+    return;
+  }
+
+  if (phase !== 'dragging' || !targetColId || targetColId === fromColId) {
+    renderKanban();
+    return;
+  }
+
+  // Move card to new column by updating parent_id
+  const node = session.nodes.find(n => n.id === cardId);
+  if (node) {
+    node.parent_id     = targetColId;
+    node.last_modified = new Date().toISOString();
+    const colNode = session.nodes.find(n => n.id === targetColId);
+    saveSession();
+    showToast(`Moved to "${colNode?.label || 'column'}"`);
+  }
+  renderKanban();
+}
+
+function onKbTouchCancel() {
+  document.removeEventListener('touchmove',   onKbTouchMove);
+  document.removeEventListener('touchend',    onKbTouchEnd);
+  document.removeEventListener('touchcancel', onKbTouchCancel);
+  if (!kbDragState) return;
+  if (kbDragState.ghost) kbDragState.ghost.remove();
+  kbDragState.card?.classList.remove('kb-dragging');
+  document.querySelectorAll('.kb-drop-active').forEach(c => c.classList.remove('kb-drop-active'));
+  kbDragState = null;
+  renderKanban();
+}
+
 // ─── MENU ───────────────────────────────────────────────────────────────────
 const toggleMenu = () => document.getElementById('menuDropdown').classList.toggle('open');
 const closeMenu  = () => document.getElementById('menuDropdown').classList.remove('open');
@@ -4032,6 +4374,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // Mind map
   initMmPanZoom();
+  document.getElementById('kbToggleBtn').addEventListener('click', toggleKanban);
+  initKbBoard();
   document.getElementById('mmToggleBtn').addEventListener('click', showMindMap);
   document.getElementById('mmFilterDeferred').addEventListener('click', () => {
     mmHideDeferred = !mmHideDeferred;
