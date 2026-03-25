@@ -1235,7 +1235,6 @@
     .cal-day-cards {
       flex: 1; overflow-y: auto; padding: 4px;
       display: flex; flex-direction: column; gap: 4px;
-      -webkit-overflow-scrolling: touch;
     }
     .cal-day-col.cal-drop-active .cal-day-cards { background: rgba(226,75,74,0.09); }
     .cal-card {
@@ -4446,13 +4445,15 @@ function hideScheduleModal() {
 // ── Drag-to-reschedule (touch) ────────────────────────────────────────────────
 function initCalendarDrag() {
   document.querySelectorAll('.cal-card').forEach(card => {
-    card.addEventListener('touchstart', onCalTouchStart, { passive: true });
+    // non-passive so we can call preventDefault and prevent iOS scroll-steal
+    card.addEventListener('touchstart', onCalTouchStart, { passive: false });
   });
 }
 
 function onCalTouchStart(e) {
   const card = e.target.closest('.cal-card');
   if (!card) return;
+  e.preventDefault(); // stop the parent cal-day-cards from grabbing the scroll gesture
   const t = e.touches[0];
   calDragState = {
     card,
@@ -4484,6 +4485,7 @@ function activateCalDrag(touch) {
 
 function onCalTouchMove(e) {
   if (!calDragState) return;
+  e.preventDefault(); // always suppress browser scroll during our gesture
   const t = e.touches[0];
   if (calDragState.phase === 'pending') {
     if (Math.abs(t.clientX - calDragState.startX) > 8 ||
@@ -4491,7 +4493,6 @@ function onCalTouchMove(e) {
     return;
   }
   if (calDragState.phase !== 'dragging') return;
-  e.preventDefault();
   const { ghost, offsetX, offsetY } = calDragState;
   ghost.style.left = (t.clientX - offsetX) + 'px';
   ghost.style.top  = (t.clientY - offsetY) + 'px';
@@ -4510,7 +4511,7 @@ function onCalTouchEnd() {
   document.removeEventListener('touchend',    onCalTouchEnd);
   document.removeEventListener('touchcancel', onCalTouchCancel);
   if (!calDragState) return;
-  const { card, cardId, fromDate, targetDate, ghost, phase } = calDragState;
+  const { card, cardId, kind, fromDate, targetDate, ghost, phase } = calDragState;
   calDragState = null;
   if (ghost) ghost.remove();
   card.classList.remove('dragging');
