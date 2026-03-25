@@ -182,6 +182,33 @@
     }
     .day-btn:active { background: rgba(255,214,10,0.3); }
 
+    /* ── View switcher (Cards / Map / Board) ─────────────────── */
+    .view-switcher-bar {
+      display: flex;
+      padding: 8px 14px 2px;
+      background: var(--surface);
+      border-bottom: 0.5px solid var(--border);
+      flex-shrink: 0;
+    }
+    .view-tab {
+      flex: 1;
+      padding: 7px 4px;
+      font-size: 13px;
+      font-weight: 500;
+      font-family: var(--font);
+      border: none;
+      background: none;
+      color: var(--muted);
+      cursor: pointer;
+      border-bottom: 2px solid transparent;
+      transition: color 0.15s, border-color 0.15s;
+    }
+    .view-tab.active {
+      color: var(--accent);
+      border-bottom-color: var(--accent);
+      font-weight: 600;
+    }
+
     /* ── View filter bar ──────────────────────────────────────── */
     .view-filter-bar {
       display: flex; gap: 8px; padding: 8px 16px 4px;
@@ -850,6 +877,18 @@
       background: var(--surface); border-bottom: 0.5px solid var(--border);
       flex-shrink: 0;
     }
+    .mm-view-tabs {
+      display: flex; gap: 2px; flex-shrink: 0;
+    }
+    .mm-view-tab {
+      background: none; border: none; font-family: var(--font);
+      font-size: 13px; font-weight: 500; color: var(--muted);
+      padding: 6px 11px; border-radius: 8px; cursor: pointer;
+      transition: background 0.15s, color 0.15s;
+    }
+    .mm-view-tab.active {
+      background: rgba(226,75,74,0.1); color: var(--accent); font-weight: 600;
+    }
     .mm-back-btn {
       background: none; border: none; color: var(--accent);
       font-size: 17px; padding: 6px 10px; border-radius: 8px;
@@ -985,17 +1024,7 @@
       background: none; border: none; color: var(--accent);
       font-size: 14px; font-weight: 600; font-family: var(--font); cursor: pointer; padding: 2px 8px;
     }
-    .mm-toggle-btn {
-      background: none;
-      border: 1px solid var(--border);
-      color: var(--accent);
-      font-size: 13px;
-      padding: 5px 10px;
-      border-radius: 8px;
-      cursor: pointer;
-      font-family: var(--font);
-      flex-shrink: 0;
-    }
+    .mm-toggle-btn { display: none; }
     .mm-filter-bar {
       display: flex; gap: 8px; align-items: center;
     }
@@ -1177,8 +1206,6 @@
   <div class="nav-bar">
     <button class="back-btn" id="backBtn">‹ Back</button>
     <div class="nav-title" id="navTitle">Home</div>
-    <button class="kb-toggle-btn" id="kbToggleBtn">⊞ Board</button>
-    <button class="mm-toggle-btn" id="mmToggleBtn">🗺 Map</button>
     <div class="menu-wrap">
       <button class="menu-btn" id="menuBtn">···</button>
       <div class="menu-dropdown" id="menuDropdown">
@@ -1199,8 +1226,15 @@
     </div>
   </div>
 
-  <!-- View filter pills -->
-  <div class="view-filter-bar">
+  <!-- View switcher (Cards / Map / Board) -->
+  <div class="view-switcher-bar">
+    <button class="view-tab active" id="tabCards">≡ Cards</button>
+    <button class="view-tab" id="tabMap">🗺 Map</button>
+    <button class="view-tab" id="tabBoard">⊞ Board</button>
+  </div>
+
+  <!-- Card-view filter pills -->
+  <div class="view-filter-bar" id="cardFilterBar">
     <button class="filter-pill active" data-view="all">All</button>
     <button class="filter-pill" data-view="pinned">📌 Pinned</button>
     <button class="filter-pill" data-view="deferred">⏳ Deferred</button>
@@ -2972,6 +3006,7 @@ function mmStartRecording() {
 function showMindMap() {
   if (kbVisible) hideKanban();
   mmVisible = true;
+  setViewTab('map');
   mmTransform = { x: 40, y: 40, scale: 1 };
   document.getElementById('mmView').classList.remove('hidden');
   document.getElementById('mmHeaderTitle').textContent = session.session || 'VoiceMap';
@@ -3029,6 +3064,7 @@ function hideMindMap() {
   document.getElementById('mmPanel').classList.add('hidden');
   document.getElementById('mmFocusBar').classList.remove('visible');
   document.getElementById('mmFilterBar').style.display = '';
+  setViewTab('cards');
   updateNavBar();
   renderCards();
 }
@@ -4084,12 +4120,20 @@ function stopGistPolling() {
 // ─── KANBAN BOARD ───────────────────────────────────────────────────────────
 let kbDragState = null;
 
+function setViewTab(tab) {
+  // tab: 'cards' | 'map' | 'board'
+  document.getElementById('tabCards').classList.toggle('active', tab === 'cards');
+  document.getElementById('tabMap').classList.toggle('active',   tab === 'map');
+  document.getElementById('tabBoard').classList.toggle('active', tab === 'board');
+  document.getElementById('cardFilterBar').style.display = (tab === 'cards') ? '' : 'none';
+}
+
 function showKanban() {
   if (mmVisible) hideMindMap();
   kbVisible = true;
   document.getElementById('cardScroll').style.display = 'none';
   document.getElementById('kbView').classList.remove('hidden');
-  document.getElementById('kbToggleBtn').classList.add('active');
+  setViewTab('board');
   renderKanban();
 }
 
@@ -4097,7 +4141,7 @@ function hideKanban() {
   kbVisible = false;
   document.getElementById('kbView').classList.add('hidden');
   document.getElementById('cardScroll').style.display = '';
-  document.getElementById('kbToggleBtn').classList.remove('active');
+  setViewTab('cards');
   renderCards();
 }
 
@@ -4379,9 +4423,11 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // Mind map
   initMmPanZoom();
-  document.getElementById('kbToggleBtn').addEventListener('click', toggleKanban);
+  // View switcher tabs (Cards / Map / Board)
+  document.getElementById('tabCards').addEventListener('click', () => { if (mmVisible) hideMindMap(); else if (kbVisible) hideKanban(); });
+  document.getElementById('tabMap').addEventListener('click', showMindMap);
+  document.getElementById('tabBoard').addEventListener('click', () => { if (!kbVisible) showKanban(); else hideKanban(); });
   initKbBoard();
-  document.getElementById('mmToggleBtn').addEventListener('click', showMindMap);
   document.getElementById('mmFilterDeferred').addEventListener('click', () => {
     mmHideDeferred = !mmHideDeferred;
     document.getElementById('mmFilterDeferred').classList.toggle('active', mmHideDeferred);
@@ -4393,6 +4439,7 @@ document.addEventListener('DOMContentLoaded', () => {
     renderMindMap();
   });
   document.getElementById('mmBackBtn').addEventListener('click', hideMindMap);
+  document.getElementById('mmTabMap').addEventListener('click', () => {}); // already active – no-op
   document.getElementById('mmKbBtn').addEventListener('click', () => { hideMindMap(); showKanban(); });
   document.getElementById('mmPanelPin').addEventListener('click', () => {
     mmPanelPinned = !mmPanelPinned;
@@ -4604,8 +4651,11 @@ document.addEventListener('DOMContentLoaded', () => {
 <!-- Mind Map View -->
 <div class="mm-view hidden" id="mmView">
   <div class="mm-header">
-    <button class="mm-back-btn" id="mmBackBtn">‹ Cards</button>
-    <button class="kb-toggle-btn" id="mmKbBtn">⊞ Board</button>
+    <div class="mm-view-tabs">
+      <button class="mm-view-tab" id="mmBackBtn">≡ Cards</button>
+      <button class="mm-view-tab active" id="mmTabMap">🗺 Map</button>
+      <button class="mm-view-tab" id="mmKbBtn">⊞ Board</button>
+    </div>
     <div class="mm-header-title" id="mmHeaderTitle">VoiceMap</div>
     <div class="mm-focus-bar" id="mmFocusBar">
       <span>🔍 Focused:</span>
