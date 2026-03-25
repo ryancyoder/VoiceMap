@@ -5402,12 +5402,18 @@ document.addEventListener('DOMContentLoaded', () => {
     if (!mmVisible) return;
     if (!document.getElementById('editFieldModal').classList.contains('hidden')) return;
 
-    // Opt+Up/Down = zoom in/out
-    if (e.altKey && !e.metaKey && !e.ctrlKey && (e.key === 'ArrowUp' || e.key === 'ArrowDown')) {
+    // Opt+Up/Down = zoom in/out; Opt+Left/Right = pan
+    if (e.altKey && !e.metaKey && !e.ctrlKey &&
+        (e.key === 'ArrowUp' || e.key === 'ArrowDown' || e.key === 'ArrowLeft' || e.key === 'ArrowRight')) {
       e.preventDefault();
       e.stopPropagation();
-      const factor = e.key === 'ArrowUp' ? 1.15 : (1 / 1.15);
-      mmTransform.scale = Math.max(0.25, Math.min(4, mmTransform.scale * factor));
+      if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
+        const factor = e.key === 'ArrowUp' ? 1.15 : (1 / 1.15);
+        mmTransform.scale = Math.max(0.25, Math.min(4, mmTransform.scale * factor));
+      } else {
+        const step = 80;
+        mmTransform.x += e.key === 'ArrowLeft' ? step : -step;
+      }
       applyMmTransform();
       return;
     }
