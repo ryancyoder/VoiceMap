@@ -4578,14 +4578,16 @@ async function pullFromGist() {
 }
 
 // ─── QUICK FIND ──────────────────────────────────────────────────────────────
-let _qfIdx     = 0;
-let _qfMatches = [];
+let _qfIdx      = 0;
+let _qfMatches  = [];
+let _qfOpenTime = 0;
 
 function _qfEsc(s) {
   return (s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
 }
 
 function showQuickFind() {
+  _qfOpenTime = Date.now();
   document.getElementById('quickFindModal').classList.remove('hidden');
   const input = document.getElementById('quickFindInput');
   input.value = '';
@@ -4698,7 +4700,12 @@ function initQuickFind() {
   });
 
   // Tap outside sheet to dismiss
-  modal.addEventListener('click', e => { if (e.target === modal) hideQuickFind(); });
+  // Dismiss on tap outside — but ignore ghost clicks fired within 400ms of opening
+  modal.addEventListener('click', e => {
+    if (e.target !== modal) return;
+    if (Date.now() - _qfOpenTime < 400) return;
+    hideQuickFind();
+  });
 }
 
 // ─── NODE CONTEXT MENU ───────────────────────────────────────────────────────
@@ -5355,7 +5362,7 @@ const toggleMenu = () => document.getElementById('menuDropdown').classList.toggl
 const closeMenu  = () => document.getElementById('menuDropdown').classList.remove('open');
 
 // ─── INIT ───────────────────────────────────────────────────────────────────
-const BUILD_TS = 'build:2026-03-26T01:00'; // bumped each deploy — confirms fresh load
+const BUILD_TS = 'build:2026-03-26T01:30'; // bumped each deploy — confirms fresh load
 
 async function initApp() {
   // Show immediately with localStorage data
