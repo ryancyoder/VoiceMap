@@ -2850,7 +2850,7 @@ function applyMmAddChild(text) {
   });
   saveSession();
   renderMindMap();
-  selectMmNode(nodeId);
+  if (parentId) selectMmNode(parentId);
   showToast(`Added: "${text.slice(0, 40)}"`);
 }
 
