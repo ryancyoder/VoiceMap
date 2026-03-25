@@ -2431,9 +2431,11 @@ function _consolidateApply(mode) {
     node.summary = node.summary ? node.summary + '\n\n' + md : md;
   }
   node.last_modified = new Date().toISOString();
+  const descendants = getDescendants(nodeId);
+  session.nodes = session.nodes.filter(n => !descendants.has(n.id));
   saveSession();
   renderCards();
-  showToast(mode === 'replace' ? 'Description replaced' : 'Description updated');
+  showToast(`Consolidated — ${descendants.size} card${descendants.size !== 1 ? 's' : ''} removed`);
 }
 
 function initConsolidateModal() {
@@ -5626,7 +5628,7 @@ const toggleMenu = () => document.getElementById('menuDropdown').classList.toggl
 const closeMenu  = () => document.getElementById('menuDropdown').classList.remove('open');
 
 // ─── INIT ───────────────────────────────────────────────────────────────────
-const BUILD_TS = 'build:2026-03-26T09:00'; // bumped each deploy — confirms fresh load
+const BUILD_TS = 'build:2026-03-26T10:00'; // bumped each deploy — confirms fresh load
 
 async function initApp() {
   // Show immediately with localStorage data
