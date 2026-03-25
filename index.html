@@ -2555,7 +2555,6 @@ function repairCircularRefs() {
     let cur = session.nodes.find(n => n.id === node.parent_id);
     while (cur) {
       if (seen.has(cur.id)) {
-        // Cycle found — detach this node to the root level
         node.parent_id = null;
         fixed++;
         break;
@@ -2564,9 +2563,26 @@ function repairCircularRefs() {
       cur = session.nodes.find(n => n.id === cur.parent_id);
     }
   }
-  if (fixed > 0) {
+  return fixed;
+}
+
+function repairOrphans() {
+  const ids = new Set(session.nodes.map(n => n.id));
+  let fixed = 0;
+  for (const node of session.nodes) {
+    if (node.parent_id && !ids.has(node.parent_id)) {
+      node.parent_id = null;
+      fixed++;
+    }
+  }
+  return fixed;
+}
+
+function repairData() {
+  const total = repairCircularRefs() + repairOrphans();
+  if (total > 0) {
     saveSession();
-    showToast(`Repaired ${fixed} corrupted node link${fixed > 1 ? 's' : ''}`);
+    showToast(`Repaired ${total} broken node link${total > 1 ? 's' : ''}`);
   }
 }
 
@@ -5389,7 +5405,7 @@ const toggleMenu = () => document.getElementById('menuDropdown').classList.toggl
 const closeMenu  = () => document.getElementById('menuDropdown').classList.remove('open');
 
 // ─── INIT ───────────────────────────────────────────────────────────────────
-const BUILD_TS = 'build:2026-03-26T02:30'; // bumped each deploy — confirms fresh load
+const BUILD_TS = 'build:2026-03-26T03:00'; // bumped each deploy — confirms fresh load
 
 async function initApp() {
   // Show immediately with localStorage data
@@ -5426,7 +5442,7 @@ async function initApp() {
       const idbToken = await loadTokenFromDB();
       if (idbToken) { localStorage.setItem(GITHUB_TOKEN_STORE, idbToken); }
     }
-    repairCircularRefs(); // fix any corrupted parent_id cycles before rendering
+    repairData(); // fix circular refs and orphaned parent_ids before rendering
     renderCards(); // Re-render with images loaded
   } catch (e) {
     console.warn('[VoiceMap] IndexedDB unavailable, using localStorage:', e.message);
