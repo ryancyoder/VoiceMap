@@ -1496,7 +1496,8 @@
   <!-- Quick Find modal -->
   <div class="qf-overlay hidden" id="quickFindModal">
     <div class="qf-sheet">
-      <input type="text" id="quickFindInput" class="qf-input" placeholder="Find a card…" autocomplete="off" spellcheck="false" />
+      <input type="search" id="quickFindInput" class="qf-input" placeholder="Find a card…"
+        autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" />
       <div id="quickFindResults" class="qf-results"></div>
     </div>
   </div>
@@ -4578,7 +4579,9 @@ function showQuickFind() {
   const input = document.getElementById('quickFindInput');
   input.value = '';
   _qfIdx = 0;
-  setTimeout(() => { input.focus(); _qfRender(''); }, 60);
+  _qfRender('');
+  // Focus synchronously — iOS PWA won't honour focus() from a setTimeout
+  input.focus();
 }
 
 function hideQuickFind() {
@@ -5311,7 +5314,7 @@ const toggleMenu = () => document.getElementById('menuDropdown').classList.toggl
 const closeMenu  = () => document.getElementById('menuDropdown').classList.remove('open');
 
 // ─── INIT ───────────────────────────────────────────────────────────────────
-const BUILD_TS = 'build:2026-03-25T22:30'; // bumped each deploy — confirms fresh load
+const BUILD_TS = 'build:2026-03-25T23:00'; // bumped each deploy — confirms fresh load
 
 async function initApp() {
   // Show immediately with localStorage data
