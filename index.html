@@ -2817,7 +2817,42 @@ async function submitKeyboardInput(useAI = false) {
 }
 
 // ─── DIRECT FIELD EDITING ────────────────────────────────────────────────────
-let pendingEdit = null; // { nodeId, field: 'label'|'summary' } — set when editing a card field
+let pendingEdit   = null; // { nodeId, field: 'label'|'summary' } — set when editing a card field
+let pendingMmAdd  = null; // { parentId } — set when Cmd+N adds a child in map view
+
+function startMmAddChild() {
+  if (!mmVisible) return;
+  // Require a selected node to add under; allow null for root-level add
+  const parentId   = mmSelectedId;
+  const parentNode = parentId ? session.nodes.find(n => n.id === parentId) : null;
+  pendingMmAdd = { parentId };
+  pendingEdit  = null;
+
+  document.getElementById('editFieldLabel').textContent =
+    parentNode ? `Add child to "${parentNode.label.slice(0, 35)}"` : 'Add root node';
+  const input = document.getElementById('editFieldInput');
+  input.value = '';
+  input.rows  = 2;
+  document.getElementById('editFieldModal').classList.remove('hidden');
+  requestAnimationFrame(() => input.focus());
+}
+
+function applyMmAddChild(text) {
+  if (!pendingMmAdd) return;
+  const { parentId } = pendingMmAdd;
+  pendingMmAdd = null;
+  document.getElementById('editFieldModal').classList.add('hidden');
+  const now    = new Date().toISOString();
+  const nodeId = makeId();
+  session.nodes.push({
+    id: nodeId, label: text.slice(0, 60), summary: '', transcript: '',
+    parent_id: parentId, status: 'untouched', created: now, last_modified: now
+  });
+  saveSession();
+  renderMindMap();
+  selectMmNode(nodeId);
+  showToast(`Added: "${text.slice(0, 40)}"`);
+}
 
 function startEditField(nodeId, field) {
   const node = session.nodes.find(n => n.id === nodeId);
@@ -2856,7 +2891,8 @@ function applyDirectEdit(text) {
 }
 
 function cancelPendingEdit() {
-  pendingEdit = null;
+  pendingEdit  = null;
+  pendingMmAdd = null;
   document.getElementById('editFieldModal').classList.add('hidden');
 }
 
@@ -5145,7 +5181,9 @@ document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('backBtn').addEventListener('click', navigateBack);
   document.getElementById('editFieldSave').addEventListener('click', () => {
     const text = document.getElementById('editFieldInput').value.trim();
-    if (text) applyDirectEdit(text);
+    if (!text) return;
+    if (pendingMmAdd) applyMmAddChild(text);
+    else if (pendingEdit) applyDirectEdit(text);
   });
   document.getElementById('editFieldCancel').addEventListener('click', cancelPendingEdit);
   document.getElementById('editFieldModal').addEventListener('click', e => {
@@ -5288,6 +5326,16 @@ document.addEventListener('DOMContentLoaded', () => {
     if (mmSelectedId) exportPrompt(mmSelectedId);
   });
   document.getElementById('mmExitFocusBtn').addEventListener('click', mmExitFocus);
+
+  // Cmd+N in map view — add child node to selected parent
+  document.addEventListener('keydown', e => {
+    if (!mmVisible) return;
+    if (document.getElementById('editFieldModal').classList.contains('hidden') === false) return; // modal already open
+    if ((e.metaKey || e.ctrlKey) && e.key === 'n') {
+      e.preventDefault();
+      startMmAddChild();
+    }
+  });
   document.getElementById('mmDeleteBtn').addEventListener('click', () => {
     if (mmSelectedId) {
       const id = mmSelectedId;
