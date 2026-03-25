@@ -2816,21 +2816,17 @@ function startEditField(nodeId, field) {
   const fieldLabel = field === 'label' ? 'title' : 'description';
   const current    = field === 'label' ? node.label : (node.summary || '');
 
-  { // always show keyboard row for direct field editing
-    const keyRow = document.getElementById('keyboardRow');
-    const input  = document.getElementById('keyboardInput');
-    keyRow.classList.remove('hidden');
-    input.value = current;
-    input.style.height = 'auto';
-    input.style.height = Math.min(input.scrollHeight, 120) + 'px';
-    document.getElementById('keyboardSendBtn').disabled = !current.trim();
-    setStatus(`Editing ${fieldLabel} — Enter to save · Esc to cancel`);
-    input.focus();
-    // Select all so user can replace instantly
-    requestAnimationFrame(() => input.select());
-  } else {
-    setStatus(`Speak the new ${fieldLabel} for "${node.label.slice(0, 30)}"`, 'processing');
-  }
+  // Always show keyboard row for direct field editing
+  const keyRow = document.getElementById('keyboardRow');
+  const input  = document.getElementById('keyboardInput');
+  keyRow.classList.remove('hidden');
+  input.value = current;
+  input.style.height = 'auto';
+  input.style.height = Math.min(input.scrollHeight, 120) + 'px';
+  document.getElementById('keyboardSendBtn').disabled = !current.trim();
+  setStatus(`Editing ${fieldLabel} — Enter to save · Esc to cancel`);
+  input.focus();
+  requestAnimationFrame(() => input.select());
 }
 
 function applyDirectEdit(text) {
