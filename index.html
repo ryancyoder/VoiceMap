@@ -5158,10 +5158,15 @@ const toggleMenu = () => document.getElementById('menuDropdown').classList.toggl
 const closeMenu  = () => document.getElementById('menuDropdown').classList.remove('open');
 
 // ─── INIT ───────────────────────────────────────────────────────────────────
+const BUILD_TS = 'build:2026-03-25T20:45'; // bumped each deploy — confirms fresh load
+
 async function initApp() {
   // Show immediately with localStorage data
   updateNavBar();
   renderCards();
+  // Briefly show build timestamp so user can confirm latest version loaded
+  setStatus(BUILD_TS, 'processing');
+  setTimeout(() => setStatus('Tap ⏺ to capture an idea'), 2500);
   if (!getApiKey()) { showKeyModal(); }
   else if (new URLSearchParams(window.location.search).get('record') === '1') {
     // Launched via Back Tap shortcut — show tap-to-record overlay
@@ -5381,18 +5386,36 @@ document.addEventListener('DOMContentLoaded', () => {
       return;
     }
 
+    // Plain arrow navigation (no modifiers)
+    if (!e.metaKey && !e.ctrlKey && !e.altKey) {
+      const arrowMap = { ArrowLeft: 'left', ArrowRight: 'right', ArrowUp: 'up', ArrowDown: 'down' };
+      if (arrowMap[e.key]) {
+        e.preventDefault();
+        mmArrowNav(arrowMap[e.key]);
+      }
+    }
+  });
+
+  // Capture-phase listener on document so we intercept Opt/Cmd+Arrow BEFORE
+  // Safari's built-in scroll-to-top/bottom and page-navigation handlers.
+  document.addEventListener('keydown', e => {
+    if (!mmVisible) return;
+    if (!document.getElementById('editFieldModal').classList.contains('hidden')) return;
+
     // Opt+Up/Down = zoom in/out
     if (e.altKey && !e.metaKey && !e.ctrlKey && (e.key === 'ArrowUp' || e.key === 'ArrowDown')) {
       e.preventDefault();
+      e.stopPropagation();
       const factor = e.key === 'ArrowUp' ? 1.15 : (1 / 1.15);
       mmTransform.scale = Math.max(0.25, Math.min(4, mmTransform.scale * factor));
       applyMmTransform();
       return;
     }
 
-    // Cmd+Up = collapse selected, Cmd+Down = expand selected
+    // Cmd+Up = collapse selected node, Cmd+Down = expand selected node
     if ((e.metaKey || e.ctrlKey) && !e.altKey && (e.key === 'ArrowUp' || e.key === 'ArrowDown')) {
       e.preventDefault();
+      e.stopPropagation();
       if (mmSelectedId) {
         if (e.key === 'ArrowUp') {
           mmCollapsed.add(mmSelectedId);
@@ -5401,15 +5424,8 @@ document.addEventListener('DOMContentLoaded', () => {
         }
         renderMindMap();
       }
-      return;
     }
-
-    const arrowMap = { ArrowLeft: 'left', ArrowRight: 'right', ArrowUp: 'up', ArrowDown: 'down' };
-    if (arrowMap[e.key]) {
-      e.preventDefault();
-      mmArrowNav(arrowMap[e.key]);
-    }
-  });
+  }, { capture: true });
   document.getElementById('mmDeleteBtn').addEventListener('click', () => {
     if (mmSelectedId) {
       const id = mmSelectedId;
