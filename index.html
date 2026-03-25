@@ -5381,6 +5381,29 @@ document.addEventListener('DOMContentLoaded', () => {
       return;
     }
 
+    // Opt+Up/Down = zoom in/out
+    if (e.altKey && !e.metaKey && !e.ctrlKey && (e.key === 'ArrowUp' || e.key === 'ArrowDown')) {
+      e.preventDefault();
+      const factor = e.key === 'ArrowUp' ? 1.15 : (1 / 1.15);
+      mmTransform.scale = Math.max(0.25, Math.min(4, mmTransform.scale * factor));
+      applyMmTransform();
+      return;
+    }
+
+    // Cmd+Up = collapse selected, Cmd+Down = expand selected
+    if ((e.metaKey || e.ctrlKey) && !e.altKey && (e.key === 'ArrowUp' || e.key === 'ArrowDown')) {
+      e.preventDefault();
+      if (mmSelectedId) {
+        if (e.key === 'ArrowUp') {
+          mmCollapsed.add(mmSelectedId);
+        } else {
+          mmCollapsed.delete(mmSelectedId);
+        }
+        renderMindMap();
+      }
+      return;
+    }
+
     const arrowMap = { ArrowLeft: 'left', ArrowRight: 'right', ArrowUp: 'up', ArrowDown: 'down' };
     if (arrowMap[e.key]) {
       e.preventDefault();
