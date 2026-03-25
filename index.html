@@ -4442,34 +4442,41 @@ function hideScheduleModal() {
   document.getElementById('scheduleModal').classList.add('hidden');
 }
 
-// ── Drag-to-reschedule (touch) ────────────────────────────────────────────────
+// ── Drag-to-reschedule (pointer events with capture) ─────────────────────────
 function initCalendarDrag() {
   document.querySelectorAll('.cal-card').forEach(card => {
-    // non-passive so we can call preventDefault and prevent iOS scroll-steal
-    card.addEventListener('touchstart', onCalTouchStart, { passive: false });
+    card.addEventListener('pointerdown', onCalPointerDown);
   });
 }
 
-function onCalTouchStart(e) {
-  const card = e.target.closest('.cal-card');
-  if (!card) return;
-  e.preventDefault(); // stop the parent cal-day-cards from grabbing the scroll gesture
-  const t = e.touches[0];
+function onCalPointerDown(e) {
+  if (calDragState) return; // already dragging
+  const card = e.currentTarget;
+  e.preventDefault();
+  card.setPointerCapture(e.pointerId); // browser cannot steal this gesture
   calDragState = {
     card,
     cardId:    card.dataset.calCardId,
     kind:      card.dataset.calKind || 'scheduled',
     fromDate:  card.closest('.cal-day-col')?.dataset.calDate,
-    startX:    t.clientX, startY: t.clientY,
+    startX:    e.clientX, startY: e.clientY,
     phase:     'pending',
     targetDate: null, ghost: null
   };
-  document.addEventListener('touchmove',   onCalTouchMove,   { passive: false });
-  document.addEventListener('touchend',    onCalTouchEnd,    { passive: true });
-  document.addEventListener('touchcancel', onCalTouchCancel, { passive: true });
+  card.addEventListener('pointermove',        onCalPointerMove);
+  card.addEventListener('pointerup',          onCalPointerUp);
+  card.addEventListener('pointercancel',      onCalPointerCancel);
+  card.addEventListener('lostpointercapture', onCalPointerCancel);
 }
 
-function activateCalDrag(touch) {
+function _calRemovePointerListeners(card) {
+  card.removeEventListener('pointermove',        onCalPointerMove);
+  card.removeEventListener('pointerup',          onCalPointerUp);
+  card.removeEventListener('pointercancel',      onCalPointerCancel);
+  card.removeEventListener('lostpointercapture', onCalPointerCancel);
+}
+
+function activateCalDrag(e) {
   const { card } = calDragState;
   const rect = card.getBoundingClientRect();
   if (navigator.vibrate) navigator.vibrate(10);
@@ -4480,25 +4487,23 @@ function activateCalDrag(touch) {
   ghost.textContent = card.textContent;
   document.body.appendChild(ghost);
   calDragState = { ...calDragState, phase: 'dragging', ghost,
-    offsetX: touch.clientX - rect.left, offsetY: touch.clientY - rect.top };
+    offsetX: e.clientX - rect.left, offsetY: e.clientY - rect.top };
 }
 
-function onCalTouchMove(e) {
+function onCalPointerMove(e) {
   if (!calDragState) return;
-  e.preventDefault(); // always suppress browser scroll during our gesture
-  const t = e.touches[0];
   if (calDragState.phase === 'pending') {
-    if (Math.abs(t.clientX - calDragState.startX) > 8 ||
-        Math.abs(t.clientY - calDragState.startY) > 8) activateCalDrag(t);
+    if (Math.abs(e.clientX - calDragState.startX) > 8 ||
+        Math.abs(e.clientY - calDragState.startY) > 8) activateCalDrag(e);
     return;
   }
   if (calDragState.phase !== 'dragging') return;
   const { ghost, offsetX, offsetY } = calDragState;
-  ghost.style.left = (t.clientX - offsetX) + 'px';
-  ghost.style.top  = (t.clientY - offsetY) + 'px';
+  ghost.style.left = (e.clientX - offsetX) + 'px';
+  ghost.style.top  = (e.clientY - offsetY) + 'px';
 
   ghost.style.visibility = 'hidden';
-  const el = document.elementFromPoint(t.clientX, t.clientY);
+  const el = document.elementFromPoint(e.clientX, e.clientY);
   ghost.style.visibility = '';
   document.querySelectorAll('.cal-day-col').forEach(c => c.classList.remove('cal-drop-active'));
   const col = el?.closest('.cal-day-col');
@@ -4506,12 +4511,10 @@ function onCalTouchMove(e) {
   else calDragState.targetDate = null;
 }
 
-function onCalTouchEnd() {
-  document.removeEventListener('touchmove',   onCalTouchMove);
-  document.removeEventListener('touchend',    onCalTouchEnd);
-  document.removeEventListener('touchcancel', onCalTouchCancel);
+function onCalPointerUp(e) {
   if (!calDragState) return;
   const { card, cardId, kind, fromDate, targetDate, ghost, phase } = calDragState;
+  _calRemovePointerListeners(card);
   calDragState = null;
   if (ghost) ghost.remove();
   card.classList.remove('dragging');
@@ -4519,7 +4522,6 @@ function onCalTouchEnd() {
 
   if (phase === 'pending') { showScheduleModal(cardId); return; }
   if (phase !== 'dragging' || !targetDate || targetDate === fromDate) { renderCalendarWeek(); return; }
-  // Dropping a deferred card onto a new date converts it to a scheduled item
   if (kind === 'deferred') {
     const node = session.nodes.find(n => n.id === cardId);
     if (node) { node.deferred = false; node.deferredUntil = null; node.last_modified = new Date().toISOString(); }
@@ -4527,13 +4529,12 @@ function onCalTouchEnd() {
   scheduleNode(cardId, targetDate);
 }
 
-function onCalTouchCancel() {
-  document.removeEventListener('touchmove',   onCalTouchMove);
-  document.removeEventListener('touchend',    onCalTouchEnd);
-  document.removeEventListener('touchcancel', onCalTouchCancel);
+function onCalPointerCancel(e) {
   if (!calDragState) return;
+  const { card } = calDragState;
+  _calRemovePointerListeners(card);
   if (calDragState.ghost) calDragState.ghost.remove();
-  calDragState.card?.classList.remove('dragging');
+  card.classList.remove('dragging');
   document.querySelectorAll('.cal-drop-active').forEach(c => c.classList.remove('cal-drop-active'));
   calDragState = null;
   renderCalendarWeek();
