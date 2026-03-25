@@ -1047,6 +1047,16 @@
       font-size: 13px; color: #007aff;
     }
     .mm-focus-bar.visible { display: flex; }
+    .mm-move-bar {
+      display: none; align-items: center; gap: 10px;
+      background: rgba(52,199,89,0.12); border-radius: 10px; padding: 5px 14px;
+      font-size: 13px; color: #1a7f37;
+    }
+    .mm-move-bar.visible { display: flex; }
+    .mm-node.move-target {
+      border-color: #007aff;
+      box-shadow: 0 0 0 3px rgba(0,122,255,0.3);
+    }
     .mm-focus-label { font-weight: 600; max-width: 200px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .mm-focus-exit {
       background: none; border: none; color: #007aff;
@@ -3288,6 +3298,10 @@ const MM_PAD = 48;    // canvas padding
 
 let mmTransform      = { x: 0, y: 0, scale: 1 };
 let mmSelectedId     = null;
+let mmMoveMode       = false;
+let mmMoveSourceId   = null;
+let mmMoveTargetId   = null;
+let mmMoveTimer      = null;
 let mmVisible        = false;
 let kbVisible        = false;
 let calVisible       = false;
@@ -3526,6 +3540,86 @@ function mmFocusOnNode(nodeId) {
   setTimeout(() => { mmZoomToFit(); selectMmNode(nodeId); }, 50);
 }
 
+// ─── MOVE NODE ───────────────────────────────────────────────────────────────
+function _mmIsDescendantOrSelf(nodeId, ancestorId) {
+  const seen = new Set();
+  let cur = session.nodes.find(n => n.id === nodeId);
+  while (cur && !seen.has(cur.id)) {
+    if (cur.id === ancestorId) return true;
+    seen.add(cur.id);
+    cur = session.nodes.find(n => n.id === cur.parent_id);
+  }
+  return false;
+}
+
+function _mmApplyMoveTarget() {
+  document.querySelectorAll('.mm-node.move-target').forEach(el => el.classList.remove('move-target'));
+  if (mmMoveTargetId) document.getElementById('mmn-' + mmMoveTargetId)?.classList.add('move-target');
+}
+
+function startMmMove() {
+  if (!mmSelectedId) return;
+  mmMoveMode     = true;
+  mmMoveSourceId = mmSelectedId;
+  // Pick initial target: source's current parent if visible, else first valid visible node
+  const visible  = mmVisibleNodes().filter(n => !_mmIsDescendantOrSelf(n.id, mmMoveSourceId));
+  const src      = session.nodes.find(n => n.id === mmMoveSourceId);
+  mmMoveTargetId = (src?.parent_id && visible.find(n => n.id === src.parent_id))
+    ? src.parent_id
+    : (visible.find(n => n.id !== mmMoveSourceId)?.id || null);
+  document.getElementById('mmMoveBar').classList.add('visible');
+  _mmApplyMoveTarget();
+}
+
+function cancelMmMove() {
+  clearTimeout(mmMoveTimer);
+  mmMoveMode = false; mmMoveSourceId = null; mmMoveTargetId = null;
+  document.querySelectorAll('.mm-node.move-target').forEach(el => el.classList.remove('move-target'));
+  document.getElementById('mmMoveBar').classList.remove('visible');
+  document.getElementById('mmCanvasWrap').focus();
+}
+
+function executeMmMove() {
+  clearTimeout(mmMoveTimer);
+  const srcId = mmMoveSourceId, tgtId = mmMoveTargetId;
+  cancelMmMove();
+  if (!srcId || !tgtId || srcId === tgtId) return;
+  const node = session.nodes.find(n => n.id === srcId);
+  const tgtLabel = session.nodes.find(n => n.id === tgtId)?.label || '';
+  if (node) { node.parent_id = tgtId; node.last_modified = new Date().toISOString(); }
+  saveSession();
+  mmSelectedId = srcId;
+  renderMindMap();
+  showToast('Moved under: ' + tgtLabel);
+}
+
+function mmMoveArrowNav(direction) {
+  const visibleIds = new Set(mmVisibleNodes().map(n => n.id));
+  const curId = mmMoveTargetId || mmMoveSourceId;
+  const node  = session.nodes.find(n => n.id === curId);
+  if (!node) return;
+  let target = null;
+  if (direction === 'left') {
+    if (node.parent_id && visibleIds.has(node.parent_id)) target = node.parent_id;
+  } else if (direction === 'right') {
+    const child = session.nodes.find(n => n.parent_id === curId && visibleIds.has(n.id));
+    if (child) target = child.id;
+  } else {
+    const parentId = node.parent_id ?? null;
+    const sibs = session.nodes.filter(n => (n.parent_id ?? null) === parentId && visibleIds.has(n.id));
+    const idx  = sibs.findIndex(n => n.id === curId);
+    if (direction === 'up'   && idx > 0)              target = sibs[idx - 1].id;
+    if (direction === 'down' && idx < sibs.length - 1) target = sibs[idx + 1].id;
+  }
+  if (!target || target === mmMoveTargetId) return;
+  if (_mmIsDescendantOrSelf(target, mmMoveSourceId))  return; // can't move under own child
+  mmMoveTargetId = target;
+  _mmApplyMoveTarget();
+  if (!mmNodeOnScreen(target)) mmZoomToCard(target);
+  clearTimeout(mmMoveTimer);
+  mmMoveTimer = setTimeout(executeMmMove, 800);
+}
+
 function mmExitFocus() {
   mmFocusNodeId = null;
   document.getElementById('mmFocusBar').classList.remove('visible');
@@ -3724,7 +3818,17 @@ function initMmPanZoom() {
         lastTapTime = now; lastTapNodeId = captured;
         clearTimeout(singleTapTimer);
         singleTapTimer = setTimeout(() => {
-          if (captured) selectMmNode(captured);
+          if (captured) {
+            if (mmMoveMode && captured !== mmMoveSourceId && !_mmIsDescendantOrSelf(captured, mmMoveSourceId)) {
+              mmMoveTargetId = captured;
+              _mmApplyMoveTarget();
+              if (!mmNodeOnScreen(captured)) mmZoomToCard(captured);
+              clearTimeout(mmMoveTimer);
+              mmMoveTimer = setTimeout(executeMmMove, 800);
+            } else {
+              selectMmNode(captured);
+            }
+          }
           singleTapTimer = null;
         }, 300);
       }
@@ -3753,7 +3857,18 @@ function initMmPanZoom() {
       const collapseBtn = e.target.closest('.mm-collapse-btn');
       if (collapseBtn) { mmToggleCollapse(collapseBtn.dataset.collapseId); mouseDown = false; mouseStart = null; return; }
       const node = e.target.closest('[data-mmid]');
-      if (node) selectMmNode(node.dataset.mmid);
+      if (node) {
+        const id = node.dataset.mmid;
+        if (mmMoveMode && id !== mmMoveSourceId && !_mmIsDescendantOrSelf(id, mmMoveSourceId)) {
+          mmMoveTargetId = id;
+          _mmApplyMoveTarget();
+          if (!mmNodeOnScreen(id)) mmZoomToCard(id);
+          clearTimeout(mmMoveTimer);
+          mmMoveTimer = setTimeout(executeMmMove, 800);
+        } else {
+          selectMmNode(id);
+        }
+      }
     }
     mouseDown = false; mouseStart = null;
   });
@@ -5410,7 +5525,7 @@ const toggleMenu = () => document.getElementById('menuDropdown').classList.toggl
 const closeMenu  = () => document.getElementById('menuDropdown').classList.remove('open');
 
 // ─── INIT ───────────────────────────────────────────────────────────────────
-const BUILD_TS = 'build:2026-03-26T05:00'; // bumped each deploy — confirms fresh load
+const BUILD_TS = 'build:2026-03-26T06:00'; // bumped each deploy — confirms fresh load
 
 async function initApp() {
   // Show immediately with localStorage data
@@ -5630,6 +5745,7 @@ document.addEventListener('DOMContentLoaded', () => {
     if (mmSelectedId) exportPrompt(mmSelectedId);
   });
   document.getElementById('mmExitFocusBtn').addEventListener('click', mmExitFocus);
+  document.getElementById('mmMoveCancel').addEventListener('click', cancelMmMove);
 
   // Map view keyboard shortcuts — listener on the canvas so iPad external keyboard works
   document.getElementById('mmCanvasWrap').addEventListener('keydown', e => {
@@ -5647,13 +5763,26 @@ document.addEventListener('DOMContentLoaded', () => {
       return;
     }
 
+    if ((e.metaKey || e.ctrlKey) && e.key === 'm') {
+      e.preventDefault();
+      if (mmMoveMode) cancelMmMove();
+      else startMmMove();
+      return;
+    }
+
     // Plain arrow navigation (no modifiers)
     if (!e.metaKey && !e.ctrlKey && !e.altKey) {
       const arrowMap = { ArrowLeft: 'left', ArrowRight: 'right', ArrowUp: 'up', ArrowDown: 'down' };
       if (arrowMap[e.key]) {
         e.preventDefault();
-        mmArrowNav(arrowMap[e.key]);
+        if (mmMoveMode) {
+          mmMoveArrowNav(arrowMap[e.key]);
+        } else {
+          mmArrowNav(arrowMap[e.key]);
+        }
       }
+      if (e.key === 'Escape' && mmMoveMode) { e.preventDefault(); cancelMmMove(); }
+      if (e.key === 'Enter' && mmMoveMode) { e.preventDefault(); executeMmMove(); }
     }
   });
 
@@ -5892,6 +6021,10 @@ document.addEventListener('DOMContentLoaded', () => {
       <span>🔍 Focused:</span>
       <span class="mm-focus-label" id="mmFocusLabel"></span>
       <button class="mm-focus-exit" id="mmExitFocusBtn">✕ Exit</button>
+    </div>
+    <div class="mm-move-bar" id="mmMoveBar">
+      <span>✥ Move — arrow keys select destination · pause to confirm</span>
+      <button class="mm-focus-exit" id="mmMoveCancel">✕ Cancel</button>
     </div>
     <div class="mm-filter-bar" id="mmFilterBar">
       <button class="mm-filter-pill" id="mmFilterDeferred">⏳ Hide Deferred</button>
