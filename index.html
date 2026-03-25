@@ -1456,6 +1456,7 @@
     <button class="filter-pill active" data-view="all">All</button>
     <button class="filter-pill" data-view="pinned">📌 Pinned</button>
     <button class="filter-pill" data-view="deferred">⏳ Deferred</button>
+    <button class="filter-pill" data-view="orphaned">◎ Orphaned</button>
   </div>
 
   <!-- Card list -->
@@ -1955,7 +1956,7 @@ function getDescendants(nodeId) {
 }
 
 // ─── VIEW FILTER ────────────────────────────────────────────────────────────
-let currentView = 'all'; // 'all' | 'pinned' | 'deferred'
+let currentView = 'all'; // 'all' | 'pinned' | 'deferred' | 'orphaned'
 
 function setView(view) {
   currentView = view;
@@ -2377,6 +2378,11 @@ function renderCards(animDir) {
     cards = [...session.nodes]
       .filter(n => n.archived)
       .sort((a, b) => new Date(b.archivedAt) - new Date(a.archivedAt));
+  } else if (currentView === 'orphaned') {
+    const hasChildren = new Set(session.nodes.filter(n => n.parent_id).map(n => n.parent_id));
+    cards = [...session.nodes]
+      .filter(n => !n.parent_id && !hasChildren.has(n.id) && !n.archived)
+      .sort((a, b) => new Date(b.created) - new Date(a.created));
   } else {
     // Hide cards archived before today from normal view
     cards = childrenOf(currentParentId()).filter(n => !isArchivedBeforeToday(n));
@@ -2385,6 +2391,12 @@ function renderCards(animDir) {
   const list  = document.getElementById('cardList');
   const empty = document.getElementById('emptyState');
 
+  if (!cards.length) {
+    const hint = empty.querySelector('.empty-hint');
+    if (hint) hint.textContent = currentView === 'orphaned'
+      ? 'All notes are connected — none are standalone'
+      : 'Tap the red button and start speaking';
+  }
   empty.style.display = cards.length ? 'none' : 'flex';
 
   list.innerHTML = cards.map(node => {
@@ -5525,7 +5537,7 @@ const toggleMenu = () => document.getElementById('menuDropdown').classList.toggl
 const closeMenu  = () => document.getElementById('menuDropdown').classList.remove('open');
 
 // ─── INIT ───────────────────────────────────────────────────────────────────
-const BUILD_TS = 'build:2026-03-26T06:00'; // bumped each deploy — confirms fresh load
+const BUILD_TS = 'build:2026-03-26T07:00'; // bumped each deploy — confirms fresh load
 
 async function initApp() {
   // Show immediately with localStorage data
