@@ -3516,15 +3516,14 @@ function mmZoomToFit() {
 
 function mmFocusOnNode(nodeId) {
   mmFocusNodeId = nodeId;
+  mmSelectedId  = nodeId;   // set before renderMindMap so it bakes the selection into HTML
   const node = session.nodes.find(n => n.id === nodeId);
   showToast('Focus: ' + (node?.label || '??'));
   document.getElementById('mmFocusLabel').textContent = node?.label || '';
   document.getElementById('mmFocusBar').classList.add('visible');
   document.getElementById('mmFilterBar').style.display = 'none';
-  renderMindMap();
-  // Select the focused node so the red outline appears on it
-  selectMmNode(nodeId);
-  setTimeout(() => { mmZoomToFit(); selectMmNode(nodeId); }, 50);
+  renderMindMap();          // renderMindMap re-applies mmSelectedId at its end via selectMmNode
+  setTimeout(mmZoomToFit, 50);
 }
 
 function mmExitFocus() {
@@ -5407,7 +5406,7 @@ const toggleMenu = () => document.getElementById('menuDropdown').classList.toggl
 const closeMenu  = () => document.getElementById('menuDropdown').classList.remove('open');
 
 // ─── INIT ───────────────────────────────────────────────────────────────────
-const BUILD_TS = 'build:2026-03-26T03:30'; // bumped each deploy — confirms fresh load
+const BUILD_TS = 'build:2026-03-26T04:00'; // bumped each deploy — confirms fresh load
 
 async function initApp() {
   // Show immediately with localStorage data
