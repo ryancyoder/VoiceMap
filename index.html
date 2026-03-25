@@ -1217,20 +1217,23 @@
       flex: 1; display: flex; min-height: 0; overflow: hidden;
     }
     .cal-sidebar {
-      width: 112px; flex-shrink: 0; display: flex; flex-direction: column;
-      border-right: 0.5px solid var(--border); background: var(--surface);
+      width: 120px; flex-shrink: 0; display: flex; flex-direction: column;
+      border-right: 2px solid var(--accent); min-height: 0;
+      background: rgba(226,75,74,0.06);
     }
     .cal-sidebar-hdr {
-      padding: 6px 8px; font-size: 11px; font-weight: 700;
-      color: var(--muted); text-transform: uppercase; letter-spacing: 0.5px;
+      padding: 8px 8px 6px;
+      font-size: 12px; font-weight: 800;
+      color: var(--accent);
       border-bottom: 0.5px solid var(--border); flex-shrink: 0;
+      letter-spacing: 0.3px;
     }
     .cal-sidebar-cards {
       flex: 1; overflow-y: auto; padding: 4px;
-      display: flex; flex-direction: column; gap: 4px;
+      display: flex; flex-direction: column; gap: 4px; min-height: 0;
     }
-    .cal-sidebar.cal-drop-active .cal-sidebar-cards {
-      background: rgba(226,75,74,0.08);
+    .cal-sidebar.cal-drop-active {
+      background: rgba(226,75,74,0.16);
     }
     .cal-grid {
       flex: 1; display: flex; min-height: 0; overflow-x: auto;
@@ -4313,7 +4316,7 @@ function renderCalendarSidebar() {
   const queued = session.nodes.filter(n => n.needs_scheduling && !n.scheduled_date && !n.archived);
   container.innerHTML = '';
   if (queued.length === 0) {
-    container.innerHTML = '<div style="font-size:10px;color:var(--muted);padding:6px;text-align:center">Long-press a card → Queue for scheduling</div>';
+    container.innerHTML = '<div style="font-size:10px;color:var(--muted);padding:6px 4px;text-align:center;line-height:1.4">Long-press a card, then tap<br>📋 Queue</div>';
     return;
   }
   queued.forEach(node => {
