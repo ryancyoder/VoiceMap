@@ -1501,7 +1501,7 @@
       <button class="camera-btn" id="cameraBtn">📷</button>
     </div>
     <div class="keyboard-row hidden" id="keyboardRow">
-      <textarea class="keyboard-input" id="keyboardInput" placeholder="Type your idea… (Enter to send)" rows="1"></textarea>
+      <textarea class="keyboard-input" id="keyboardInput" placeholder="Type your idea… (⌘Enter for AI)" rows="1"></textarea>
       <button class="keyboard-send-btn" id="keyboardSendBtn" disabled title="Send">↑</button>
     </div>
     <div class="status-text" id="statusText">Tap ⏺ to capture an idea</div>
@@ -2750,22 +2750,46 @@ function setKeyboardMode(on) {
   recordBtn.style.display = on ? 'none' : '';
   stopBtn.style.display   = on ? 'none' : '';
   if (on) {
-    setStatus('Type your idea and press Enter');
+    setStatus('Enter adds card directly · ⌘Enter uses AI');
     document.getElementById('keyboardInput').focus();
   } else {
     setStatus('Tap ⏺ to capture an idea');
   }
 }
 
-async function submitKeyboardInput() {
+function addKeyboardNode(text) {
+  // Direct insert — no AI, typed text becomes the card as-is
+  const now    = new Date().toISOString();
+  const ctx    = currentCtx();
+  const nodeId = makeId();
+  session.nodes.push({
+    id:            nodeId,
+    label:         text.slice(0, 60),
+    summary:       text,
+    transcript:    text,
+    parent_id:     ctx.id,
+    status:        'untouched',
+    created:       now,
+    last_modified: now
+  });
+  renderCards();
+  saveSession();
+  showToast(`Added: "${text.slice(0, 40)}"`);
+}
+
+async function submitKeyboardInput(useAI = false) {
   const input = document.getElementById('keyboardInput');
   const text  = input.value.trim();
   if (!text) return;
-  if (!getApiKey()) { showKeyModal(); return; }
   input.value = '';
   input.style.height = '';
   document.getElementById('keyboardSendBtn').disabled = true;
-  await handleTranscript(text);
+  if (useAI) {
+    if (!getApiKey()) { showKeyModal(); input.value = text; return; }
+    await handleTranscript(text);
+  } else {
+    addKeyboardNode(text);
+  }
   document.getElementById('keyboardSendBtn').disabled = false;
   input.focus();
 }
@@ -5052,9 +5076,12 @@ document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('stopBtn').addEventListener('click', stopRecording);
   document.getElementById('backBtn').addEventListener('click', navigateBack);
   document.getElementById('keyboardToggleBtn').addEventListener('click', () => setKeyboardMode(!keyboardMode));
-  document.getElementById('keyboardSendBtn').addEventListener('click', submitKeyboardInput);
+  document.getElementById('keyboardSendBtn').addEventListener('click', () => submitKeyboardInput(false));
   document.getElementById('keyboardInput').addEventListener('keydown', e => {
-    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); submitKeyboardInput(); }
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      submitKeyboardInput(e.metaKey || e.ctrlKey); // Cmd/Ctrl+Enter → AI, plain Enter → direct
+    }
   });
   document.getElementById('keyboardInput').addEventListener('input', function() {
     this.style.height = 'auto';
