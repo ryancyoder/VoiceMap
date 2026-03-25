@@ -1437,6 +1437,18 @@
     </div>
   </div>
 
+  <!-- Field edit modal -->
+  <div class="defer-overlay hidden" id="editFieldModal">
+    <div class="defer-sheet" style="display:flex;flex-direction:column;gap:12px">
+      <div style="font-size:13px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:0.5px" id="editFieldLabel">Edit Title</div>
+      <textarea id="editFieldInput" style="width:100%;border-radius:10px;border:1px solid var(--border);padding:12px;font-size:16px;font-family:var(--font);background:var(--bg);color:var(--text);resize:none;line-height:1.45;box-sizing:border-box;-webkit-appearance:none;min-height:56px;max-height:180px;overflow-y:auto" rows="2"></textarea>
+      <div style="display:flex;gap:10px">
+        <button id="editFieldCancel" style="flex:1;padding:13px;border-radius:10px;background:rgba(0,0,0,0.06);border:none;font-size:15px;font-family:var(--font);color:var(--text);cursor:pointer">Cancel</button>
+        <button id="editFieldSave" style="flex:2;padding:13px;border-radius:10px;background:var(--accent);border:none;font-size:15px;font-weight:600;font-family:var(--font);color:#fff;cursor:pointer">Save</button>
+      </div>
+    </div>
+  </div>
+
   <!-- Defer modal -->
   <div class="defer-overlay hidden" id="deferModal">
     <div class="defer-sheet">
@@ -2794,9 +2806,7 @@ async function submitKeyboardInput(useAI = false) {
   input.value = '';
   input.style.height = '';
   document.getElementById('keyboardSendBtn').disabled = true;
-  if (pendingEdit) {
-    applyDirectEdit(text); // always direct — no AI for explicit field edits
-  } else if (useAI) {
+  if (useAI) {
     if (!getApiKey()) { showKeyModal(); input.value = text; return; }
     await handleTranscript(text);
   } else {
@@ -2816,20 +2826,15 @@ function startEditField(nodeId, field) {
   if (pendingElaborate) pendingElaborate = null;
   pendingEdit = { nodeId, field };
 
-  const fieldLabel = field === 'label' ? 'title' : 'description';
+  const fieldLabel = field === 'label' ? 'Title' : 'Description';
   const current    = field === 'label' ? node.label : (node.summary || '');
 
-  // Always show keyboard row for direct field editing
-  const keyRow = document.getElementById('keyboardRow');
-  const input  = document.getElementById('keyboardInput');
-  keyRow.classList.remove('hidden');
+  document.getElementById('editFieldLabel').textContent = `Edit ${fieldLabel}`;
+  const input = document.getElementById('editFieldInput');
   input.value = current;
-  input.style.height = 'auto';
-  input.style.height = Math.min(input.scrollHeight, 120) + 'px';
-  document.getElementById('keyboardSendBtn').disabled = !current.trim();
-  setStatus(`Editing ${fieldLabel} — Enter to save · Esc to cancel`);
-  input.focus();
-  requestAnimationFrame(() => input.select());
+  input.rows  = field === 'label' ? 2 : 4;
+  document.getElementById('editFieldModal').classList.remove('hidden');
+  requestAnimationFrame(() => { input.focus(); input.select(); });
 }
 
 function applyDirectEdit(text) {
@@ -2837,6 +2842,7 @@ function applyDirectEdit(text) {
   const { nodeId, field } = pendingEdit;
   pendingEdit = null;
   const node = session.nodes.find(n => n.id === nodeId);
+  document.getElementById('editFieldModal').classList.add('hidden');
   if (!node) return;
   if (field === 'label') {
     node.label = text.slice(0, 60);
@@ -2847,27 +2853,11 @@ function applyDirectEdit(text) {
   saveSession();
   renderCards();
   showToast(`${field === 'label' ? 'Title' : 'Description'} updated`);
-  // Hide keyboard row if keyboard mode is not globally on
-  if (!keyboardMode) {
-    document.getElementById('keyboardRow').classList.add('hidden');
-    setStatus('Tap ⏺ to capture an idea');
-  } else {
-    setStatus('Enter adds card directly · ⌘Enter uses AI');
-  }
 }
 
 function cancelPendingEdit() {
-  if (!pendingEdit) return;
   pendingEdit = null;
-  document.getElementById('keyboardInput').value = '';
-  document.getElementById('keyboardInput').style.height = '';
-  document.getElementById('keyboardSendBtn').disabled = true;
-  if (!keyboardMode) {
-    document.getElementById('keyboardRow').classList.add('hidden');
-    setStatus('Tap ⏺ to capture an idea');
-  } else {
-    setStatus('Enter adds card directly · ⌘Enter uses AI');
-  }
+  document.getElementById('editFieldModal').classList.add('hidden');
 }
 
 // ─── IMAGE CAPTURE ───────────────────────────────────────────────────────────
@@ -5153,6 +5143,18 @@ document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('recordBtn').addEventListener('click', startRecording);
   document.getElementById('stopBtn').addEventListener('click', stopRecording);
   document.getElementById('backBtn').addEventListener('click', navigateBack);
+  document.getElementById('editFieldSave').addEventListener('click', () => {
+    const text = document.getElementById('editFieldInput').value.trim();
+    if (text) applyDirectEdit(text);
+  });
+  document.getElementById('editFieldCancel').addEventListener('click', cancelPendingEdit);
+  document.getElementById('editFieldModal').addEventListener('click', e => {
+    if (e.target === document.getElementById('editFieldModal')) cancelPendingEdit();
+  });
+  document.getElementById('editFieldInput').addEventListener('keydown', e => {
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); document.getElementById('editFieldSave').click(); }
+    if (e.key === 'Escape') { e.preventDefault(); cancelPendingEdit(); }
+  });
   document.getElementById('keyboardToggleBtn').addEventListener('click', () => setKeyboardMode(!keyboardMode));
   document.getElementById('keyboardSendBtn').addEventListener('click', () => submitKeyboardInput(false));
   document.getElementById('keyboardInput').addEventListener('keydown', e => {
@@ -5293,11 +5295,6 @@ document.addEventListener('DOMContentLoaded', () => {
       deleteNode(id);
     }
   });
-
-  // Auto-show mind map on iPad landscape
-  const mmMediaQuery = window.matchMedia('(min-width: 900px) and (orientation: landscape)');
-  mmMediaQuery.addEventListener('change', e => { if (e.matches) showMindMap(); else hideMindMap(); });
-  if (mmMediaQuery.matches) showMindMap();
 
   // Restore keyboard input mode if it was active last session
   if (keyboardMode) setKeyboardMode(true);
