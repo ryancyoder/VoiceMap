@@ -2790,17 +2790,22 @@ async function skipImageDescription() {
 
 STICKY NOTE DETECTION: If the image contains multiple sticky notes, index cards, or distinct handwritten items, create one card per note. Otherwise create one card for the whole image.
 
+HEADER NOTE: If one sticky note is a distinctly different color from the rest AND appears at the top of the group, it is a header/title note. Mark it with "is_header": true. All other notes become its children.
+
 Return ONLY valid JSON:
 {
   "sticky_notes_detected": true,
   "cards": [
+    {"label": "2-4 word title, max 60 chars", "summary": "1-2 sentence description", "is_header": true},
     {"label": "2-4 word title, max 60 chars", "summary": "1-2 sentence description"}
   ]
 }
 
 Rules:
 - sticky_notes_detected is true only when there are clearly multiple separate notes/items
-- cards always has at least one entry
+- is_header is only set on the one header note (if present); omit it on all other cards
+- If there is no distinctly colored header note, do not set is_header on any card
+- cards always has at least one entry; header note must be listed first
 - Use parent context to interpret ambiguous content (e.g. a banana photo under "Grocery list" → label "Buy bananas")`,
         messages: [
           { role: 'user', content: [
@@ -2833,23 +2838,30 @@ Rules:
           // Multiple sticky notes — replace placeholder with one card per note
           const placeholderIdx = session.nodes.indexOf(node);
           if (placeholderIdx !== -1) session.nodes.splice(placeholderIdx, 1);
-          const parentId = node.parent_id;
+          const baseParentId = node.parent_id;
+          const hasHeader    = cards[0]?.is_header === true;
 
+          // If a header note exists, create it first and nest the rest under it
+          const headerNodeId = hasHeader ? node.id : null;
           cards.forEach((card, i) => {
-            const cardNode = {
-              id:            i === 0 ? node.id : makeId(),
+            const isHeader  = hasHeader && i === 0;
+            const cardNode  = {
+              id:            isHeader ? node.id : makeId(),
               label:         String(card.label).slice(0, 60),
               summary:       card.summary || '',
               transcript:    '',
-              parent_id:     parentId,
+              parent_id:     isHeader ? baseParentId : (hasHeader ? headerNodeId : baseParentId),
               status:        'untouched',
               created:       now,
               last_modified: new Date().toISOString()
             };
-            if (i === 0) cardNode.type = 'image'; // photo thumbnail on first card only
+            if (isHeader) cardNode.type = 'image'; // photo thumbnail on the header/first card
             session.nodes.push(cardNode);
           });
-          showToast(`${cards.length} sticky notes found`);
+          const childCount = hasHeader ? cards.length - 1 : cards.length;
+          showToast(hasHeader
+            ? `"${cards[0].label}" + ${childCount} child note${childCount !== 1 ? 's' : ''}`
+            : `${cards.length} sticky notes found`);
         }
         renderCards();
         saveSession();
