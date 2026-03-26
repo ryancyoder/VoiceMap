@@ -1409,9 +1409,12 @@
     .cal-body {
       flex: 1; display: flex; min-height: 0; overflow: hidden;
     }
+    .cal-right {
+      flex: 7; display: flex; flex-direction: column; min-height: 0; overflow: hidden;
+    }
     .cal-sidebar {
-      width: 120px; flex-shrink: 0; display: flex; flex-direction: column;
-      border-right: 2px solid var(--accent); min-height: 0;
+      flex: 1; flex-shrink: 0; display: flex; flex-direction: column;
+      border-right: 2px solid var(--accent);
       background: rgba(226,75,74,0.06);
     }
     .cal-sidebar-hdr {
@@ -1470,27 +1473,27 @@
     }
     /* Month strip */
     .cal-month-strip {
-      height: 108px; flex-shrink: 0; display: flex; gap: 7px;
-      overflow-x: auto; padding: 7px 12px;
+      height: 140px; flex-shrink: 0; display: flex; gap: 8px;
+      overflow-x: auto; padding: 8px 10px;
       border-top: 0.5px solid var(--border);
       -webkit-overflow-scrolling: touch;
     }
     .cal-month-box {
-      flex-shrink: 0; width: 82px; cursor: pointer;
-      border: 1px solid var(--border); border-radius: 8px;
-      padding: 4px 5px; background: var(--surface);
+      flex-shrink: 0; width: 106px; cursor: pointer;
+      border: 1px solid var(--border); border-radius: 10px;
+      padding: 6px 7px; background: var(--surface);
       transition: border-color 0.15s;
     }
     .cal-month-box.active { border-color: var(--accent); background: rgba(226,75,74,0.05); }
     .cal-month-name {
-      font-size: 9px; font-weight: 700; color: var(--text);
-      text-align: center; margin-bottom: 2px;
+      font-size: 11px; font-weight: 700; color: var(--text);
+      text-align: center; margin-bottom: 4px;
       text-transform: uppercase; letter-spacing: 0.4px;
     }
-    .cal-mini-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 1px; }
+    .cal-mini-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 2px; }
     .cal-mini-cell {
-      width: 10px; height: 10px; border-radius: 50%;
-      font-size: 6px; display: flex; align-items: center;
+      width: 13px; height: 13px; border-radius: 50%;
+      font-size: 7px; display: flex; align-items: center;
       justify-content: center; color: var(--muted);
     }
     .cal-mini-cell.has-items { background: var(--accent); color: #fff; }
@@ -1577,9 +1580,11 @@
         <div class="cal-sidebar-hdr">📋 Queue</div>
         <div class="cal-sidebar-cards" id="calSidebarCards"></div>
       </div>
-      <div class="cal-grid" id="calGrid"></div>
+      <div class="cal-right">
+        <div class="cal-grid" id="calGrid"></div>
+        <div class="cal-month-strip" id="calMonthStrip"></div>
+      </div>
     </div>
-    <div class="cal-month-strip" id="calMonthStrip"></div>
   </div>
 
   <!-- Schedule modal -->
@@ -5775,7 +5780,7 @@ const toggleMenu = () => document.getElementById('menuDropdown').classList.toggl
 const closeMenu  = () => document.getElementById('menuDropdown').classList.remove('open');
 
 // ─── INIT ───────────────────────────────────────────────────────────────────
-const BUILD_TS = 'build:2026-03-26T16:00'; // bumped each deploy — confirms fresh load
+const BUILD_TS = 'build:2026-03-26T17:00'; // bumped each deploy — confirms fresh load
 
 async function initApp() {
   // Show immediately with localStorage data
