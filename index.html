@@ -2944,6 +2944,16 @@ function initRecognition() {
     }
     if (final.trim()) {
       document.getElementById('liveText').textContent = '';
+      // In map view: update nav context to whichever node is selected right now,
+      // so cards file under wherever the user last tapped — even mid-session.
+      if (mmVisible) {
+        if (mmSelectedId) {
+          const node = session.nodes.find(n => n.id === mmSelectedId);
+          if (node) navStack = [{ id: null, label: 'Home' }, { id: node.id, label: node.label }];
+        } else {
+          navStack = [{ id: null, label: 'Home' }];
+        }
+      }
       handleTranscript(final.trim());
     } else {
       document.getElementById('liveText').textContent = interim;
@@ -6042,7 +6052,7 @@ const toggleMenu = () => document.getElementById('menuDropdown').classList.toggl
 const closeMenu  = () => document.getElementById('menuDropdown').classList.remove('open');
 
 // ─── INIT ───────────────────────────────────────────────────────────────────
-const BUILD_TS = 'build:2026-03-26T19:00'; // bumped each deploy — confirms fresh load
+const BUILD_TS = 'build:2026-03-26T20:00'; // bumped each deploy — confirms fresh load
 
 async function initApp() {
   // Show immediately with localStorage data
