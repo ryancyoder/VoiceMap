@@ -3398,8 +3398,9 @@ async function submitKeyboardInput(useAI = false) {
 }
 
 // ─── DIRECT FIELD EDITING ────────────────────────────────────────────────────
-let pendingEdit   = null; // { nodeId, field: 'label'|'summary' } — set when editing a card field
-let pendingMmAdd  = null; // { parentId } — set when Cmd+N adds a child in map view
+let pendingEdit         = null; // { nodeId, field: 'label'|'summary' } — set when editing a card field
+let pendingMmAdd        = null; // { parentId } — set when Cmd+N adds a child in map view
+let pendingMmAddParent  = null; // { nodeId } — set when Cmd+Shift+N wraps a root node in a new parent
 
 function startMmAddChild() {
   if (!mmVisible) return;
@@ -3434,6 +3435,46 @@ function applyMmAddChild(text) {
   renderMindMap();
   if (parentId) selectMmNode(parentId);
   showToast(`Added: "${text.slice(0, 40)}"`);
+}
+
+function startAddParentNode(nodeId) {
+  const node = session.nodes.find(n => n.id === nodeId);
+  if (!node) return;
+  if (node.parent_id) { showToast('Only root-level cards can get a new parent'); return; }
+  pendingMmAddParent = { nodeId };
+  pendingMmAdd = null;
+  pendingEdit  = null;
+  document.getElementById('editFieldLabel').textContent = `New parent for "${node.label.slice(0, 35)}"`;
+  const input = document.getElementById('editFieldInput');
+  input.value = '';
+  input.rows  = 2;
+  document.getElementById('editFieldModal').classList.remove('hidden');
+  requestAnimationFrame(() => input.focus());
+}
+
+function applyAddParentNode(text) {
+  if (!pendingMmAddParent) return;
+  const { nodeId } = pendingMmAddParent;
+  pendingMmAddParent = null;
+  document.getElementById('editFieldModal').classList.add('hidden');
+  if (mmVisible) document.getElementById('mmCanvasWrap').focus();
+  const node = session.nodes.find(n => n.id === nodeId);
+  if (!node) return;
+  const now      = new Date().toISOString();
+  const parentId = makeId();
+  session.nodes.push({
+    id: parentId, label: text.slice(0, 60), summary: '', transcript: '',
+    parent_id: null, status: 'untouched', created: now, last_modified: now
+  });
+  node.parent_id      = parentId;
+  node.last_modified  = now;
+  saveSession();
+  renderCards();
+  if (mmVisible) {
+    renderMindMap();
+    setTimeout(() => selectMmNode(parentId), 50);
+  }
+  showToast(`Parent added: "${text.slice(0, 40)}"`);
 }
 
 function startEditField(nodeId, field) {
@@ -3473,8 +3514,9 @@ function applyDirectEdit(text) {
 }
 
 function cancelPendingEdit() {
-  pendingEdit  = null;
-  pendingMmAdd = null;
+  pendingEdit        = null;
+  pendingMmAdd       = null;
+  pendingMmAddParent = null;
   document.getElementById('editFieldModal').classList.add('hidden');
   if (mmVisible) document.getElementById('mmCanvasWrap').focus();
 }
@@ -4031,6 +4073,8 @@ function selectMmNode(nodeId, scroll = true) {
 
   // Show/hide Simplify based on whether it has children
   document.getElementById('mmSimplifyBtn').style.display = children ? '' : 'none';
+  // Show Add Parent only for root-level nodes
+  document.getElementById('mmAddParentBtn').style.display = node.parent_id ? 'none' : '';
 }
 
 function mmZoomToCard(nodeId) {
@@ -5422,6 +5466,7 @@ function showNodeCtxMenu(nodeId, x, y) {
   menu.dataset.ctxNode = nodeId;
   document.getElementById('ctxPin').textContent     = node.pinned   ? '📌 Unpin'     : '📌 Pin';
   document.getElementById('ctxArchive').textContent = node.archived ? '📂 Unarchive' : '📁 Archive';
+  document.getElementById('ctxAddParent').style.display = node.parent_id ? 'none' : '';
   const menuW = 200, menuH = 300;
   const left = Math.min(x, window.innerWidth  - menuW - 12);
   const top  = Math.min(y, window.innerHeight - menuH - 12);
@@ -5451,6 +5496,7 @@ function initNodeCtxMenu() {
   document.getElementById('ctxElaborate').addEventListener('click',  () => { closeNodeCtxMenu(); startElaborate(getCtxNode()); });
   document.getElementById('ctxExplore').addEventListener('click',   () => { closeNodeCtxMenu(); openChatModal(getCtxNode()); });
   document.getElementById('ctxRefile').addEventListener('click',    () => { closeNodeCtxMenu(); refileNode(getCtxNode()); });
+  document.getElementById('ctxAddParent').addEventListener('click', () => { closeNodeCtxMenu(); startAddParentNode(getCtxNode()); });
   document.getElementById('ctxDelete').addEventListener('click',    () => { closeNodeCtxMenu(); deleteNode(getCtxNode()); });
   document.getElementById('nodeCtxOverlay').addEventListener('click', closeNodeCtxMenu);
 }
@@ -6070,7 +6116,7 @@ const toggleMenu = () => document.getElementById('menuDropdown').classList.toggl
 const closeMenu  = () => document.getElementById('menuDropdown').classList.remove('open');
 
 // ─── INIT ───────────────────────────────────────────────────────────────────
-const BUILD_TS = 'build:2026-03-27T01:00'; // bumped each deploy — confirms fresh load
+const BUILD_TS = 'build:2026-03-27T02:00'; // bumped each deploy — confirms fresh load
 
 async function initApp() {
   // Show immediately with localStorage data
@@ -6145,6 +6191,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const text = document.getElementById('editFieldInput').value.trim();
     if (!text) return;
     if (pendingMmAdd) applyMmAddChild(text);
+    else if (pendingMmAddParent) applyAddParentNode(text);
     else if (pendingEdit) applyDirectEdit(text);
   });
   document.getElementById('editFieldCancel').addEventListener('click', cancelPendingEdit);
@@ -6298,6 +6345,9 @@ document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('mmFitBtn').addEventListener('click', mmZoomToFit);
   document.getElementById('mmRecordBtn').addEventListener('click', mmStartRecording);
   document.getElementById('mmStopBtn2').addEventListener('click', stopRecording);
+  document.getElementById('mmAddParentBtn').addEventListener('click', () => {
+    if (mmSelectedId) startAddParentNode(mmSelectedId);
+  });
   document.getElementById('mmRefileBtn').addEventListener('click', () => {
     if (mmSelectedId) refileNode(mmSelectedId);
   });
@@ -6323,9 +6373,15 @@ document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('mmCanvasWrap').addEventListener('keydown', e => {
     if (!document.getElementById('editFieldModal').classList.contains('hidden')) return;
 
-    if ((e.metaKey || e.ctrlKey) && e.key === 'n') {
+    if ((e.metaKey || e.ctrlKey) && e.key === 'n' && !e.shiftKey) {
       e.preventDefault();
       startMmAddChild();
+      return;
+    }
+
+    if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.key === 'N') {
+      e.preventDefault();
+      if (mmSelectedId) startAddParentNode(mmSelectedId);
       return;
     }
 
@@ -6377,10 +6433,17 @@ document.addEventListener('DOMContentLoaded', () => {
     if (!document.getElementById('editFieldModal').classList.contains('hidden')) return;
 
     // Cmd+N = new card (root grid or focused map)
-    if ((e.metaKey || e.ctrlKey) && e.key === 'n') {
+    if ((e.metaKey || e.ctrlKey) && e.key === 'n' && !e.shiftKey) {
       e.preventDefault();
       if (!mmFocusNodeId) { mmSelectedId = null; }
       startMmAddChild();
+      return;
+    }
+
+    // Cmd+Shift+N = wrap selected root node in a new parent
+    if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.key === 'N') {
+      e.preventDefault();
+      if (mmSelectedId) startAddParentNode(mmSelectedId);
       return;
     }
 
@@ -6632,6 +6695,7 @@ document.addEventListener('DOMContentLoaded', () => {
       <div class="mm-panel-meta" id="mmPanelMeta"></div>
       <div class="mm-panel-summary" id="mmPanelSummary"></div>
       <div class="mm-panel-actions">
+        <button class="mm-panel-btn" id="mmAddParentBtn">⬆ Add Parent Node</button>
         <button class="mm-panel-btn" id="mmRefileBtn">↗ Re-file with AI</button>
         <button class="mm-panel-btn" id="mmElaborateBtn">✏ Elaborate</button>
         <button class="mm-panel-btn" id="mmSimplifyBtn">⚡ Simplify</button>
@@ -6691,6 +6755,7 @@ document.addEventListener('DOMContentLoaded', () => {
 <div id="nodeCtxOverlay" style="display:none;position:fixed;inset:0;z-index:9998"></div>
 <div id="nodeCtxMenu" class="node-ctx-menu" style="display:none;position:fixed;z-index:9999" data-ctx-node="">
   <button class="node-ctx-item danger" id="ctxDelete">✕ Delete</button>
+  <button class="node-ctx-item" id="ctxAddParent">⬆ Add Parent Node</button>
   <div class="node-ctx-sep"></div>
   <button class="node-ctx-item" id="ctxPin">📌 Pin</button>
   <button class="node-ctx-item" id="ctxArchive">📁 Archive</button>
