@@ -3846,22 +3846,32 @@ function buildMindMapLayout() {
 function renderMmRootGrid() {
   const roots = session.nodes.filter(n => !n.parent_id && !n.archived);
   const grid  = document.getElementById('mmRootGrid');
+  const addTile = `<div class="mm-tile-wrap">
+      <div class="mm-root-tile mm-root-add-tile" id="mmRootAddBtn">
+        <div style="font-size:36px;font-weight:200;color:var(--muted);line-height:1">+</div>
+        <div style="font-size:12px;color:var(--muted);margin-top:4px">New card</div>
+      </div>
+    </div>`;
   if (!roots.length) {
-    grid.innerHTML = '<div style="grid-column:1/-1;text-align:center;color:var(--muted);font-size:14px;padding:40px 0">No root-level cards yet.<br>Tap ⏺ to capture an idea.</div>';
-    return;
+    grid.innerHTML = addTile;
+  } else {
+    grid.innerHTML = roots.map(node => {
+      const childCount = childrenOf(node.id).length;
+      return `
+        <div class="mm-tile-wrap">
+          ${childCount ? `<div class="mm-tile-badge">${childCount}</div>` : ''}
+          <div class="mm-root-tile" data-tile-id="${esc(node.id)}">
+            <div class="mm-tile-label">${esc(node.label)}</div>
+          </div>
+        </div>`;
+    }).join('') + addTile;
   }
-  grid.innerHTML = roots.map(node => {
-    const childCount = childrenOf(node.id).length;
-    return `
-      <div class="mm-tile-wrap">
-        ${childCount ? `<div class="mm-tile-badge">${childCount}</div>` : ''}
-        <div class="mm-root-tile" data-tile-id="${esc(node.id)}">
-          <div class="mm-tile-label">${esc(node.label)}</div>
-        </div>
-      </div>`;
-  }).join('');
-  grid.querySelectorAll('.mm-root-tile').forEach(tile => {
+  grid.querySelectorAll('.mm-root-tile[data-tile-id]').forEach(tile => {
     tile.addEventListener('click', () => mmFocusOnNode(tile.dataset.tileId));
+  });
+  document.getElementById('mmRootAddBtn').addEventListener('click', () => {
+    mmSelectedId = null;
+    startMmAddChild();
   });
 }
 
@@ -6049,7 +6059,7 @@ const toggleMenu = () => document.getElementById('menuDropdown').classList.toggl
 const closeMenu  = () => document.getElementById('menuDropdown').classList.remove('open');
 
 // ─── INIT ───────────────────────────────────────────────────────────────────
-const BUILD_TS = 'build:2026-03-26T23:00'; // bumped each deploy — confirms fresh load
+const BUILD_TS = 'build:2026-03-27T00:00'; // bumped each deploy — confirms fresh load
 
 async function initApp() {
   // Show immediately with localStorage data
@@ -6348,6 +6358,14 @@ document.addEventListener('DOMContentLoaded', () => {
 
     if (!mmVisible) return;
     if (!document.getElementById('editFieldModal').classList.contains('hidden')) return;
+
+    // Cmd+N = new card (root grid or focused map)
+    if ((e.metaKey || e.ctrlKey) && e.key === 'n') {
+      e.preventDefault();
+      if (!mmFocusNodeId) { mmSelectedId = null; }
+      startMmAddChild();
+      return;
+    }
 
     // Opt+arrows = pan
     if (e.altKey && !e.metaKey && !e.ctrlKey &&
