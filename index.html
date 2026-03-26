@@ -3911,9 +3911,7 @@ function renderMindMap() {
     const children    = nodes.filter(c => c.parent_id === n.id).length;
     const allChildren = session.nodes.filter(c => c.parent_id === n.id).length;
     const isCollapsed = mmCollapsed.has(n.id);
-    const img      = imageCache[n.id];
     const selected = mmSelectedId === n.id ? ' selected' : '';
-    const hasImg   = img ? ' has-image' : '';
     const done     = n.status === 'done' ? ' status-done' : '';
     const collapsed = isCollapsed ? ' mm-node-collapsed' : '';
     const meta = [
@@ -3922,10 +3920,9 @@ function renderMindMap() {
       n.archived ? '📁 archived' : '',
       n.pinned   ? '📌' : ''
     ].filter(Boolean).join(' · ');
-    return `<div class="mm-node${selected}${hasImg}${done}${collapsed}"
+    return `<div class="mm-node${selected}${done}${collapsed}"
          id="mmn-${esc(n.id)}" data-mmid="${esc(n.id)}"
          style="left:${x}px;top:${y}px;width:${MM_W}px">
-      ${img ? `<img class="mm-node-thumb" src="${img}" alt="">` : ''}
       <div class="mm-node-title">${esc(n.label)}</div>
       ${meta ? `<div class="mm-node-meta">${esc(meta)}</div>` : ''}
       ${allChildren ? `<button class="mm-collapse-btn" data-collapse-id="${esc(n.id)}" title="${isCollapsed ? 'Expand' : 'Collapse'}">${isCollapsed ? '▶' : '▼'}</button>` : ''}
@@ -6052,7 +6049,7 @@ const toggleMenu = () => document.getElementById('menuDropdown').classList.toggl
 const closeMenu  = () => document.getElementById('menuDropdown').classList.remove('open');
 
 // ─── INIT ───────────────────────────────────────────────────────────────────
-const BUILD_TS = 'build:2026-03-26T22:00'; // bumped each deploy — confirms fresh load
+const BUILD_TS = 'build:2026-03-26T23:00'; // bumped each deploy — confirms fresh load
 
 async function initApp() {
   // Show immediately with localStorage data
