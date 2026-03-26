@@ -3437,6 +3437,46 @@ function applyMmAddChild(text) {
   showToast(`Added: "${text.slice(0, 40)}"`);
 }
 
+async function pasteAsNode() {
+  let text;
+  try {
+    text = await navigator.clipboard.readText();
+  } catch {
+    showToast('Clipboard access denied');
+    return;
+  }
+  text = text.trim();
+  if (!text) { showToast('Clipboard is empty'); return; }
+
+  // First line → label, remainder → summary
+  const lines   = text.split('\n');
+  const label   = lines[0].trim().slice(0, 60);
+  const summary = lines.slice(1).join('\n').trim();
+
+  // Determine parent: map context takes priority, then card nav stack
+  let parentId;
+  if (mmVisible) {
+    parentId = mmSelectedId || mmFocusNodeId || null;
+  } else {
+    parentId = currentCtx().id;
+  }
+
+  const now    = new Date().toISOString();
+  const nodeId = makeId();
+  session.nodes.push({
+    id: nodeId, label, summary, transcript: text,
+    parent_id: parentId, status: 'untouched', created: now, last_modified: now
+  });
+  saveSession();
+  if (mmVisible) {
+    renderMindMap();
+    setTimeout(() => selectMmNode(nodeId), 50);
+  } else {
+    renderCards();
+  }
+  showToast(`Pasted: "${label.slice(0, 40)}"`);
+}
+
 function startAddParentNode(nodeId) {
   const node = session.nodes.find(n => n.id === nodeId);
   if (!node) return;
@@ -6117,7 +6157,7 @@ const toggleMenu = () => document.getElementById('menuDropdown').classList.toggl
 const closeMenu  = () => document.getElementById('menuDropdown').classList.remove('open');
 
 // ─── INIT ───────────────────────────────────────────────────────────────────
-const BUILD_TS = 'build:2026-03-27T07:00'; // bumped each deploy — confirms fresh load
+const BUILD_TS = 'build:2026-03-27T08:00'; // bumped each deploy — confirms fresh load
 
 async function initApp() {
   // Show immediately with localStorage data
@@ -6428,6 +6468,18 @@ document.addEventListener('DOMContentLoaded', () => {
         hideQuickFind();
       }
       return;
+    }
+
+    // Cmd/Ctrl+V = Paste clipboard as new node (works from any view,
+    // but only when focus is NOT inside a text input / textarea)
+    if ((e.metaKey || e.ctrlKey) && e.code === 'KeyV' && !e.shiftKey) {
+      const tag = document.activeElement?.tagName?.toLowerCase();
+      const editable = document.activeElement?.isContentEditable;
+      if (tag !== 'input' && tag !== 'textarea' && !editable) {
+        e.preventDefault();
+        pasteAsNode();
+        return;
+      }
     }
 
     if (!mmVisible) return;
