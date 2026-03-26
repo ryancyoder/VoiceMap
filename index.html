@@ -652,6 +652,77 @@
       max-height: 70dvh;
       overflow-y: auto;
     }
+    .card.has-drawing.expanded .card-summary-wrap {
+      max-height: 70dvh;
+      overflow-y: auto;
+    }
+    .card-drawing {
+      width: 100%; border-radius: 8px; margin-bottom: 8px;
+      display: block; object-fit: contain; max-height: 50dvh;
+      border: 0.5px solid var(--border);
+    }
+    .card-draw-badge { font-size: 11px; opacity: 0.55; margin-left: 2px; }
+
+    /* ── Drawing modal ─────────────────────────────────────────── */
+    .draw-overlay {
+      position: fixed; inset: 0; z-index: 500;
+      background: var(--bg);
+      display: flex; flex-direction: column;
+    }
+    .draw-overlay.hidden { display: none; }
+    .draw-header {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 12px 16px calc(12px) 16px;
+      padding-top: calc(12px + env(safe-area-inset-top));
+      border-bottom: 0.5px solid var(--border);
+      flex-shrink: 0;
+      background: var(--surface);
+    }
+    .draw-header-btn {
+      font-size: 15px; font-family: var(--font); background: none; border: none;
+      color: var(--accent); cursor: pointer; padding: 6px 4px; min-width: 60px;
+    }
+    .draw-header-btn.draw-save-btn { font-weight: 700; text-align: right; }
+    .draw-header-title { font-size: 14px; font-weight: 600; color: var(--text); flex: 1; text-align: center; }
+    .draw-canvas-wrap {
+      flex: 1; position: relative; overflow: hidden; touch-action: none;
+      background: #ffffff;
+    }
+    #drawCanvas { display: block; width: 100%; height: 100%; cursor: crosshair; }
+    .draw-toolbar {
+      display: flex; align-items: center; gap: 8px;
+      padding: 10px 14px;
+      padding-bottom: calc(10px + env(safe-area-inset-bottom));
+      border-top: 0.5px solid var(--border);
+      flex-shrink: 0; overflow-x: auto;
+      background: var(--surface);
+      -webkit-overflow-scrolling: touch;
+    }
+    .draw-tool-btn {
+      width: 40px; height: 40px; border-radius: 10px;
+      border: 1.5px solid var(--border);
+      display: flex; align-items: center; justify-content: center;
+      font-size: 18px; cursor: pointer; flex-shrink: 0;
+      background: var(--surface); color: var(--text);
+      -webkit-tap-highlight-color: transparent;
+    }
+    .draw-tool-btn.active { border-color: var(--accent); background: rgba(226,75,74,0.09); }
+    .draw-sep { width: 1px; height: 28px; background: var(--border); flex-shrink: 0; }
+    .draw-color-swatch {
+      width: 28px; height: 28px; border-radius: 50%; flex-shrink: 0;
+      border: 2.5px solid transparent; cursor: pointer;
+      -webkit-tap-highlight-color: transparent;
+      transition: border-color 0.12s;
+    }
+    .draw-color-swatch.active { border-color: var(--text); box-shadow: 0 0 0 2px var(--bg); }
+    .draw-size-btn {
+      width: 36px; height: 36px; border-radius: 8px;
+      border: 1.5px solid var(--border);
+      display: flex; align-items: center; justify-content: center;
+      cursor: pointer; flex-shrink: 0; background: var(--surface);
+      -webkit-tap-highlight-color: transparent;
+    }
+    .draw-size-btn.active { border-color: var(--accent); background: rgba(226,75,74,0.09); }
 
     /* ── Chat modal ───────────────────────────────────────────── */
     .chat-overlay {
@@ -2540,6 +2611,198 @@ function initConsolidateModal() {
   });
 }
 
+// ─── DRAWING ─────────────────────────────────────────────────────────────────
+let _drawNodeId    = null;
+let _drawCtx       = null;
+let _drawTool      = 'pen';
+let _drawColor     = '#1a1a1a';
+let _drawSize      = 2;
+let _drawPoints    = [];
+let _drawUndoStack = [];
+let _drawPenExpiry = 0;      // timestamp: ignore touches for 1s after pen lifts
+const _DRAW_MAX_UNDO  = 20;
+const _DRAW_PEN_LOCK  = 1000; // ms of palm-rejection after pen lifts
+
+function openDrawModal(nodeId) {
+  const node = session.nodes.find(n => n.id === nodeId);
+  if (!node) return;
+  _drawNodeId    = nodeId;
+  _drawUndoStack = [];
+  _drawPoints    = [];
+  document.getElementById('drawTitle').textContent = node.label.slice(0, 40);
+  document.getElementById('drawModal').classList.remove('hidden');
+  // Reset toolbar state visually
+  _drawTool  = 'pen';  _drawColor = '#1a1a1a';  _drawSize  = 2;
+  document.getElementById('drawPenBtn').classList.add('active');
+  document.getElementById('drawEraserBtn').classList.remove('active');
+  document.querySelectorAll('.draw-color-swatch').forEach((s,i) => s.classList.toggle('active', i===0));
+  document.querySelectorAll('.draw-size-btn').forEach((b,i) => b.classList.toggle('active', i===0));
+  requestAnimationFrame(_drawInitCanvas);
+}
+
+function _drawInitCanvas() {
+  const canvas = document.getElementById('drawCanvas');
+  const wrap   = document.getElementById('drawCanvasWrap');
+  const dpr    = window.devicePixelRatio || 1;
+  canvas.width  = wrap.clientWidth  * dpr;
+  canvas.height = wrap.clientHeight * dpr;
+  canvas.style.width  = wrap.clientWidth  + 'px';
+  canvas.style.height = wrap.clientHeight + 'px';
+  _drawCtx = canvas.getContext('2d');
+  _drawCtx.scale(dpr, dpr);
+  _drawCtx.lineCap  = 'round';
+  _drawCtx.lineJoin = 'round';
+  _drawCtx.fillStyle = '#ffffff';
+  _drawCtx.fillRect(0, 0, wrap.clientWidth, wrap.clientHeight);
+  if (imageCache[_drawNodeId]) {
+    const img = new Image();
+    img.onload = () => _drawCtx.drawImage(img, 0, 0, wrap.clientWidth, wrap.clientHeight);
+    img.src = imageCache[_drawNodeId];
+  }
+}
+
+function _drawSaveUndo() {
+  const canvas = document.getElementById('drawCanvas');
+  if (_drawUndoStack.length >= _DRAW_MAX_UNDO) _drawUndoStack.shift();
+  _drawUndoStack.push(_drawCtx.getImageData(0, 0, canvas.width, canvas.height));
+}
+
+function _drawUndo() {
+  if (!_drawUndoStack.length) return;
+  const canvas = document.getElementById('drawCanvas');
+  _drawCtx.putImageData(_drawUndoStack.pop(), 0, 0);
+}
+
+function _drawClear() {
+  if (!_drawCtx) return;
+  _drawSaveUndo();
+  const wrap = document.getElementById('drawCanvasWrap');
+  _drawCtx.globalCompositeOperation = 'source-over';
+  _drawCtx.fillStyle = '#ffffff';
+  _drawCtx.fillRect(0, 0, wrap.clientWidth, wrap.clientHeight);
+}
+
+function _drawGetPos(e) {
+  const rect = document.getElementById('drawCanvas').getBoundingClientRect();
+  return { x: e.clientX - rect.left, y: e.clientY - rect.top,
+           pressure: e.pressure > 0 ? e.pressure : 0.5 };
+}
+
+function _drawBegin(e) {
+  if (e.pointerType === 'touch' && Date.now() < _drawPenExpiry) return;
+  if (e.pointerType === 'pen') _drawPenExpiry = Date.now() + _DRAW_PEN_LOCK;
+  e.preventDefault();
+  _drawSaveUndo();
+  const pos = _drawGetPos(e);
+  _drawPoints = [pos];
+  _drawCtx.beginPath();
+  _drawCtx.moveTo(pos.x, pos.y);
+  if (_drawTool === 'eraser') {
+    _drawCtx.globalCompositeOperation = 'destination-out';
+    _drawCtx.lineWidth = _drawSize * 6;
+  } else {
+    _drawCtx.globalCompositeOperation = 'source-over';
+    _drawCtx.strokeStyle = _drawColor;
+    _drawCtx.fillStyle   = _drawColor;
+  }
+}
+
+function _drawMove(e) {
+  if (e.pointerType === 'touch' && Date.now() < _drawPenExpiry) return;
+  if (!_drawPoints.length) return;
+  if (e.pointerType === 'pen') _drawPenExpiry = Date.now() + _DRAW_PEN_LOCK;
+  e.preventDefault();
+  const pos = _drawGetPos(e);
+  _drawPoints.push(pos);
+  const len = _drawPoints.length;
+  if (len < 2) return;
+  const p1  = _drawPoints[len - 2], p2 = _drawPoints[len - 1];
+  const mid = { x: (p1.x + p2.x) / 2, y: (p1.y + p2.y) / 2 };
+  const base = _drawTool === 'eraser' ? _drawSize * 6 : _drawSize;
+  _drawCtx.lineWidth = base * (0.4 + p2.pressure * 1.2);
+  _drawCtx.quadraticCurveTo(p1.x, p1.y, mid.x, mid.y);
+  _drawCtx.stroke();
+  _drawCtx.beginPath();
+  _drawCtx.moveTo(mid.x, mid.y);
+}
+
+function _drawEnd(e) {
+  if (e.pointerType === 'pen') _drawPenExpiry = Date.now() + _DRAW_PEN_LOCK;
+  if (_drawPoints.length === 1) {
+    const pos  = _drawPoints[0];
+    const base = _drawTool === 'eraser' ? _drawSize * 6 : _drawSize;
+    _drawCtx.lineWidth = base;
+    _drawCtx.beginPath();
+    _drawCtx.arc(pos.x, pos.y, Math.max(base / 2, 1), 0, Math.PI * 2);
+    _drawCtx.fill();
+  }
+  _drawPoints = [];
+  _drawCtx.globalCompositeOperation = 'source-over';
+}
+
+async function _drawSave() {
+  const canvas  = document.getElementById('drawCanvas');
+  const dataUrl = canvas.toDataURL('image/png');
+  const node    = session.nodes.find(n => n.id === _drawNodeId);
+  if (node) { node.hasDrawing = true; node.last_modified = new Date().toISOString(); }
+  await saveImageToDB(_drawNodeId, dataUrl);
+  _drawClose();
+  saveSession();
+  renderCards();
+  showToast('Sketch saved');
+}
+
+function _drawClose() {
+  document.getElementById('drawModal').classList.add('hidden');
+  _drawNodeId = null; _drawPoints = []; _drawUndoStack = [];
+}
+
+function initDrawModal() {
+  const canvas = document.getElementById('drawCanvas');
+  canvas.addEventListener('pointerdown', e => {
+    canvas.setPointerCapture(e.pointerId); _drawBegin(e);
+  }, { passive: false });
+  canvas.addEventListener('pointermove', e => {
+    if (e.buttons) _drawMove(e);
+  }, { passive: false });
+  canvas.addEventListener('pointerup',     _drawEnd);
+  canvas.addEventListener('pointercancel', _drawEnd);
+
+  document.getElementById('drawCancelBtn').addEventListener('click', _drawClose);
+  document.getElementById('drawSaveBtn').addEventListener('click',   _drawSave);
+  document.getElementById('drawUndoBtn').addEventListener('click',   _drawUndo);
+  document.getElementById('drawClearBtn').addEventListener('click',  () => {
+    if (confirm('Clear the sketch?')) _drawClear();
+  });
+  document.getElementById('drawPenBtn').addEventListener('click', () => {
+    _drawTool = 'pen';
+    document.getElementById('drawPenBtn').classList.add('active');
+    document.getElementById('drawEraserBtn').classList.remove('active');
+  });
+  document.getElementById('drawEraserBtn').addEventListener('click', () => {
+    _drawTool = 'eraser';
+    document.getElementById('drawEraserBtn').classList.add('active');
+    document.getElementById('drawPenBtn').classList.remove('active');
+  });
+  document.querySelectorAll('.draw-color-swatch').forEach(swatch => {
+    swatch.addEventListener('click', () => {
+      _drawColor = swatch.dataset.color;
+      _drawTool  = 'pen';
+      document.getElementById('drawPenBtn').classList.add('active');
+      document.getElementById('drawEraserBtn').classList.remove('active');
+      document.querySelectorAll('.draw-color-swatch').forEach(s => s.classList.remove('active'));
+      swatch.classList.add('active');
+    });
+  });
+  document.querySelectorAll('.draw-size-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      _drawSize = parseInt(btn.dataset.size);
+      document.querySelectorAll('.draw-size-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+    });
+  });
+}
+
 function renderCards(animDir) {
   saveSession();
   openSwipeNodeId = null;
@@ -2582,6 +2845,7 @@ function renderCards(animDir) {
   list.innerHTML = cards.map(node => {
     const childCount  = childrenOf(node.id).length;
     const isImageCard = node.type === 'image';
+    const hasDrawing  = node.hasDrawing && imageCache[node.id] && !isImageCard;
     const pip         = 'pip-' + (node.status || 'untouched');
     const summary     = node.summary || node.transcript || '';
     const expanded    = expandedIds.has(node.id);
@@ -2612,14 +2876,14 @@ function renderCards(animDir) {
             <span class="swipe-icon">🗑</span><span>Delete</span>
           </button>
         </div>
-        <div class="card${expanded ? ' expanded' : ''}${isImageCard ? ' image-card' : ''}${selectMode ? ' selectable' : ''}${isSelected ? ' selected' : ''}"
+        <div class="card${expanded ? ' expanded' : ''}${isImageCard ? ' image-card' : ''}${hasDrawing ? ' has-drawing' : ''}${selectMode ? ' selectable' : ''}${isSelected ? ' selected' : ''}"
              id="card-${nid}" data-node-id="${nid}" data-node-label="${esc(node.label)}" data-status="${esc(node.status || 'untouched')}">
           <div class="card-front">
             ${selectMode ? `<div class="select-indicator">${isSelected ? '✓' : ''}</div>` : (isImageCard ? thumb : `<div class="pip ${pip}"></div>`)}
             <div class="card-body">
               <div class="card-title${node.archived ? ' archived-title' : ''}">${esc(node.label)}</div>
               <div class="card-meta">
-                ${node.pinned ? `<span class="card-pin-badge">📌</span> ` : ''}${esc(meta)}${node.deferred ? ` <span class="card-defer-badge">⏳ ${formatDeferDate(node.deferredUntil)}</span>` : ''}
+                ${node.pinned ? `<span class="card-pin-badge">📌</span> ` : ''}${esc(meta)}${node.deferred ? ` <span class="card-defer-badge">⏳ ${formatDeferDate(node.deferredUntil)}</span>` : ''}${hasDrawing ? ` <span class="card-draw-badge">✏</span>` : ''}
               </div>
             </div>
             <div class="card-actions">
@@ -2631,6 +2895,7 @@ function renderCards(animDir) {
           ${!selectMode ? `
           <div class="card-summary-wrap">
             ${isImageCard && imageCache[node.id] ? `<img class="card-image-full" src="${imageCache[node.id]}" alt="" />` : ''}
+            ${hasDrawing ? `<img class="card-drawing" src="${imageCache[node.id]}" alt="Sketch" />` : ''}
             ${summary ? `<div class="card-summary">${mdToHtml(summary)}</div>` : ''}
             <div class="card-action-row">
               <button class="refile-btn" data-refile-id="${nid}">↗ Re-file</button>
@@ -5156,6 +5421,7 @@ function initNodeCtxMenu() {
   document.getElementById('ctxQueue').addEventListener('click',     () => { closeNodeCtxMenu(); queueNode(getCtxNode()); });
   document.getElementById('ctxEditTitle').addEventListener('click', () => { closeNodeCtxMenu(); startEditField(getCtxNode(), 'label'); });
   document.getElementById('ctxEditDesc').addEventListener('click',  () => { closeNodeCtxMenu(); startEditField(getCtxNode(), 'summary'); });
+  document.getElementById('ctxDraw').addEventListener('click',        () => { closeNodeCtxMenu(); openDrawModal(getCtxNode()); });
   document.getElementById('ctxConsolidate').addEventListener('click', () => { closeNodeCtxMenu(); consolidateNode(getCtxNode()); });
   document.getElementById('ctxTaskList').addEventListener('click',   () => { closeNodeCtxMenu(); taskListNode(getCtxNode()); });
   document.getElementById('ctxElaborate').addEventListener('click',  () => { closeNodeCtxMenu(); startElaborate(getCtxNode()); });
@@ -5780,7 +6046,7 @@ const toggleMenu = () => document.getElementById('menuDropdown').classList.toggl
 const closeMenu  = () => document.getElementById('menuDropdown').classList.remove('open');
 
 // ─── INIT ───────────────────────────────────────────────────────────────────
-const BUILD_TS = 'build:2026-03-26T17:00'; // bumped each deploy — confirms fresh load
+const BUILD_TS = 'build:2026-03-26T18:00'; // bumped each deploy — confirms fresh load
 
 async function initApp() {
   // Show immediately with localStorage data
@@ -5915,6 +6181,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   initNodeCtxMenu();
   initConsolidateModal();
+  initDrawModal();
 
   // Persist markdown checkbox toggles (- [ ] / - [x]) when clicked
   document.addEventListener('change', e => {
@@ -6340,6 +6607,36 @@ document.addEventListener('DOMContentLoaded', () => {
   </div>
 </div>
 
+<!-- Drawing / sketch modal -->
+<div class="draw-overlay hidden" id="drawModal">
+  <div class="draw-header">
+    <button class="draw-header-btn" id="drawCancelBtn">Cancel</button>
+    <span class="draw-header-title" id="drawTitle">Sketch</span>
+    <button class="draw-header-btn draw-save-btn" id="drawSaveBtn">Save</button>
+  </div>
+  <div class="draw-canvas-wrap" id="drawCanvasWrap">
+    <canvas id="drawCanvas"></canvas>
+  </div>
+  <div class="draw-toolbar">
+    <button class="draw-tool-btn active" id="drawPenBtn" title="Pen">✏</button>
+    <button class="draw-tool-btn" id="drawEraserBtn" title="Eraser">⌫</button>
+    <div class="draw-sep"></div>
+    <div class="draw-color-swatch active" data-color="#1a1a1a" style="background:#1a1a1a"></div>
+    <div class="draw-color-swatch" data-color="#6b7280" style="background:#6b7280"></div>
+    <div class="draw-color-swatch" data-color="#e24b4a" style="background:#e24b4a"></div>
+    <div class="draw-color-swatch" data-color="#007aff" style="background:#007aff"></div>
+    <div class="draw-color-swatch" data-color="#30d158" style="background:#30d158"></div>
+    <div class="draw-color-swatch" data-color="#ff9f0a" style="background:#ff9f0a"></div>
+    <div class="draw-sep"></div>
+    <button class="draw-size-btn active" data-size="2" title="Fine" style="font-size:8px">●</button>
+    <button class="draw-size-btn" data-size="5" title="Medium" style="font-size:13px">●</button>
+    <button class="draw-size-btn" data-size="11" title="Thick" style="font-size:20px">●</button>
+    <div class="draw-sep"></div>
+    <button class="draw-tool-btn" id="drawUndoBtn" title="Undo">↩</button>
+    <button class="draw-tool-btn" id="drawClearBtn" title="Clear canvas">🗑</button>
+  </div>
+</div>
+
 <!-- Consolidate preview modal -->
 <div class="defer-overlay hidden" id="consolidateModal">
   <div class="defer-sheet" style="width:100%;max-width:600px;display:flex;flex-direction:column;gap:12px">
@@ -6363,6 +6660,7 @@ document.addEventListener('DOMContentLoaded', () => {
   <button class="node-ctx-item" id="ctxQueue">📋 Queue for scheduling</button>
   <button class="node-ctx-item" id="ctxEditTitle">✎ Edit Title</button>
   <button class="node-ctx-item" id="ctxEditDesc">📝 Edit Description</button>
+  <button class="node-ctx-item" id="ctxDraw">✏ Sketch / Annotate</button>
   <button class="node-ctx-item" id="ctxConsolidate">⊞ Consolidate to Markdown</button>
   <button class="node-ctx-item" id="ctxTaskList">☑ Convert to Task List</button>
   <button class="node-ctx-item" id="ctxElaborate">✨ Elaborate with AI</button>
