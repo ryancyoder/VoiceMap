@@ -652,15 +652,6 @@
       max-height: 70dvh;
       overflow-y: auto;
     }
-    .card.has-drawing.expanded .card-summary-wrap {
-      max-height: 70dvh;
-      overflow-y: auto;
-    }
-    .card-drawing {
-      width: 100%; border-radius: 8px; margin-bottom: 8px;
-      display: block; object-fit: contain; max-height: 50dvh;
-      border: 0.5px solid var(--border);
-    }
     .card-draw-badge { font-size: 11px; opacity: 0.55; margin-left: 2px; }
 
     /* ── Drawing modal ─────────────────────────────────────────── */
@@ -2876,7 +2867,7 @@ function renderCards(animDir) {
             <span class="swipe-icon">🗑</span><span>Delete</span>
           </button>
         </div>
-        <div class="card${expanded ? ' expanded' : ''}${isImageCard ? ' image-card' : ''}${hasDrawing ? ' has-drawing' : ''}${selectMode ? ' selectable' : ''}${isSelected ? ' selected' : ''}"
+        <div class="card${expanded ? ' expanded' : ''}${isImageCard ? ' image-card' : ''}${selectMode ? ' selectable' : ''}${isSelected ? ' selected' : ''}"
              id="card-${nid}" data-node-id="${nid}" data-node-label="${esc(node.label)}" data-status="${esc(node.status || 'untouched')}">
           <div class="card-front">
             ${selectMode ? `<div class="select-indicator">${isSelected ? '✓' : ''}</div>` : (isImageCard ? thumb : `<div class="pip ${pip}"></div>`)}
@@ -2895,7 +2886,6 @@ function renderCards(animDir) {
           ${!selectMode ? `
           <div class="card-summary-wrap">
             ${isImageCard && imageCache[node.id] ? `<img class="card-image-full" src="${imageCache[node.id]}" alt="" />` : ''}
-            ${hasDrawing ? `<img class="card-drawing" src="${imageCache[node.id]}" alt="Sketch" />` : ''}
             ${summary ? `<div class="card-summary">${mdToHtml(summary)}</div>` : ''}
             <div class="card-action-row">
               <button class="refile-btn" data-refile-id="${nid}">↗ Re-file</button>
@@ -3997,7 +3987,13 @@ function selectMmNode(nodeId, scroll = true) {
   document.getElementById('mmPanelTitle').textContent   = node.label;
   const panelSummary = document.getElementById('mmPanelSummary');
   panelSummary.dataset.nodeId = nodeId;
-  panelSummary.innerHTML = mdToHtml(node.summary || node.transcript || '');
+  let summaryHtml = mdToHtml(node.summary || node.transcript || '');
+  if (node.hasDrawing && imageCache[nodeId]) {
+    summaryHtml += `<img src="${imageCache[nodeId]}" alt="Sketch"
+      style="width:100%;border-radius:8px;margin-top:10px;display:block;
+             border:0.5px solid var(--border);object-fit:contain;max-height:40dvh">`;
+  }
+  panelSummary.innerHTML = summaryHtml;
   const children = session.nodes.filter(n => n.parent_id === nodeId).length;
   document.getElementById('mmPanelMeta').textContent = [
     children ? `${children} sub-card${children !== 1 ? 's' : ''}` : 'No sub-cards',
@@ -6046,7 +6042,7 @@ const toggleMenu = () => document.getElementById('menuDropdown').classList.toggl
 const closeMenu  = () => document.getElementById('menuDropdown').classList.remove('open');
 
 // ─── INIT ───────────────────────────────────────────────────────────────────
-const BUILD_TS = 'build:2026-03-26T18:00'; // bumped each deploy — confirms fresh load
+const BUILD_TS = 'build:2026-03-26T19:00'; // bumped each deploy — confirms fresh load
 
 async function initApp() {
   // Show immediately with localStorage data
