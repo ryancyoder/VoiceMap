@@ -3983,12 +3983,14 @@ function initMmPanZoom() {
   let panning = false, lastT = null, pinchDist = null, tapNode = null;
   let lastTapTime = 0, lastTapNodeId = undefined, singleTapTimer = null, touchDblHandled = false;
   let mmLongPressTimer = null, mmLongPressX = 0, mmLongPressY = 0;
+  let wasPinching = false; // guards against pinch-end being misread as double-tap
 
   wrap.addEventListener('touchstart', e => {
     // Ignore ghost clicks fired shortly after Quick Find closes
     if (Date.now() - _qfCloseTime < 400) { e.preventDefault(); return; }
     if (e.touches.length === 2) {
       panning = false;
+      wasPinching = true;
       pinchDist = Math.hypot(
         e.touches[0].clientX - e.touches[1].clientX,
         e.touches[0].clientY - e.touches[1].clientY
@@ -4042,6 +4044,15 @@ function initMmPanZoom() {
 
   wrap.addEventListener('touchend', e => {
     clearTimeout(mmLongPressTimer); mmLongPressTimer = null;
+    // If a pinch was in progress, skip all tap detection until the last finger lifts
+    if (wasPinching) {
+      if (e.touches.length === 0) {
+        wasPinching = false;
+        lastTapTime = 0; lastTapNodeId = undefined; // prevent stale double-tap on next tap
+      }
+      panning = false; pinchDist = null; lastT = null; tapNode = null;
+      return;
+    }
     if (e.changedTouches.length === 1) {
       const collapseBtn = e.target.closest('.mm-collapse-btn');
       if (collapseBtn) { tapNode = null; mmToggleCollapse(collapseBtn.dataset.collapseId); return; }
@@ -5770,7 +5781,7 @@ const toggleMenu = () => document.getElementById('menuDropdown').classList.toggl
 const closeMenu  = () => document.getElementById('menuDropdown').classList.remove('open');
 
 // ─── INIT ───────────────────────────────────────────────────────────────────
-const BUILD_TS = 'build:2026-03-26T13:00'; // bumped each deploy — confirms fresh load
+const BUILD_TS = 'build:2026-03-26T14:00'; // bumped each deploy — confirms fresh load
 
 async function initApp() {
   // Show immediately with localStorage data
