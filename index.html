@@ -3471,9 +3471,10 @@ function applyAddParentNode(text) {
   renderCards();
   showToast(`Parent added: "${text.slice(0, 40)}"`);
   if (mmVisible) {
-    // Use setTimeout(0) so any pending DOM/focus operations from hiding the
-    // modal settle before we reconfigure the map view
-    setTimeout(() => mmFocusOnNode(parentId), 0);
+    // Exit current focus (clears stale focus state), then immediately
+    // focus on the new parent — same path as tapping a tile from root grid
+    mmExitFocus();
+    mmFocusOnNode(parentId);
   }
 }
 
@@ -6116,7 +6117,7 @@ const toggleMenu = () => document.getElementById('menuDropdown').classList.toggl
 const closeMenu  = () => document.getElementById('menuDropdown').classList.remove('open');
 
 // ─── INIT ───────────────────────────────────────────────────────────────────
-const BUILD_TS = 'build:2026-03-27T06:00'; // bumped each deploy — confirms fresh load
+const BUILD_TS = 'build:2026-03-27T07:00'; // bumped each deploy — confirms fresh load
 
 async function initApp() {
   // Show immediately with localStorage data
