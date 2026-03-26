@@ -992,18 +992,22 @@
 
     /* ── Root tile grid ─────────────────────────────────────────── */
     #mmRootGrid {
-      flex: 1; overflow-y: auto; padding: 16px;
+      flex: 1; overflow-y: auto;
+      padding: 24px 16px 16px 24px;
       display: none;
       grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
-      gap: 12px;
+      gap: 20px;
       align-content: start;
+    }
+    .mm-tile-wrap {
+      position: relative;
     }
     .mm-root-tile {
       aspect-ratio: 1 / 1;
       background: var(--surface);
       border: 0.5px solid var(--border);
       border-radius: 16px;
-      padding: 14px;
+      padding: 16px;
       display: flex; flex-direction: column;
       align-items: center; justify-content: center;
       cursor: pointer;
@@ -1011,25 +1015,28 @@
       -webkit-tap-highlight-color: transparent;
       transition: background 0.12s, transform 0.1s;
       overflow: hidden;
-      position: relative;
       text-align: center;
     }
     .mm-root-tile:active { background: var(--hover); transform: scale(0.96); }
     .mm-tile-label {
-      font-size: 15px; font-weight: 700; color: var(--text);
-      line-height: 1.3;
+      font-size: 20px; font-weight: 800;
+      font-family: -apple-system, 'SF Pro Display', 'Helvetica Neue', sans-serif;
+      letter-spacing: -0.4px;
+      color: var(--text);
+      line-height: 1.25;
       overflow: hidden;
       display: -webkit-box;
       -webkit-line-clamp: 4;
       -webkit-box-orient: vertical;
     }
     .mm-tile-badge {
-      position: absolute; top: 9px; right: 9px;
+      position: absolute; top: -10px; left: -10px; z-index: 2;
       background: var(--accent); color: #fff;
-      font-size: 11px; font-weight: 700;
-      min-width: 20px; height: 20px;
-      border-radius: 10px; padding: 0 5px;
+      font-size: 13px; font-weight: 700;
+      min-width: 28px; height: 28px;
+      border-radius: 14px; padding: 0 7px;
       display: flex; align-items: center; justify-content: center;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.22);
       line-height: 1;
     }
     .mm-header-fit { background: var(--surface); border: 0.5px solid var(--border); border-radius: 10px; color: var(--text); font-size: 18px; padding: 6px 12px; cursor: pointer; }
@@ -3576,9 +3583,11 @@ function renderMmRootGrid() {
   grid.innerHTML = roots.map(node => {
     const childCount = childrenOf(node.id).length;
     return `
-      <div class="mm-root-tile" data-tile-id="${esc(node.id)}">
+      <div class="mm-tile-wrap">
         ${childCount ? `<div class="mm-tile-badge">${childCount}</div>` : ''}
-        <div class="mm-tile-label">${esc(node.label)}</div>
+        <div class="mm-root-tile" data-tile-id="${esc(node.id)}">
+          <div class="mm-tile-label">${esc(node.label)}</div>
+        </div>
       </div>`;
   }).join('');
   grid.querySelectorAll('.mm-root-tile').forEach(tile => {
@@ -5766,7 +5775,7 @@ const toggleMenu = () => document.getElementById('menuDropdown').classList.toggl
 const closeMenu  = () => document.getElementById('menuDropdown').classList.remove('open');
 
 // ─── INIT ───────────────────────────────────────────────────────────────────
-const BUILD_TS = 'build:2026-03-26T15:00'; // bumped each deploy — confirms fresh load
+const BUILD_TS = 'build:2026-03-26T16:00'; // bumped each deploy — confirms fresh load
 
 async function initApp() {
   // Show immediately with localStorage data
