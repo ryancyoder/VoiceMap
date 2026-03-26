@@ -6052,7 +6052,7 @@ const toggleMenu = () => document.getElementById('menuDropdown').classList.toggl
 const closeMenu  = () => document.getElementById('menuDropdown').classList.remove('open');
 
 // ─── INIT ───────────────────────────────────────────────────────────────────
-const BUILD_TS = 'build:2026-03-26T20:00'; // bumped each deploy — confirms fresh load
+const BUILD_TS = 'build:2026-03-26T21:00'; // bumped each deploy — confirms fresh load
 
 async function initApp() {
   // Show immediately with localStorage data
@@ -6659,6 +6659,8 @@ document.addEventListener('DOMContentLoaded', () => {
 <!-- Long-press node context menu -->
 <div id="nodeCtxOverlay" style="display:none;position:fixed;inset:0;z-index:9998"></div>
 <div id="nodeCtxMenu" class="node-ctx-menu" style="display:none;position:fixed;z-index:9999" data-ctx-node="">
+  <button class="node-ctx-item danger" id="ctxDelete">✕ Delete</button>
+  <div class="node-ctx-sep"></div>
   <button class="node-ctx-item" id="ctxPin">📌 Pin</button>
   <button class="node-ctx-item" id="ctxArchive">📁 Archive</button>
   <button class="node-ctx-item" id="ctxDefer">⏳ Defer</button>
@@ -6672,8 +6674,6 @@ document.addEventListener('DOMContentLoaded', () => {
   <button class="node-ctx-item" id="ctxElaborate">✨ Elaborate with AI</button>
   <button class="node-ctx-item" id="ctxExplore">💬 Explore with AI</button>
   <button class="node-ctx-item" id="ctxRefile">↗ Re-file</button>
-  <div class="node-ctx-sep"></div>
-  <button class="node-ctx-item danger" id="ctxDelete">✕ Delete</button>
 </div>
 
 <!-- Tap-to-record overlay (shown when ?record=1 in URL) -->
