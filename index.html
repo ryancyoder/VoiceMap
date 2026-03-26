@@ -1005,39 +1005,33 @@
       border-radius: 16px;
       padding: 14px;
       display: flex; flex-direction: column;
+      align-items: center; justify-content: center;
       cursor: pointer;
       user-select: none; -webkit-user-select: none;
       -webkit-tap-highlight-color: transparent;
       transition: background 0.12s, transform 0.1s;
       overflow: hidden;
       position: relative;
+      text-align: center;
     }
     .mm-root-tile:active { background: var(--hover); transform: scale(0.96); }
-    .mm-tile-top { display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
     .mm-tile-label {
-      flex: 1;
-      font-size: 14px; font-weight: 600; color: var(--text);
-      line-height: 1.35;
+      font-size: 15px; font-weight: 700; color: var(--text);
+      line-height: 1.3;
       overflow: hidden;
       display: -webkit-box;
-      -webkit-line-clamp: 3;
+      -webkit-line-clamp: 4;
       -webkit-box-orient: vertical;
-      margin-top: 8px;
     }
-    .mm-tile-snippet {
-      font-size: 11px; color: var(--muted); margin-top: 5px;
-      overflow: hidden;
-      display: -webkit-box;
-      -webkit-line-clamp: 2;
-      -webkit-box-orient: vertical;
-      line-height: 1.35;
-      flex-shrink: 0;
+    .mm-tile-badge {
+      position: absolute; top: 9px; right: 9px;
+      background: var(--accent); color: #fff;
+      font-size: 11px; font-weight: 700;
+      min-width: 20px; height: 20px;
+      border-radius: 10px; padding: 0 5px;
+      display: flex; align-items: center; justify-content: center;
+      line-height: 1;
     }
-    .mm-tile-footer {
-      margin-top: auto; padding-top: 8px;
-      display: flex; justify-content: space-between; align-items: center;
-    }
-    .mm-tile-count { font-size: 11px; color: var(--muted); }
     .mm-header-fit { background: var(--surface); border: 0.5px solid var(--border); border-radius: 10px; color: var(--text); font-size: 18px; padding: 6px 12px; cursor: pointer; }
     .mm-canvas { position: absolute; top: 0; left: 0; transform-origin: 0 0; will-change: transform; }
     .mm-svg { position: absolute; top: 0; left: 0; pointer-events: none; overflow: visible; }
@@ -3581,19 +3575,10 @@ function renderMmRootGrid() {
   }
   grid.innerHTML = roots.map(node => {
     const childCount = childrenOf(node.id).length;
-    const pip        = 'pip-' + (node.status || 'untouched');
-    const snippet    = (node.summary || node.transcript || '').replace(/[#*`_>]/g, '').trim().slice(0, 100);
     return `
       <div class="mm-root-tile" data-tile-id="${esc(node.id)}">
-        <div class="mm-tile-top">
-          <div class="pip ${pip}" style="width:8px;height:8px"></div>
-          ${node.pinned ? '<span style="font-size:11px;line-height:1">📌</span>' : ''}
-        </div>
+        ${childCount ? `<div class="mm-tile-badge">${childCount}</div>` : ''}
         <div class="mm-tile-label">${esc(node.label)}</div>
-        ${snippet ? `<div class="mm-tile-snippet">${esc(snippet)}</div>` : ''}
-        <div class="mm-tile-footer">
-          <span class="mm-tile-count">${childCount ? `${childCount} card${childCount !== 1 ? 's' : ''}` : 'No cards'}</span>
-        </div>
       </div>`;
   }).join('');
   grid.querySelectorAll('.mm-root-tile').forEach(tile => {
@@ -5781,7 +5766,7 @@ const toggleMenu = () => document.getElementById('menuDropdown').classList.toggl
 const closeMenu  = () => document.getElementById('menuDropdown').classList.remove('open');
 
 // ─── INIT ───────────────────────────────────────────────────────────────────
-const BUILD_TS = 'build:2026-03-26T14:00'; // bumped each deploy — confirms fresh load
+const BUILD_TS = 'build:2026-03-26T15:00'; // bumped each deploy — confirms fresh load
 
 async function initApp() {
   // Show immediately with localStorage data
