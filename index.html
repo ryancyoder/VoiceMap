@@ -6116,7 +6116,7 @@ const toggleMenu = () => document.getElementById('menuDropdown').classList.toggl
 const closeMenu  = () => document.getElementById('menuDropdown').classList.remove('open');
 
 // ─── INIT ───────────────────────────────────────────────────────────────────
-const BUILD_TS = 'build:2026-03-27T03:00'; // bumped each deploy — confirms fresh load
+const BUILD_TS = 'build:2026-03-27T04:00'; // bumped each deploy — confirms fresh load
 
 async function initApp() {
   // Show immediately with localStorage data
@@ -6373,25 +6373,25 @@ document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('mmCanvasWrap').addEventListener('keydown', e => {
     if (!document.getElementById('editFieldModal').classList.contains('hidden')) return;
 
-    if ((e.metaKey || e.ctrlKey) && e.key === 'n' && !e.shiftKey) {
+    if ((e.metaKey || e.ctrlKey) && e.code === 'KeyN' && !e.shiftKey) {
       e.preventDefault();
       startMmAddChild();
       return;
     }
 
-    if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.key === 'P') {
+    if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.code === 'KeyP') {
       e.preventDefault();
       if (mmSelectedId) startAddParentNode(mmSelectedId);
       return;
     }
 
-    if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
+    if ((e.metaKey || e.ctrlKey) && e.code === 'KeyK') {
       e.preventDefault();
       showQuickFind();
       return;
     }
 
-    if ((e.metaKey || e.ctrlKey) && e.key === 'm') {
+    if ((e.metaKey || e.ctrlKey) && e.code === 'KeyM') {
       e.preventDefault();
       if (mmMoveMode) cancelMmMove();
       else startMmMove();
@@ -6419,7 +6419,7 @@ document.addEventListener('DOMContentLoaded', () => {
   // Also handles Cmd+K (Quick Find) globally from any view.
   document.addEventListener('keydown', e => {
     // Cmd+K = Quick Find (works from any view)
-    if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
+    if ((e.metaKey || e.ctrlKey) && e.code === 'KeyK') {
       e.preventDefault();
       if (document.getElementById('quickFindModal').classList.contains('hidden')) {
         showQuickFind();
@@ -6433,7 +6433,7 @@ document.addEventListener('DOMContentLoaded', () => {
     if (!document.getElementById('editFieldModal').classList.contains('hidden')) return;
 
     // Cmd+N = new card (root grid or focused map)
-    if ((e.metaKey || e.ctrlKey) && e.key === 'n' && !e.shiftKey) {
+    if ((e.metaKey || e.ctrlKey) && e.code === 'KeyN' && !e.shiftKey) {
       e.preventDefault();
       if (!mmFocusNodeId) { mmSelectedId = null; }
       startMmAddChild();
@@ -6441,9 +6441,10 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     // Cmd+Shift+P = wrap selected root node in a new parent
-    if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.key === 'P') {
+    if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.code === 'KeyP') {
       e.preventDefault();
-      if (mmSelectedId) startAddParentNode(mmSelectedId);
+      const targetId = mmSelectedId || mmFocusNodeId;
+      if (targetId) startAddParentNode(targetId);
       return;
     }
 
