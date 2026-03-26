@@ -260,6 +260,23 @@
       display: flex; align-items: flex-end; justify-content: center;
     }
     .defer-overlay.hidden { display: none; }
+    /* ── External drag-drop overlay ─────────────────────────────── */
+    #extDropOverlay {
+      display: none; position: fixed; inset: 0; z-index: 9998;
+      background: rgba(0,0,0,0.55); backdrop-filter: blur(4px);
+      align-items: center; justify-content: center; flex-direction: column;
+      gap: 12px; pointer-events: none;
+    }
+    #extDropOverlay.active { display: flex; }
+    #extDropOverlay .drop-icon { font-size: 56px; line-height: 1; }
+    #extDropOverlay .drop-label {
+      font-size: 22px; font-weight: 700; color: #fff;
+      font-family: -apple-system, 'SF Pro Display', sans-serif;
+    }
+    #extDropOverlay .drop-sub {
+      font-size: 14px; color: rgba(255,255,255,0.7);
+      font-family: -apple-system, sans-serif;
+    }
     .tap-record-overlay {
       position: fixed; inset: 0; z-index: 400;
       background: rgba(0,0,0,0.85);
@@ -3477,6 +3494,105 @@ async function pasteAsNode() {
   showToast(`Pasted: "${label.slice(0, 40)}"`);
 }
 
+// ─── EXTERNAL DRAG-DROP ──────────────────────────────────────────────────────
+function initExternalDrop() {
+  const overlay  = document.getElementById('extDropOverlay');
+  const subLabel = document.getElementById('extDropSub');
+  let dragDepth  = 0; // track enter/leave nesting
+
+  // Only treat as external drag if no internal dragState is active
+  function isExternal(e) {
+    return !dragState;
+  }
+
+  document.addEventListener('dragenter', e => {
+    if (!isExternal(e)) return;
+    e.preventDefault();
+    dragDepth++;
+    if (dragDepth === 1) {
+      const hasFiles = e.dataTransfer?.types?.includes('Files');
+      subLabel.textContent = hasFiles ? 'Image or text file' : 'Text or URL';
+      overlay.classList.add('active');
+    }
+  });
+
+  document.addEventListener('dragover', e => {
+    if (!isExternal(e)) return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'copy';
+  });
+
+  document.addEventListener('dragleave', e => {
+    if (!isExternal(e)) return;
+    dragDepth--;
+    if (dragDepth <= 0) { dragDepth = 0; overlay.classList.remove('active'); }
+  });
+
+  document.addEventListener('drop', async e => {
+    if (!isExternal(e)) return;
+    e.preventDefault();
+    dragDepth = 0;
+    overlay.classList.remove('active');
+
+    const dt = e.dataTransfer;
+
+    // ── Image file drop ─────────────────────────────────────────
+    const imgFile = Array.from(dt.files || []).find(f => f.type.startsWith('image/'));
+    if (imgFile) {
+      const reader = new FileReader();
+      reader.onload = async ev => {
+        const dataUrl = ev.target.result;
+        const parentId = mmVisible ? (mmSelectedId || mmFocusNodeId || null) : currentCtx().id;
+        const now      = new Date().toISOString();
+        const nodeId   = makeId();
+        const node     = {
+          id: nodeId, type: 'image', label: imgFile.name.replace(/\.[^.]+$/, '').slice(0, 60),
+          summary: '', transcript: '', parent_id: parentId,
+          status: 'untouched', created: now, last_modified: now
+        };
+        session.nodes.push(node);
+        await saveImageToDB(nodeId, dataUrl);
+        saveSession();
+        if (mmVisible) { renderMindMap(); setTimeout(() => selectMmNode(nodeId), 50); }
+        else renderCards();
+        showToast('Image added as card');
+      };
+      reader.readAsDataURL(imgFile);
+      return;
+    }
+
+    // ── Text / HTML / URL drop ──────────────────────────────────
+    let text = dt.getData('text/plain');
+    if (!text) {
+      // Try stripping HTML to plain text
+      const html = dt.getData('text/html');
+      if (html) {
+        const tmp = document.createElement('div');
+        tmp.innerHTML = html;
+        text = tmp.innerText || tmp.textContent || '';
+      }
+    }
+    if (!text) text = dt.getData('text/uri-list')?.split('\n')[0]?.trim() || '';
+    text = text.trim();
+    if (!text) { showToast('Nothing to paste'); return; }
+
+    const lines   = text.split('\n');
+    const label   = lines[0].trim().slice(0, 60);
+    const summary = lines.slice(1).join('\n').trim();
+    const parentId = mmVisible ? (mmSelectedId || mmFocusNodeId || null) : currentCtx().id;
+    const now      = new Date().toISOString();
+    const nodeId   = makeId();
+    session.nodes.push({
+      id: nodeId, label, summary, transcript: text,
+      parent_id: parentId, status: 'untouched', created: now, last_modified: now
+    });
+    saveSession();
+    if (mmVisible) { renderMindMap(); setTimeout(() => selectMmNode(nodeId), 50); }
+    else renderCards();
+    showToast(`Dropped: "${label.slice(0, 40)}"`);
+  });
+}
+
 function startAddParentNode(nodeId) {
   const node = session.nodes.find(n => n.id === nodeId);
   if (!node) return;
@@ -6157,7 +6273,7 @@ const toggleMenu = () => document.getElementById('menuDropdown').classList.toggl
 const closeMenu  = () => document.getElementById('menuDropdown').classList.remove('open');
 
 // ─── INIT ───────────────────────────────────────────────────────────────────
-const BUILD_TS = 'build:2026-03-27T08:00'; // bumped each deploy — confirms fresh load
+const BUILD_TS = 'build:2026-03-27T09:00'; // bumped each deploy — confirms fresh load
 
 async function initApp() {
   // Show immediately with localStorage data
@@ -6207,6 +6323,7 @@ async function initApp() {
 document.addEventListener('DOMContentLoaded', () => {
   initSwipeHandlers();
   initDragHandlers();
+  initExternalDrop();
   initApp();
 
   // View filter pills
@@ -6831,6 +6948,13 @@ document.addEventListener('DOMContentLoaded', () => {
   <div class="tap-record-pulse">⏺</div>
   <div class="tap-record-label">Tap anywhere to record</div>
   <div class="tap-record-sub">Back Tap shortcut activated</div>
+</div>
+
+<!-- External drag-drop overlay -->
+<div id="extDropOverlay">
+  <div class="drop-icon">⬇</div>
+  <div class="drop-label">Drop to create card</div>
+  <div class="drop-sub" id="extDropSub">Text or image</div>
 </div>
 </body>
 </html>
