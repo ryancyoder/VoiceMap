@@ -3457,7 +3457,6 @@ function applyAddParentNode(text) {
   const { nodeId } = pendingMmAddParent;
   pendingMmAddParent = null;
   document.getElementById('editFieldModal').classList.add('hidden');
-  if (mmVisible) document.getElementById('mmCanvasWrap').focus();
   const node = session.nodes.find(n => n.id === nodeId);
   if (!node) return;
   const now      = new Date().toISOString();
@@ -3470,10 +3469,12 @@ function applyAddParentNode(text) {
   node.last_modified  = now;
   saveSession();
   renderCards();
-  if (mmVisible) {
-    mmFocusOnNode(parentId);
-  }
   showToast(`Parent added: "${text.slice(0, 40)}"`);
+  if (mmVisible) {
+    // Use setTimeout(0) so any pending DOM/focus operations from hiding the
+    // modal settle before we reconfigure the map view
+    setTimeout(() => mmFocusOnNode(parentId), 0);
+  }
 }
 
 function startEditField(nodeId, field) {
@@ -6115,7 +6116,7 @@ const toggleMenu = () => document.getElementById('menuDropdown').classList.toggl
 const closeMenu  = () => document.getElementById('menuDropdown').classList.remove('open');
 
 // ─── INIT ───────────────────────────────────────────────────────────────────
-const BUILD_TS = 'build:2026-03-27T05:00'; // bumped each deploy — confirms fresh load
+const BUILD_TS = 'build:2026-03-27T06:00'; // bumped each deploy — confirms fresh load
 
 async function initApp() {
   // Show immediately with localStorage data
