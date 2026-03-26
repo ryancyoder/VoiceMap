@@ -989,6 +989,55 @@
       touch-action: none; user-select: none; -webkit-user-select: none;
     }
     .mm-canvas-wrap.panning { cursor: grabbing; }
+
+    /* ── Root tile grid ─────────────────────────────────────────── */
+    #mmRootGrid {
+      flex: 1; overflow-y: auto; padding: 16px;
+      display: none;
+      grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+      gap: 12px;
+      align-content: start;
+    }
+    .mm-root-tile {
+      aspect-ratio: 1 / 1;
+      background: var(--surface);
+      border: 0.5px solid var(--border);
+      border-radius: 16px;
+      padding: 14px;
+      display: flex; flex-direction: column;
+      cursor: pointer;
+      user-select: none; -webkit-user-select: none;
+      -webkit-tap-highlight-color: transparent;
+      transition: background 0.12s, transform 0.1s;
+      overflow: hidden;
+      position: relative;
+    }
+    .mm-root-tile:active { background: var(--hover); transform: scale(0.96); }
+    .mm-tile-top { display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
+    .mm-tile-label {
+      flex: 1;
+      font-size: 14px; font-weight: 600; color: var(--text);
+      line-height: 1.35;
+      overflow: hidden;
+      display: -webkit-box;
+      -webkit-line-clamp: 3;
+      -webkit-box-orient: vertical;
+      margin-top: 8px;
+    }
+    .mm-tile-snippet {
+      font-size: 11px; color: var(--muted); margin-top: 5px;
+      overflow: hidden;
+      display: -webkit-box;
+      -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical;
+      line-height: 1.35;
+      flex-shrink: 0;
+    }
+    .mm-tile-footer {
+      margin-top: auto; padding-top: 8px;
+      display: flex; justify-content: space-between; align-items: center;
+    }
+    .mm-tile-count { font-size: 11px; color: var(--muted); }
     .mm-header-fit { background: var(--surface); border: 0.5px solid var(--border); border-radius: 10px; color: var(--text); font-size: 18px; padding: 6px 12px; cursor: pointer; }
     .mm-canvas { position: absolute; top: 0; left: 0; transform-origin: 0 0; will-change: transform; }
     .mm-svg { position: absolute; top: 0; left: 0; pointer-events: none; overflow: visible; }
@@ -3522,8 +3571,55 @@ function buildMindMapLayout() {
   };
 }
 
+// ─── ROOT TILE GRID ──────────────────────────────────────────────────────────
+function renderMmRootGrid() {
+  const roots = session.nodes.filter(n => !n.parent_id && !n.archived);
+  const grid  = document.getElementById('mmRootGrid');
+  if (!roots.length) {
+    grid.innerHTML = '<div style="grid-column:1/-1;text-align:center;color:var(--muted);font-size:14px;padding:40px 0">No root-level cards yet.<br>Tap ⏺ to capture an idea.</div>';
+    return;
+  }
+  grid.innerHTML = roots.map(node => {
+    const childCount = childrenOf(node.id).length;
+    const pip        = 'pip-' + (node.status || 'untouched');
+    const snippet    = (node.summary || node.transcript || '').replace(/[#*`_>]/g, '').trim().slice(0, 100);
+    return `
+      <div class="mm-root-tile" data-tile-id="${esc(node.id)}">
+        <div class="mm-tile-top">
+          <div class="pip ${pip}" style="width:8px;height:8px"></div>
+          ${node.pinned ? '<span style="font-size:11px;line-height:1">📌</span>' : ''}
+        </div>
+        <div class="mm-tile-label">${esc(node.label)}</div>
+        ${snippet ? `<div class="mm-tile-snippet">${esc(snippet)}</div>` : ''}
+        <div class="mm-tile-footer">
+          <span class="mm-tile-count">${childCount ? `${childCount} card${childCount !== 1 ? 's' : ''}` : 'No cards'}</span>
+        </div>
+      </div>`;
+  }).join('');
+  grid.querySelectorAll('.mm-root-tile').forEach(tile => {
+    tile.addEventListener('click', () => mmFocusOnNode(tile.dataset.tileId));
+  });
+}
+
+function showMmRootGrid() {
+  document.getElementById('mmRootGrid').style.display = 'grid';
+  document.getElementById('mmCanvasWrap').style.display = 'none';
+  document.getElementById('mmFitBtn').style.display = 'none';
+  document.getElementById('mmFilterBar').style.display = 'none';
+  document.getElementById('mmFocusBar').classList.remove('visible');
+  renderMmRootGrid();
+}
+
+function hideMmRootGrid() {
+  document.getElementById('mmRootGrid').style.display = 'none';
+  document.getElementById('mmCanvasWrap').style.display = '';
+  document.getElementById('mmFitBtn').style.display = '';
+}
+
 function renderMindMap() {
   if (!mmVisible) return;
+  if (!mmFocusNodeId) { showMmRootGrid(); return; }
+  hideMmRootGrid();
   const nodes = mmVisibleNodes();
   const { pos, svgW, svgH } = buildMindMapLayout();
 
@@ -3685,12 +3781,13 @@ function mmFocusOnNode(nodeId) {
   mmFocusNodeId = nodeId;
   mmSelectedId  = nodeId;   // set before renderMindMap so it bakes the selection into HTML
   const node = session.nodes.find(n => n.id === nodeId);
-  showToast('Focus: ' + (node?.label || '??'));
   document.getElementById('mmFocusLabel').textContent = node?.label || '';
   document.getElementById('mmFocusBar').classList.add('visible');
   document.getElementById('mmFilterBar').style.display = 'none';
+  hideMmRootGrid();
+  mmTransform = { x: 40, y: 40, scale: 1 };
   renderMindMap();
-  setTimeout(() => { mmZoomToFit(); selectMmNode(nodeId); }, 50);
+  setTimeout(() => { mmZoomToFit(); selectMmNode(nodeId); document.getElementById('mmCanvasWrap').focus(); }, 50);
 }
 
 // ─── MOVE NODE ───────────────────────────────────────────────────────────────
@@ -3775,10 +3872,10 @@ function mmMoveArrowNav(direction) {
 
 function mmExitFocus() {
   mmFocusNodeId = null;
+  mmSelectedId  = null;
   document.getElementById('mmFocusBar').classList.remove('visible');
-  document.getElementById('mmFilterBar').style.display = '';
-  renderMindMap();
-  setTimeout(() => mmZoomToFit(), 50);
+  document.getElementById('mmPanel').classList.add('hidden');
+  showMmRootGrid();
 }
 
 function mmToggleCollapse(nodeId) {
@@ -3825,19 +3922,16 @@ function showMindMap() {
     const node = session.nodes.find(n => n.id === ctxId);
     document.getElementById('mmFocusBar').classList.add('visible');
     document.getElementById('mmFocusLabel').textContent = node?.label || '';
+    hideMmRootGrid();
+    renderMindMap();
+    applyMmTransform();
+    setTimeout(() => { mmZoomToFit(); document.getElementById('mmCanvasWrap').focus(); }, 50);
   } else {
-    // List was at home — show full map, no focus
+    // List was at home — show root tile grid
     mmFocusNodeId = null;
     mmSelectedId  = null;
-    document.getElementById('mmFocusBar').classList.remove('visible');
+    showMmRootGrid();
   }
-
-  renderMindMap();
-  applyMmTransform();
-  setTimeout(() => {
-    mmZoomToFit();
-    document.getElementById('mmCanvasWrap').focus(); // enable arrow-key navigation
-  }, 50);
 }
 
 function buildNodePath(nodeId) {
@@ -5676,7 +5770,7 @@ const toggleMenu = () => document.getElementById('menuDropdown').classList.toggl
 const closeMenu  = () => document.getElementById('menuDropdown').classList.remove('open');
 
 // ─── INIT ───────────────────────────────────────────────────────────────────
-const BUILD_TS = 'build:2026-03-26T12:00'; // bumped each deploy — confirms fresh load
+const BUILD_TS = 'build:2026-03-26T13:00'; // bumped each deploy — confirms fresh load
 
 async function initApp() {
   // Show immediately with localStorage data
@@ -6208,6 +6302,7 @@ document.addEventListener('DOMContentLoaded', () => {
     </div>
   </div>
   <div class="mm-body">
+    <div id="mmRootGrid"></div>
     <div class="mm-canvas-wrap" id="mmCanvasWrap" tabindex="0" style="outline:none">
       <div class="mm-canvas" id="mmCanvas">
         <svg class="mm-svg" id="mmSvg" xmlns="http://www.w3.org/2000/svg"></svg>
