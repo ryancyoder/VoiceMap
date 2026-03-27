@@ -4176,9 +4176,10 @@ const MM_SORT_TOASTS = { manual: 'Sort: manual order', alpha: 'Sort: A → Z', c
 function cycleMmRootSort() {
   const idx = MM_SORT_CYCLE.indexOf(mmRootSortOrder);
   mmRootSortOrder = MM_SORT_CYCLE[(idx + 1) % MM_SORT_CYCLE.length];
-  document.getElementById('tabMap').textContent = MM_SORT_LABELS[mmRootSortOrder];
+  const label = MM_SORT_LABELS[mmRootSortOrder];
+  document.getElementById('tabMap').textContent = label;
+  document.getElementById('mmTabMap').textContent = label;
   showToast(MM_SORT_TOASTS[mmRootSortOrder]);
-  // If currently in focus mode, just update for when the user returns to root grid
   if (!mmFocusNodeId) renderMmRootGrid();
 }
 
@@ -6434,7 +6435,7 @@ const toggleMenu = () => document.getElementById('menuDropdown').classList.toggl
 const closeMenu  = () => document.getElementById('menuDropdown').classList.remove('open');
 
 // ─── INIT ───────────────────────────────────────────────────────────────────
-const BUILD_TS = 'build:2026-03-27T16:00'; // bumped each deploy — confirms fresh load
+const BUILD_TS = 'build:2026-03-27T17:00'; // bumped each deploy — confirms fresh load
 
 async function initApp() {
   // Show immediately with localStorage data
@@ -6640,7 +6641,7 @@ document.addEventListener('DOMContentLoaded', () => {
     renderMindMap();
   });
   document.getElementById('mmBackBtn').addEventListener('click', hideMindMap);
-  document.getElementById('mmTabMap').addEventListener('click', () => {}); // already active – no-op
+  document.getElementById('mmTabMap').addEventListener('click', cycleMmRootSort);
   document.getElementById('mmKbBtn').addEventListener('click', () => { hideMindMap(); showKanban(); });
   document.getElementById('mmTabCal').addEventListener('click', () => { hideMindMap(); showCalendar(); });
   document.getElementById('mmPanelPin').addEventListener('click', () => {
