@@ -2950,6 +2950,11 @@ function renderCards(animDir) {
   } else {
     // Hide cards archived before today from normal view
     cards = childrenOf(currentParentId()).filter(n => !isArchivedBeforeToday(n));
+    if (cardSortOrder === 'alpha') {
+      cards = [...cards].sort((a, b) => a.label.localeCompare(b.label));
+    } else if (cardSortOrder === 'count') {
+      cards = [...cards].sort((a, b) => childrenOf(b.id).length - childrenOf(a.id).length);
+    }
   }
 
   const list  = document.getElementById('cardList');
@@ -4064,6 +4069,7 @@ let mmMoveTimer      = null;
 let mmVisible        = false;
 let kbVisible        = false;
 let calVisible       = false;
+let cardSortOrder    = 'manual'; // 'manual' | 'alpha' | 'count' — shared by cards + board views
 let calWeekStart     = null; // Date: Monday of displayed week
 let calDragState     = null;
 let mmHideDeferred   = false;
@@ -4167,6 +4173,19 @@ function renderMmRootGrid() {
     mmSelectedId = null;
     startMmAddChild();
   });
+}
+
+const CARD_SORT_CYCLE  = ['manual', 'alpha', 'count'];
+const CARD_SORT_TOASTS = { manual: 'Sort: manual order', alpha: 'Sort: A → Z', count: 'Sort: by child count' };
+
+function cycleCardSort() {
+  const idx = CARD_SORT_CYCLE.indexOf(cardSortOrder);
+  cardSortOrder = CARD_SORT_CYCLE[(idx + 1) % CARD_SORT_CYCLE.length];
+  const suffix = cardSortOrder === 'alpha' ? ' A→Z' : cardSortOrder === 'count' ? ' By #' : '';
+  document.getElementById('tabCards').textContent = '≡ Cards' + suffix;
+  document.getElementById('tabBoard').textContent = '⊞ Board' + suffix;
+  showToast(CARD_SORT_TOASTS[cardSortOrder]);
+  if (kbVisible) renderKanban(); else renderCards();
 }
 
 const MM_SORT_CYCLE  = ['manual', 'alpha', 'count'];
@@ -6261,7 +6280,12 @@ function toggleKanban() {
 
 function renderKanban() {
   if (!kbVisible) return;
-  const columns = childrenOf(currentParentId()).filter(n => !isArchivedBeforeToday(n));
+  let columns = childrenOf(currentParentId()).filter(n => !isArchivedBeforeToday(n));
+  if (cardSortOrder === 'alpha') {
+    columns = [...columns].sort((a, b) => a.label.localeCompare(b.label));
+  } else if (cardSortOrder === 'count') {
+    columns = [...columns].sort((a, b) => childrenOf(b.id).length - childrenOf(a.id).length);
+  }
   const board = document.getElementById('kbBoard');
 
   if (columns.length === 0) {
@@ -6435,7 +6459,7 @@ const toggleMenu = () => document.getElementById('menuDropdown').classList.toggl
 const closeMenu  = () => document.getElementById('menuDropdown').classList.remove('open');
 
 // ─── INIT ───────────────────────────────────────────────────────────────────
-const BUILD_TS = 'build:2026-03-27T19:00'; // bumped each deploy — confirms fresh load
+const BUILD_TS = 'build:2026-03-27T20:00'; // bumped each deploy — confirms fresh load
 
 async function initApp() {
   // Show immediately with localStorage data
@@ -6611,11 +6635,12 @@ document.addEventListener('DOMContentLoaded', () => {
   // View switcher tabs (Cards / Map / Board / Week)
   document.getElementById('tabCards').addEventListener('click', () => {
     if (mmVisible) hideMindMap(); else if (kbVisible) hideKanban(); else if (calVisible) hideCalendar();
+    else cycleCardSort();
   });
   document.getElementById('tabMap').addEventListener('click', () => {
     if (mmVisible) { cycleMmRootSort(); } else { showMindMap(); }
   });
-  document.getElementById('tabBoard').addEventListener('click', () => { if (!kbVisible) showKanban(); else hideKanban(); });
+  document.getElementById('tabBoard').addEventListener('click', () => { if (!kbVisible) showKanban(); else cycleCardSort(); });
   document.getElementById('tabCal').addEventListener('click', () => { if (!calVisible) showCalendar(); else hideCalendar(); });
   // Calendar navigation
   document.getElementById('calPrevBtn').addEventListener('click', () => {
