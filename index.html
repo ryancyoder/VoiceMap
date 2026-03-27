@@ -4070,6 +4070,7 @@ let mmHideDeferred   = false;
 let mmHideArchived   = false;
 let mmFocusNodeId    = null;
 let mmPanelPinned    = false;
+let mmRootSortOrder  = 'manual'; // 'manual' | 'alpha' | 'count'
 const mmCollapsed    = new Set();   // nodeIds whose children are hidden
 
 function mmVisibleNodes() {
@@ -4132,7 +4133,12 @@ function buildMindMapLayout() {
 
 // ─── ROOT TILE GRID ──────────────────────────────────────────────────────────
 function renderMmRootGrid() {
-  const roots = session.nodes.filter(n => !n.parent_id && !n.archived);
+  let roots = session.nodes.filter(n => !n.parent_id && !n.archived);
+  if (mmRootSortOrder === 'alpha') {
+    roots = [...roots].sort((a, b) => a.label.localeCompare(b.label));
+  } else if (mmRootSortOrder === 'count') {
+    roots = [...roots].sort((a, b) => childrenOf(b.id).length - childrenOf(a.id).length);
+  }
   const grid  = document.getElementById('mmRootGrid');
   const addTile = `<div class="mm-tile-wrap">
       <div class="mm-root-tile mm-root-add-tile" id="mmRootAddBtn">
@@ -4161,6 +4167,16 @@ function renderMmRootGrid() {
     mmSelectedId = null;
     startMmAddChild();
   });
+}
+
+const MM_SORT_CYCLE  = ['manual', 'alpha', 'count'];
+const MM_SORT_LABELS = { manual: '🗺 Map', alpha: '🗺 A→Z', count: '🗺 By #' };
+
+function cycleMmRootSort() {
+  const idx = MM_SORT_CYCLE.indexOf(mmRootSortOrder);
+  mmRootSortOrder = MM_SORT_CYCLE[(idx + 1) % MM_SORT_CYCLE.length];
+  document.getElementById('tabMap').textContent = MM_SORT_LABELS[mmRootSortOrder];
+  renderMmRootGrid();
 }
 
 function showMmRootGrid() {
@@ -6415,7 +6431,7 @@ const toggleMenu = () => document.getElementById('menuDropdown').classList.toggl
 const closeMenu  = () => document.getElementById('menuDropdown').classList.remove('open');
 
 // ─── INIT ───────────────────────────────────────────────────────────────────
-const BUILD_TS = 'build:2026-03-27T14:00'; // bumped each deploy — confirms fresh load
+const BUILD_TS = 'build:2026-03-27T15:00'; // bumped each deploy — confirms fresh load
 
 async function initApp() {
   // Show immediately with localStorage data
@@ -6582,7 +6598,9 @@ document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('tabCards').addEventListener('click', () => {
     if (mmVisible) hideMindMap(); else if (kbVisible) hideKanban(); else if (calVisible) hideCalendar();
   });
-  document.getElementById('tabMap').addEventListener('click', showMindMap);
+  document.getElementById('tabMap').addEventListener('click', () => {
+    if (mmVisible && !mmFocusNodeId) { cycleMmRootSort(); } else { showMindMap(); }
+  });
   document.getElementById('tabBoard').addEventListener('click', () => { if (!kbVisible) showKanban(); else hideKanban(); });
   document.getElementById('tabCal').addEventListener('click', () => { if (!calVisible) showCalendar(); else hideCalendar(); });
   // Calendar navigation
