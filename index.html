@@ -3761,25 +3761,7 @@ async function skipImageDescription() {
       ? `Parent context: "${parentNode.label}"${parentNode.summary ? ` — ${parentNode.summary}` : ''}.\n\nAnalyze this image in that context.`
       : 'Analyze this image.';
 
-    const visionLogEntry = {
-      id: makeId(), label: 'Photo capture (vision)',
-      timestamp: new Date().toISOString(),
-      system: '(see vision system prompt in source)', user: contextPrompt,
-      prefill: '{', response: null, error: null, durationMs: null,
-    };
-    const t0 = Date.now();
-
-    const res = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: {
-        'Content-Type':                              'application/json',
-        'x-api-key':                                 getApiKey(),
-        'anthropic-version':                         '2023-06-01',
-        'anthropic-dangerous-direct-browser-access': 'true',
-      },
-      body: JSON.stringify({
-        model: CLAUDE_MODEL, max_tokens: 1200,
-        system: `You analyze images for a voice brainstorming app.
+    const visionSystem = `You analyze images for a voice brainstorming app.
 
 STICKY NOTE DETECTION: If the image contains multiple sticky notes, index cards, or distinct handwritten items, create one card per note. Otherwise create one card for the whole image.
 
@@ -3799,7 +3781,27 @@ Rules:
 - is_header is only set on the one header note (if present); omit it on all other cards
 - If there is no distinctly colored header note, do not set is_header on any card
 - cards always has at least one entry; header note must be listed first
-- Use parent context to interpret ambiguous content (e.g. a banana photo under "Grocery list" → label "Buy bananas")`,
+- Use parent context to interpret ambiguous content (e.g. a banana photo under "Grocery list" → label "Buy bananas")`;
+
+    const visionLogEntry = {
+      id: makeId(), label: 'Photo capture (vision)',
+      timestamp: new Date().toISOString(),
+      system: visionSystem, user: contextPrompt,
+      prefill: '{', response: null, error: null, durationMs: null,
+    };
+    const t0 = Date.now();
+
+    const res = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type':                              'application/json',
+        'x-api-key':                                 getApiKey(),
+        'anthropic-version':                         '2023-06-01',
+        'anthropic-dangerous-direct-browser-access': 'true',
+      },
+      body: JSON.stringify({
+        model: CLAUDE_MODEL, max_tokens: 1200,
+        system: visionSystem,
         messages: [
           { role: 'user', content: [
             { type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: base64 } },
@@ -6287,7 +6289,7 @@ const toggleMenu = () => document.getElementById('menuDropdown').classList.toggl
 const closeMenu  = () => document.getElementById('menuDropdown').classList.remove('open');
 
 // ─── INIT ───────────────────────────────────────────────────────────────────
-const BUILD_TS = 'build:2026-03-27T10:00'; // bumped each deploy — confirms fresh load
+const BUILD_TS = 'build:2026-03-27T11:00'; // bumped each deploy — confirms fresh load
 
 async function initApp() {
   // Show immediately with localStorage data
