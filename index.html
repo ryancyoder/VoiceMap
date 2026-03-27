@@ -3761,6 +3761,14 @@ async function skipImageDescription() {
       ? `Parent context: "${parentNode.label}"${parentNode.summary ? ` — ${parentNode.summary}` : ''}.\n\nAnalyze this image in that context.`
       : 'Analyze this image.';
 
+    const visionLogEntry = {
+      id: makeId(), label: 'Photo capture (vision)',
+      timestamp: new Date().toISOString(),
+      system: '(see vision system prompt in source)', user: contextPrompt,
+      prefill: '{', response: null, error: null, durationMs: null,
+    };
+    const t0 = Date.now();
+
     const res = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: {
@@ -3807,6 +3815,9 @@ Rules:
 
     if (res.ok) {
       const raw    = '{' + JSON.parse(body).content[0].text;
+      visionLogEntry.response   = raw;
+      visionLogEntry.durationMs = Date.now() - t0;
+      addToPromptLog(visionLogEntry);
       const parsed = extractJSON(raw);
       console.log('[VoiceMap] Vision parsed:', parsed);
 
@@ -3856,6 +3867,9 @@ Rules:
     } else {
       let msg = `Vision error ${res.status}`;
       try { msg = JSON.parse(body).error?.message || msg; } catch {}
+      visionLogEntry.error      = `[${res.status}] ${msg}`;
+      visionLogEntry.durationMs = Date.now() - t0;
+      addToPromptLog(visionLogEntry);
       visionError = msg;
     }
   } catch (err) {
@@ -6273,7 +6287,7 @@ const toggleMenu = () => document.getElementById('menuDropdown').classList.toggl
 const closeMenu  = () => document.getElementById('menuDropdown').classList.remove('open');
 
 // ─── INIT ───────────────────────────────────────────────────────────────────
-const BUILD_TS = 'build:2026-03-27T09:00'; // bumped each deploy — confirms fresh load
+const BUILD_TS = 'build:2026-03-27T10:00'; // bumped each deploy — confirms fresh load
 
 async function initApp() {
   // Show immediately with localStorage data
