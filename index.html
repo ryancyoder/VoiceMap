@@ -1620,6 +1620,7 @@
         <button class="menu-item" id="miRename">Rename session</button>
         <button class="menu-item" id="miApiKey">API Key</button>
         <button class="menu-item" id="miGithubSync">☁️ GitHub Sync</button>
+        <button class="menu-item" id="miPrompts">⚙ System Prompts</button>
         <button class="menu-item" id="miArchive">📁 View Archive</button>
         <button class="menu-item danger" id="miClear">Clear all</button>
       </div>
@@ -1859,6 +1860,22 @@
   </div>
 </div>
 
+<!-- System Prompts editor modal -->
+<div class="modal-overlay hidden" id="promptsModal">
+  <div class="modal-sheet" style="max-width:640px;max-height:90vh;overflow-y:auto;padding:20px">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
+      <div class="modal-title" style="margin-bottom:0">⚙ System Prompts</div>
+      <button onclick="document.getElementById('promptsModal').classList.add('hidden')"
+        style="background:none;border:none;color:#9ca3af;font-size:20px;cursor:pointer;padding:4px 8px;line-height:1">✕</button>
+    </div>
+    <div class="modal-desc" style="margin-bottom:16px">
+      Edit the instructions Claude receives for each operation. Changes are saved immediately per prompt. <strong>Reset</strong> restores the original text.
+    </div>
+    <div id="promptsEditorList"></div>
+    <button class="modal-save" style="margin-top:8px" onclick="document.getElementById('promptsModal').classList.add('hidden')">Done</button>
+  </div>
+</div>
+
 <div class="toast" id="toast"></div>
 <input type="file" id="fileInput"  accept=".json"       style="display:none" />
 <input type="file" id="imageInput" accept="image/*"
@@ -1873,8 +1890,93 @@ const API_KEY_STORE      = 'voicemap_api_key';
 const SESSION_STORE      = 'voicemap_session';
 const GITHUB_TOKEN_STORE = 'voicemap_github_token';
 const GITHUB_GIST_STORE  = 'voicemap_gist_id';
+const PROMPT_STORE       = 'voicemap_system_prompts';
 
 const R = { CHILD: 'child', SIBLING: 'sibling', ROOT: 'root' };
+
+// ─── SYSTEM PROMPT DEFAULTS ───────────────────────────────────────────────────
+const PROMPT_DEFAULTS = {
+  new_card:
+`You distill voice memos into mind map cards. Be extremely concise.
+
+Return JSON with these keys:
+  "action"       — "create" (default) or "complete" (if transcript describes finishing an existing task)
+  "label"        — 2 to 4 words MAX. Required for action "create".
+  "summary"      — 1 to 2 sentences. Required for action "create".
+  "relationship" — one of: "child", "sibling", "root". Required for action "create".
+  "children"     — ONLY for lists. Array of short label strings. OMIT if not a list.
+  "match_id"     — Required for action "complete". The id of the matching existing card.
+
+Completion detection: if the transcript uses past tense to describe completing/finishing/doing something that matches an existing card (e.g. "I finished the backyard irrigation", "just completed the budget"), set action to "complete" and match_id to the best matching card id. Only do this when confident of a clear match.
+
+List detection: if the speaker enumerates discrete items, extract each as a child label. Parent label becomes the list topic.
+
+Relationship rules (action "create" only):
+  "child"   → belongs under current context
+  "sibling" → parallel idea at same level
+  "root"    → entirely new top-level subject
+
+Default action to "create", relationship to "child". Good labels: "Backyard irrigation", "Budget constraints", "Weekly meal prep".`,
+
+  refile:
+`You organize a mind map. Choose the single best parent for the card from the candidates, or null for top level. Return ONLY valid JSON.`,
+
+  merge:
+`You merge mind map cards. Create a single concise card combining all ideas. Return ONLY valid JSON.`,
+
+  cluster:
+`You organize mind map cards into meaningful groups. Return ONLY a valid JSON array of groups.`,
+
+  simplify:
+`You simplify mind map structures. Merge overlapping ideas, remove redundancies, flatten excessive nesting, keep all distinct concepts. Return ONLY a valid JSON array: [{"label":"2-5 word title","summary":"1-2 sentence summary","children":[{"label":"...","summary":"...","children":[]}]}]. Max 2 levels deep.`,
+
+  vision:
+`You analyze images for a voice brainstorming app.
+
+STICKY NOTE DETECTION: If the image contains multiple sticky notes, index cards, or distinct handwritten items, create one card per note. Otherwise create one card for the whole image.
+
+HEADER NOTE: If one sticky note is a distinctly different color from the rest AND appears at the top of the group, it is a header/title note. Mark it with "is_header": true. All other notes become its children.
+
+Return ONLY valid JSON:
+{
+  "sticky_notes_detected": true,
+  "cards": [
+    {"label": "2-4 word title, max 60 chars", "summary": "1-2 sentence description", "is_header": true},
+    {"label": "2-4 word title, max 60 chars", "summary": "1-2 sentence description"}
+  ]
+}
+
+Rules:
+- sticky_notes_detected is true only when there are clearly multiple separate notes/items
+- is_header is only set on the one header note (if present); omit it on all other cards
+- If there is no distinctly colored header note, do not set is_header on any card
+- cards always has at least one entry; header note must be listed first
+- Use parent context to interpret ambiguous content (e.g. a banana photo under "Grocery list" → label "Buy bananas")`,
+
+  chat:
+`You are a focused thinking partner helping explore a single idea from a voice brainstorming app. The idea is: "{label}". Context: {context}. Be concise (2-4 sentences), thought-provoking, and practical. When given a follow-up, build on the conversation naturally.`,
+};
+
+function getSystemPrompt(key) {
+  try {
+    const stored = JSON.parse(localStorage.getItem(PROMPT_STORE) || '{}');
+    return (key in stored) ? stored[key] : (PROMPT_DEFAULTS[key] ?? '');
+  } catch { return PROMPT_DEFAULTS[key] ?? ''; }
+}
+function setSystemPrompt(key, value) {
+  try {
+    const stored = JSON.parse(localStorage.getItem(PROMPT_STORE) || '{}');
+    stored[key] = value;
+    localStorage.setItem(PROMPT_STORE, JSON.stringify(stored));
+  } catch {}
+}
+function resetSystemPrompt(key) {
+  try {
+    const stored = JSON.parse(localStorage.getItem(PROMPT_STORE) || '{}');
+    delete stored[key];
+    localStorage.setItem(PROMPT_STORE, JSON.stringify(stored));
+  } catch {}
+}
 
 // ─── INDEXEDDB ───────────────────────────────────────────────────────────────
 const DB_NAME    = 'VoiceMapDB';
@@ -2322,7 +2424,7 @@ async function refileNode(nodeId) {
     .join('\n');
 
   const userMsg = `Card to re-file:\nLabel: "${node.label}"\nSummary: "${(node.summary || node.transcript || '').slice(0, 500)}"\n\nCandidate parents:\n${candidateList}\n\nReturn JSON: {"parent_id":"<id or null for top level>","parent_label":"<label or Top Level>"}`;
-  const sys = 'You organize a mind map. Choose the single best parent for the card from the candidates, or null for top level. Return ONLY valid JSON.';
+  const sys = getSystemPrompt('refile');
 
   try {
     const raw    = await callClaude(userMsg, sys, '{', 'Re-file card');
@@ -2399,7 +2501,7 @@ async function mergeSelected() {
 
   const cardList = nodes.map(n => `Label: "${n.label}"\nSummary: "${n.summary || n.transcript || ''}"`).join('\n\n');
   const userMsg  = `Merge these ${nodes.length} cards into one:\n\n${cardList}\n\nReturn JSON: {"label":"2-5 word title","summary":"1-2 sentence combined summary"}`;
-  const sys      = 'You merge mind map cards. Create a single concise card combining all ideas. Return ONLY valid JSON.';
+  const sys      = getSystemPrompt('merge');
 
   try {
     const raw    = await callClaude(userMsg, sys, '{', 'Merge cards');
@@ -2448,7 +2550,7 @@ async function autoCluster() {
   ).join('\n');
 
   const userMsg = `Group these cards into logical clusters:\n\n${cardList}\n\nReturn JSON array: [{"groupLabel":"2-4 word group name","cardIds":["id1","id2"]}]. Only create groups with 2+ cards. Ungrouped cards can be omitted.`;
-  const sys     = 'You organize mind map cards into meaningful groups. Return ONLY a valid JSON array of groups.';
+  const sys     = getSystemPrompt('cluster');
 
   try {
     const raw = await callClaude(userMsg, sys, '[', 'Auto-cluster');
@@ -2505,7 +2607,7 @@ async function simplifyNode(nodeId) {
 
   const tree = buildTree(nodeId);
   const userMsg = `Parent card: "${node.label}"\n\nCurrent children:\n${JSON.stringify(tree, null, 2)}\n\nReturn a simplified JSON array of child nodes.`;
-  const sys = `You simplify mind map structures. Merge overlapping ideas, remove redundancies, flatten excessive nesting, keep all distinct concepts. Return ONLY a valid JSON array: [{"label":"2-5 word title","summary":"1-2 sentence summary","children":[{"label":"...","summary":"...","children":[]}]}]. Max 2 levels deep.`;
+  const sys = getSystemPrompt('simplify');
 
   try {
     const raw = await callClaude(userMsg, sys, '[', 'Simplify node');
@@ -3221,27 +3323,7 @@ Return JSON: {"summary": "<improved summary>"}`;
     .map(n => `id:"${n.id}" | "${n.label}"${n.summary ? ` — ${n.summary.slice(0, 80)}` : ''}`)
     .join('\n');
 
-  const systemPrompt =
-`You distill voice memos into mind map cards. Be extremely concise.
-
-Return JSON with these keys:
-  "action"       — "create" (default) or "complete" (if transcript describes finishing an existing task)
-  "label"        — 2 to 4 words MAX. Required for action "create".
-  "summary"      — 1 to 2 sentences. Required for action "create".
-  "relationship" — one of: "${R.CHILD}", "${R.SIBLING}", "${R.ROOT}". Required for action "create".
-  "children"     — ONLY for lists. Array of short label strings. OMIT if not a list.
-  "match_id"     — Required for action "complete". The id of the matching existing card.
-
-Completion detection: if the transcript uses past tense to describe completing/finishing/doing something that matches an existing card (e.g. "I finished the backyard irrigation", "just completed the budget"), set action to "complete" and match_id to the best matching card id. Only do this when confident of a clear match.
-
-List detection: if the speaker enumerates discrete items, extract each as a child label. Parent label becomes the list topic.
-
-Relationship rules (action "create" only):
-  "${R.CHILD}"   → belongs under current context
-  "${R.SIBLING}" → parallel idea at same level
-  "${R.ROOT}"    → entirely new top-level subject
-
-Default action to "create", relationship to "${R.CHILD}". Good labels: "Backyard irrigation", "Budget constraints", "Weekly meal prep".`;
+  const systemPrompt = getSystemPrompt('new_card');
 
   const userMsg = [
     `Current context: "${ctx.label}"`,
@@ -3761,27 +3843,7 @@ async function skipImageDescription() {
       ? `Parent context: "${parentNode.label}"${parentNode.summary ? ` — ${parentNode.summary}` : ''}.\n\nAnalyze this image in that context.`
       : 'Analyze this image.';
 
-    const visionSystem = `You analyze images for a voice brainstorming app.
-
-STICKY NOTE DETECTION: If the image contains multiple sticky notes, index cards, or distinct handwritten items, create one card per note. Otherwise create one card for the whole image.
-
-HEADER NOTE: If one sticky note is a distinctly different color from the rest AND appears at the top of the group, it is a header/title note. Mark it with "is_header": true. All other notes become its children.
-
-Return ONLY valid JSON:
-{
-  "sticky_notes_detected": true,
-  "cards": [
-    {"label": "2-4 word title, max 60 chars", "summary": "1-2 sentence description", "is_header": true},
-    {"label": "2-4 word title, max 60 chars", "summary": "1-2 sentence description"}
-  ]
-}
-
-Rules:
-- sticky_notes_detected is true only when there are clearly multiple separate notes/items
-- is_header is only set on the one header note (if present); omit it on all other cards
-- If there is no distinctly colored header note, do not set is_header on any card
-- cards always has at least one entry; header note must be listed first
-- Use parent context to interpret ambiguous content (e.g. a banana photo under "Grocery list" → label "Buy bananas")`;
+    const visionSystem = getSystemPrompt('vision');
 
     const visionLogEntry = {
       id: makeId(), label: 'Photo capture (vision)',
@@ -4939,7 +5001,9 @@ function addChatBubble(role, text, msgId) {
 
 async function callChatClaude(userText, isSystem = false) {
   const node = session.nodes.find(n => n.id === chatNodeId);
-  const systemPrompt = `You are a focused thinking partner helping explore a single idea from a voice brainstorming app. The idea is: "${node?.label || ''}". Context: ${(node?.summary || node?.transcript || '').slice(0, 300)}. Be concise (2-4 sentences), thought-provoking, and practical. When given a follow-up, build on the conversation naturally.`;
+  const systemPrompt = getSystemPrompt('chat')
+    .replace('{label}', node?.label || '')
+    .replace('{context}', (node?.summary || node?.transcript || '').slice(0, 300));
 
   if (!isSystem) {
     chatHistory.push({ role: 'user', content: userText });
@@ -5296,6 +5360,68 @@ function onDragCancel() {
   if (dragState.wrap)      { dragState.wrap.classList.remove('drag-source'); }
   document.querySelectorAll('.drop-child-target').forEach(w => w.classList.remove('drop-child-target'));
   dragState = null;
+}
+
+// ─── SYSTEM PROMPTS EDITOR ───────────────────────────────────────────────────
+const PROMPT_META = [
+  { key: 'new_card',  label: 'New Card',          desc: 'Triggered on every voice capture. Decides card label, summary, relationship, and child cards.' },
+  { key: 'refile',    label: 'Re-file Card',       desc: 'Picks the best parent node when you re-file a card.' },
+  { key: 'merge',     label: 'Merge Cards',        desc: 'Merges multiple selected cards into one.' },
+  { key: 'cluster',   label: 'Auto-cluster',       desc: 'Groups cards at the current level into topic clusters.' },
+  { key: 'simplify',  label: 'Simplify Node',      desc: 'Restructures a card\'s subtree — merges, flattens, deduplicates.' },
+  { key: 'vision',    label: 'Photo Capture',      desc: 'Analyses photos and sticky-note boards to extract cards.' },
+  { key: 'chat',      label: 'Card Chat',          desc: 'Thinking-partner chat scoped to a single card. Use {label} and {context} as placeholders for the card content.' },
+];
+
+function openPromptsEditor() {
+  closeMenu();
+  const list = document.getElementById('promptsEditorList');
+  list.innerHTML = '';
+  PROMPT_META.forEach(({ key, label, desc }) => {
+    const isCustom = (() => {
+      try {
+        const s = JSON.parse(localStorage.getItem(PROMPT_STORE) || '{}');
+        return key in s;
+      } catch { return false; }
+    })();
+
+    const section = document.createElement('div');
+    section.style.cssText = 'margin-bottom:24px;border-top:1px solid #374151;padding-top:16px';
+    section.innerHTML = `
+      <div style="display:flex;align-items:baseline;justify-content:space-between;gap:8px;margin-bottom:4px">
+        <div style="font-size:14px;font-weight:700;color:#e5e7eb">${label}</div>
+        <button data-reset-key="${key}" style="background:none;border:1px solid #374151;color:#9ca3af;font-size:11px;border-radius:6px;padding:2px 8px;cursor:pointer;white-space:nowrap;${isCustom ? '' : 'opacity:0.4;pointer-events:none'}">Reset</button>
+      </div>
+      <div style="font-size:12px;color:#6b7280;margin-bottom:8px">${desc}</div>
+      <textarea data-prompt-key="${key}"
+        style="width:100%;box-sizing:border-box;background:#111827;color:#e5e7eb;border:1px solid #374151;border-radius:8px;padding:10px;font-size:12px;font-family:monospace;line-height:1.5;resize:vertical;min-height:100px"
+        rows="6" spellcheck="false" autocorrect="off" autocapitalize="none">${escHtml(getSystemPrompt(key))}</textarea>
+    `;
+    list.appendChild(section);
+
+    const ta = section.querySelector('textarea');
+    ta.addEventListener('input', () => {
+      setSystemPrompt(key, ta.value);
+      const resetBtn = section.querySelector('[data-reset-key]');
+      resetBtn.style.opacity = '1';
+      resetBtn.style.pointerEvents = 'auto';
+    });
+
+    const resetBtn = section.querySelector('[data-reset-key]');
+    resetBtn.addEventListener('click', () => {
+      resetSystemPrompt(key);
+      ta.value = PROMPT_DEFAULTS[key] ?? '';
+      resetBtn.style.opacity = '0.4';
+      resetBtn.style.pointerEvents = 'none';
+      showToast(`"${label}" reset to default`);
+    });
+  });
+
+  document.getElementById('promptsModal').classList.remove('hidden');
+}
+
+function escHtml(s) {
+  return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
 
 // ─── GITHUB SYNC ─────────────────────────────────────────────────────────────
@@ -6289,7 +6415,7 @@ const toggleMenu = () => document.getElementById('menuDropdown').classList.toggl
 const closeMenu  = () => document.getElementById('menuDropdown').classList.remove('open');
 
 // ─── INIT ───────────────────────────────────────────────────────────────────
-const BUILD_TS = 'build:2026-03-27T11:00'; // bumped each deploy — confirms fresh load
+const BUILD_TS = 'build:2026-03-27T14:00'; // bumped each deploy — confirms fresh load
 
 async function initApp() {
   // Show immediately with localStorage data
@@ -6416,6 +6542,8 @@ document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('miApiKey').addEventListener('click', showKeyModal);
   document.getElementById('searchBtn').addEventListener('click', showQuickFind);
   document.getElementById('miGithubSync').addEventListener('click', () => { closeMenu(); showGithubModal(); });
+  document.getElementById('miPrompts').addEventListener('click', openPromptsEditor);
+  document.getElementById('promptsModal').addEventListener('click', e => { if (e.target === e.currentTarget) e.currentTarget.classList.add('hidden'); });
   document.getElementById('githubSave').addEventListener('click', saveGithubToken);
   document.getElementById('githubTest').addEventListener('click', testGithubToken);
   document.getElementById('githubModal').addEventListener('click', e => { if (e.target === e.currentTarget) hideGithubModal(); });
