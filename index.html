@@ -4171,12 +4171,15 @@ function renderMmRootGrid() {
 
 const MM_SORT_CYCLE  = ['manual', 'alpha', 'count'];
 const MM_SORT_LABELS = { manual: '🗺 Map', alpha: '🗺 A→Z', count: '🗺 By #' };
+const MM_SORT_TOASTS = { manual: 'Sort: manual order', alpha: 'Sort: A → Z', count: 'Sort: by child count' };
 
 function cycleMmRootSort() {
   const idx = MM_SORT_CYCLE.indexOf(mmRootSortOrder);
   mmRootSortOrder = MM_SORT_CYCLE[(idx + 1) % MM_SORT_CYCLE.length];
   document.getElementById('tabMap').textContent = MM_SORT_LABELS[mmRootSortOrder];
-  renderMmRootGrid();
+  showToast(MM_SORT_TOASTS[mmRootSortOrder]);
+  // If currently in focus mode, just update for when the user returns to root grid
+  if (!mmFocusNodeId) renderMmRootGrid();
 }
 
 function showMmRootGrid() {
@@ -6431,7 +6434,7 @@ const toggleMenu = () => document.getElementById('menuDropdown').classList.toggl
 const closeMenu  = () => document.getElementById('menuDropdown').classList.remove('open');
 
 // ─── INIT ───────────────────────────────────────────────────────────────────
-const BUILD_TS = 'build:2026-03-27T15:00'; // bumped each deploy — confirms fresh load
+const BUILD_TS = 'build:2026-03-27T16:00'; // bumped each deploy — confirms fresh load
 
 async function initApp() {
   // Show immediately with localStorage data
@@ -6599,7 +6602,7 @@ document.addEventListener('DOMContentLoaded', () => {
     if (mmVisible) hideMindMap(); else if (kbVisible) hideKanban(); else if (calVisible) hideCalendar();
   });
   document.getElementById('tabMap').addEventListener('click', () => {
-    if (mmVisible && !mmFocusNodeId) { cycleMmRootSort(); } else { showMindMap(); }
+    if (mmVisible) { cycleMmRootSort(); } else { showMindMap(); }
   });
   document.getElementById('tabBoard').addEventListener('click', () => { if (!kbVisible) showKanban(); else hideKanban(); });
   document.getElementById('tabCal').addEventListener('click', () => { if (!calVisible) showCalendar(); else hideCalendar(); });
