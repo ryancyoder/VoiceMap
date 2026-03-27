@@ -1097,6 +1097,21 @@
       text-align: center;
     }
     .mm-root-tile:active { background: var(--hover); transform: scale(0.96); }
+    .mm-root-tile.mm-tile-dragging { opacity: 0.25; transform: scale(0.95); transition: none; }
+    .mm-root-tile.mm-tile-drop-target {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 3px rgba(226,75,74,0.35);
+      background: var(--hover);
+    }
+    .mm-tile-ghost {
+      position: fixed; z-index: 9999; pointer-events: none;
+      background: var(--surface); border: 2px solid var(--accent);
+      border-radius: 16px; padding: 16px;
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      text-align: center; overflow: hidden;
+      box-shadow: 0 12px 40px rgba(0,0,0,0.45);
+      opacity: 0.93; transform: scale(1.07);
+    }
     .mm-tile-label {
       font-size: 20px; font-weight: 800;
       font-family: -apple-system, 'SF Pro Display', 'Helvetica Neue', sans-serif;
@@ -4077,6 +4092,7 @@ let mmHideArchived   = false;
 let mmFocusNodeId    = null;
 let mmPanelPinned    = false;
 let mmRootSortOrder  = 'manual'; // 'manual' | 'alpha' | 'count'
+let mmTileDragState  = null;
 const mmCollapsed    = new Set();   // nodeIds whose children are hidden
 
 function mmVisibleNodes() {
@@ -4173,6 +4189,111 @@ function renderMmRootGrid() {
     mmSelectedId = null;
     startMmAddChild();
   });
+}
+
+function initMmTileDrag() {
+  const grid = document.getElementById('mmRootGrid');
+  let longPressTimer = null;
+  let dragJustEnded  = false;
+
+  grid.addEventListener('touchstart', e => {
+    const tile = e.target.closest('.mm-root-tile[data-tile-id]');
+    if (!tile) return;
+    const touch0 = e.touches[0];
+    const startX = touch0.clientX, startY = touch0.clientY;
+
+    longPressTimer = setTimeout(() => {
+      longPressTimer = null;
+      const rect = tile.getBoundingClientRect();
+      if (navigator.vibrate) navigator.vibrate(12);
+      tile.classList.add('mm-tile-dragging');
+
+      const ghost = document.createElement('div');
+      ghost.className = 'mm-tile-ghost';
+      ghost.style.width  = rect.width  + 'px';
+      ghost.style.height = rect.height + 'px';
+      ghost.style.left   = rect.left   + 'px';
+      ghost.style.top    = rect.top    + 'px';
+      ghost.innerHTML = tile.innerHTML;
+      document.body.appendChild(ghost);
+
+      mmTileDragState = {
+        tileId: tile.dataset.tileId, tile, ghost, targetId: null,
+        offsetX: touch0.clientX - rect.left,
+        offsetY: touch0.clientY - rect.top,
+      };
+    }, 500);
+
+    function onMove(e) {
+      const t = e.touches[0];
+      if (longPressTimer !== null) {
+        if (Math.abs(t.clientX - startX) > 8 || Math.abs(t.clientY - startY) > 8) {
+          clearTimeout(longPressTimer); longPressTimer = null; cleanupListeners();
+        }
+        return;
+      }
+      if (!mmTileDragState) return;
+      e.preventDefault();
+
+      const { ghost, offsetX, offsetY } = mmTileDragState;
+      ghost.style.left = (t.clientX - offsetX) + 'px';
+      ghost.style.top  = (t.clientY - offsetY) + 'px';
+
+      ghost.style.visibility = 'hidden';
+      const el = document.elementFromPoint(t.clientX, t.clientY);
+      ghost.style.visibility = '';
+
+      grid.querySelectorAll('.mm-tile-drop-target').forEach(n => n.classList.remove('mm-tile-drop-target'));
+      const targetTile = el?.closest('.mm-root-tile[data-tile-id]');
+      if (targetTile && targetTile !== mmTileDragState.tile) {
+        targetTile.classList.add('mm-tile-drop-target');
+        mmTileDragState.targetId = targetTile.dataset.tileId;
+      } else {
+        mmTileDragState.targetId = null;
+      }
+    }
+
+    function onEnd() {
+      clearTimeout(longPressTimer); longPressTimer = null;
+      cleanupListeners();
+      if (!mmTileDragState) return;
+
+      const { tileId, targetId, tile, ghost } = mmTileDragState;
+      mmTileDragState = null;
+      ghost.remove();
+      tile.classList.remove('mm-tile-dragging');
+      grid.querySelectorAll('.mm-tile-drop-target').forEach(n => n.classList.remove('mm-tile-drop-target'));
+
+      if (targetId && targetId !== tileId) {
+        const node = session.nodes.find(n => n.id === tileId);
+        if (node) {
+          const targetLabel = session.nodes.find(n => n.id === targetId)?.label || '';
+          node.parent_id     = targetId;
+          node.last_modified = new Date().toISOString();
+          saveSession();
+          renderMmRootGrid();
+          showToast(`Moved under "${targetLabel.slice(0, 30)}"`);
+          dragJustEnded = true;
+          setTimeout(() => { dragJustEnded = false; }, 100);
+        }
+      }
+    }
+
+    function cleanupListeners() {
+      document.removeEventListener('touchmove',   onMove);
+      document.removeEventListener('touchend',    onEnd);
+      document.removeEventListener('touchcancel', onEnd);
+    }
+
+    document.addEventListener('touchmove',   onMove, { passive: false });
+    document.addEventListener('touchend',    onEnd,  { passive: true  });
+    document.addEventListener('touchcancel', onEnd,  { passive: true  });
+  }, { passive: true });
+
+  // Suppress the synthetic click iOS fires ~300ms after touchend following a drag
+  grid.addEventListener('click', e => {
+    if (dragJustEnded) e.stopImmediatePropagation();
+  }, { capture: true });
 }
 
 const CARD_SORT_CYCLE  = ['manual', 'alpha', 'count'];
@@ -6459,7 +6580,7 @@ const toggleMenu = () => document.getElementById('menuDropdown').classList.toggl
 const closeMenu  = () => document.getElementById('menuDropdown').classList.remove('open');
 
 // ─── INIT ───────────────────────────────────────────────────────────────────
-const BUILD_TS = 'build:2026-03-27T20:00'; // bumped each deploy — confirms fresh load
+const BUILD_TS = 'build:2026-03-27T21:00'; // bumped each deploy — confirms fresh load
 
 async function initApp() {
   // Show immediately with localStorage data
@@ -6665,6 +6786,7 @@ document.addEventListener('DOMContentLoaded', () => {
     if (e.target === document.getElementById('scheduleModal')) hideScheduleModal();
   });
   initKbBoard();
+  initMmTileDrag();
   document.getElementById('mmFilterDeferred').addEventListener('click', () => {
     mmHideDeferred = !mmHideDeferred;
     document.getElementById('mmFilterDeferred').classList.toggle('active', mmHideDeferred);
