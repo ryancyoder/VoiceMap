@@ -1718,7 +1718,6 @@
     <button class="view-tab" id="tabMap">🗺 Map</button>
     <button class="view-tab" id="tabBoard">⊞ Board</button>
     <button class="view-tab" id="tabCal">📅 Week</button>
-    <button class="view-tab" id="tabTb">⏱ Blocks</button>
   </div>
 
   <!-- Card-view filter pills -->
@@ -6954,8 +6953,9 @@ function setViewTab(tab) {
   document.getElementById('tabCards').classList.toggle('active',  tab === 'cards');
   document.getElementById('tabMap').classList.toggle('active',    tab === 'map');
   document.getElementById('tabBoard').classList.toggle('active',  tab === 'board');
-  document.getElementById('tabCal').classList.toggle('active',    tab === 'calendar');
-  document.getElementById('tabTb').classList.toggle('active',     tab === 'tb');
+  const calTab = document.getElementById('tabCal');
+  calTab.classList.toggle('active', tab === 'calendar' || tab === 'tb');
+  calTab.textContent = tab === 'tb' ? '⏱ Blocks' : '📅 Week';
   document.getElementById('cardFilterBar').style.display = (tab === 'cards') ? '' : 'none';
 }
 
@@ -7163,7 +7163,7 @@ const toggleMenu = () => document.getElementById('menuDropdown').classList.toggl
 const closeMenu  = () => document.getElementById('menuDropdown').classList.remove('open');
 
 // ─── INIT ───────────────────────────────────────────────────────────────────
-const BUILD_TS = 'build:2026-03-28T19:00'; // bumped each deploy — confirms fresh load
+const BUILD_TS = 'build:2026-03-28T20:00'; // bumped each deploy — confirms fresh load
 
 async function initApp() {
   // Show immediately with localStorage data
@@ -7355,15 +7355,21 @@ document.addEventListener('DOMContentLoaded', () => {
   initMmPanZoom();
   // View switcher tabs (Cards / Map / Board / Week)
   document.getElementById('tabCards').addEventListener('click', () => {
-    if (mmVisible) hideMindMap(); else if (kbVisible) hideKanban(); else if (calVisible) hideCalendar(); else if (tbVisible) hideTimeBlockView();
+    if (mmVisible) hideMindMap();
+    else if (kbVisible) hideKanban();
+    else if (calVisible) hideCalendar();
+    else if (tbVisible) hideTimeBlockView();
     else cycleCardSort();
   });
   document.getElementById('tabMap').addEventListener('click', () => {
     if (mmVisible) { cycleMmRootSort(); } else { showMindMap(); }
   });
   document.getElementById('tabBoard').addEventListener('click', () => { if (!kbVisible) showKanban(); else cycleCardSort(); });
-  document.getElementById('tabCal').addEventListener('click', () => { if (!calVisible) showCalendar(); else hideCalendar(); });
-  document.getElementById('tabTb').addEventListener('click', () => { if (!tbVisible) showTimeBlockView(); else hideTimeBlockView(); });
+  document.getElementById('tabCal').addEventListener('click', () => {
+    if (!calVisible && !tbVisible) { showCalendar(); }
+    else if (calVisible)           { showTimeBlockView(); }
+    else                           { showCalendar(); }
+  });
   document.getElementById('tbBadgeToggle').addEventListener('click', () => {
     tbBadgeMode = tbBadgeMode === 'count' ? 'hours' : 'count';
     document.getElementById('tbBadgeToggle').textContent = tbBadgeMode === 'count' ? 'Count' : 'Hours';
@@ -7411,8 +7417,10 @@ document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('mmBackBtn').addEventListener('click', hideMindMap);
   document.getElementById('mmTabMap').addEventListener('click', cycleMmRootSort);
   document.getElementById('mmKbBtn').addEventListener('click', () => { hideMindMap(); showKanban(); });
-  document.getElementById('mmTabCal').addEventListener('click', () => { hideMindMap(); showCalendar(); });
-  document.getElementById('mmTabTb').addEventListener('click', () => { hideMindMap(); showTimeBlockView(); });
+  document.getElementById('mmTabCal').addEventListener('click', () => {
+    hideMindMap();
+    calVisible ? showTimeBlockView() : showCalendar();
+  });
   document.getElementById('mmPanelPin').addEventListener('click', () => {
     mmPanelPinned = !mmPanelPinned;
     document.getElementById('mmPanelPin').classList.toggle('pinned', mmPanelPinned);
@@ -7761,7 +7769,6 @@ document.addEventListener('DOMContentLoaded', () => {
       <button class="view-tab active" id="mmTabMap">🗺 Map</button>
       <button class="view-tab" id="mmKbBtn">⊞ Board</button>
       <button class="view-tab" id="mmTabCal">📅 Week</button>
-      <button class="view-tab" id="mmTabTb">⏱ Blocks</button>
     </div>
     <div class="mm-focus-bar" id="mmFocusBar">
       <span>🔍 Focused:</span>
