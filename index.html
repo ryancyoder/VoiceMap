@@ -587,20 +587,20 @@
       50%      { box-shadow: 0 0 0 8px rgba(226,75,74,0.08); }
     }
 
-    .stop-btn {
+    .paste-btn {
       width: 44px; height: 44px;
       border-radius: 50%;
       background: #f2f2f7;
       border: 0.5px solid var(--border);
       color: var(--muted);
-      font-size: 14px;
+      font-size: 20px;
       cursor: pointer;
       display: flex;
       align-items: center;
       justify-content: center;
+      transition: background 0.15s;
     }
-    .stop-btn:disabled { opacity: 0.35; cursor: not-allowed; }
-    .stop-btn:active:not(:disabled) { background: #e5e5ea; }
+    .paste-btn:active { background: #e5e5ea; }
 
     .status-text            { font-size: 12px; color: var(--muted); text-align: center; }
     .status-text.processing { color: #f59e0b; }
@@ -1929,7 +1929,7 @@
   <div class="record-bar">
     <div class="live-text" id="liveText"></div>
     <div class="record-row">
-      <button class="stop-btn" id="stopBtn" disabled>■</button>
+      <button class="paste-btn" id="pasteBtn" title="Paste from clipboard">📋</button>
       <button class="record-btn" id="recordBtn">⏺</button>
       <button class="camera-btn" id="cameraBtn">📷</button>
     </div>
@@ -3314,9 +3314,9 @@ function stopRecording() {
 function setRecordingState(state) {
   isRecording = state;
   const btn = document.getElementById('recordBtn');
-  btn.disabled = state;
+  btn.disabled = false;
+  btn.textContent = state ? '⏹' : '⏺';
   btn.classList.toggle('recording', state);
-  document.getElementById('stopBtn').disabled = !state;
   setStatus(state ? 'Listening — speak your idea…' : 'Tap ⏺ to capture an idea');
 
   // Mind map recording indicator
@@ -3656,12 +3656,12 @@ function setKeyboardMode(on) {
   const toggleBtn = document.getElementById('keyboardToggleBtn');
   const keyRow    = document.getElementById('keyboardRow');
   const recordBtn = document.getElementById('recordBtn');
-  const stopBtn   = document.getElementById('stopBtn');
+  const pasteBtn  = document.getElementById('pasteBtn');
   toggleBtn.classList.toggle('active', on);
   toggleBtn.textContent = on ? '⏺ Switch to voice' : 'Aa Type instead';
   keyRow.classList.toggle('hidden', !on);
   recordBtn.style.display = on ? 'none' : '';
-  stopBtn.style.display   = on ? 'none' : '';
+  pasteBtn.style.display  = on ? 'none' : '';
   if (on) {
     setStatus('Enter adds card directly · ⌘Enter uses AI');
     document.getElementById('keyboardInput').focus();
@@ -7646,7 +7646,7 @@ const toggleMenu = () => document.getElementById('menuDropdown').classList.toggl
 const closeMenu  = () => document.getElementById('menuDropdown').classList.remove('open');
 
 // ─── INIT ───────────────────────────────────────────────────────────────────
-const BUILD_TS = 'build:2026-03-28T23:00'; // bumped each deploy — confirms fresh load
+const BUILD_TS = 'build:2026-03-28T23:20'; // bumped each deploy — confirms fresh load
 
 async function initApp() {
   // Show immediately with localStorage data
@@ -7725,8 +7725,10 @@ document.addEventListener('DOMContentLoaded', () => {
     if (e.target === document.getElementById('deferModal')) hideDeferModal();
   });
 
-  document.getElementById('recordBtn').addEventListener('click', startRecording);
-  document.getElementById('stopBtn').addEventListener('click', stopRecording);
+  document.getElementById('recordBtn').addEventListener('click', () => {
+    if (isRecording) stopRecording(); else startRecording();
+  });
+  document.getElementById('pasteBtn').addEventListener('click', pasteAsNode);
   document.getElementById('backBtn').addEventListener('click', navigateBack);
   document.getElementById('editFieldSave').addEventListener('click', () => {
     const text = document.getElementById('editFieldInput').value.trim();
