@@ -6404,15 +6404,27 @@ function initCalendarDrag() {
 function onCalTouchStart(e) {
   const card = e.target.closest('.cal-card');
   if (!card) return;
+  const cardId = card.dataset.calCardId;
+  const node = session.nodes.find(n => n.id === cardId);
+  // Time-block children: only the first in the scheduled series is draggable
+  if (node) {
+    const parentBlock = session.nodes.find(p => p.id === node.parent_id && p.type === 'time_block');
+    if (parentBlock) {
+      const seriesSorted = session.nodes
+        .filter(n => n.parent_id === parentBlock.id && !n.archived && n.status !== 'done' && n.scheduled_date)
+        .sort((a, b) => a.scheduled_date.localeCompare(b.scheduled_date));
+      if (seriesSorted.length && seriesSorted[0].id !== cardId) return; // not first → not draggable
+    }
+  }
   const t = e.touches[0];
   calDragState = {
     card,
-    cardId:   card.dataset.calCardId,
+    cardId,
     kind:     card.dataset.calKind || 'scheduled',
     fromDate: card.closest('.cal-day-col')?.dataset.calDate,
     startX:   t.clientX,
     startY:   t.clientY,
-    phase:    'pending',   // → 'dragging' | 'scroll' | 'done'
+    phase:    'pending',
     targetDate: null,
     ghost: null
   };
@@ -6520,31 +6532,30 @@ function onCalTouchEnd() {
     return;
   }
 
-  // Gantt shift: if card is a child of a time_block, shift this + all later tasks by the same delta
+  // Gantt shift: if card is a child of a time_block, snap target to valid block day then shift series
   const parentBlock = session.nodes.find(
     n => n.id === node.parent_id && n.type === 'time_block');
-  if (parentBlock && node.scheduled_date && targetDate !== node.scheduled_date) {
-    const deltaDays = Math.round(
-      (new Date(targetDate + 'T00:00:00') - new Date(node.scheduled_date + 'T00:00:00'))
-      / 86400000);
-    if (deltaDays !== 0) {
-      // Sort by scheduled_date so "subsequent" tasks are the ones dated after this one
+  if (parentBlock && node.scheduled_date) {
+    // Snap targetDate forward to the nearest valid block day
+    const snapDate = tbSlotDates(parentBlock, new Date(targetDate + 'T00:00:00'), 1)[0];
+    if (snapDate && snapDate !== node.scheduled_date) {
+      const deltaDays = Math.round(
+        (new Date(snapDate + 'T00:00:00') - new Date(node.scheduled_date + 'T00:00:00'))
+        / 86400000);
       const allTasks = session.nodes
         .filter(n => n.parent_id === parentBlock.id && !n.archived && n.status !== 'done' && n.scheduled_date)
         .sort((a, b) => a.scheduled_date.localeCompare(b.scheduled_date));
-      const draggedIdx = allTasks.findIndex(n => n.id === cardId);
-      if (draggedIdx !== -1) {
-        allTasks.slice(draggedIdx).forEach(t => {
-          const d = new Date(t.scheduled_date + 'T00:00:00');
-          d.setDate(d.getDate() + deltaDays);
-          t.scheduled_date   = toISODate(d);
-          t.last_modified    = new Date().toISOString();
-        });
-        saveSession(); renderCalendar();
-        showToast(`📅 Shifted ${deltaDays > 0 ? '+' : ''}${deltaDays}d`);
-        return;
-      }
+      allTasks.forEach(t => {
+        const d = new Date(t.scheduled_date + 'T00:00:00');
+        d.setDate(d.getDate() + deltaDays);
+        t.scheduled_date  = toISODate(d);
+        t.last_modified   = new Date().toISOString();
+      });
+      saveSession(); renderCalendar();
+      showToast(`📅 Series → ${snapDate}`);
+      return;
     }
+    renderCalendar(); return; // same slot — no-op
   }
 
   if (kind === 'deferred') { node.deferred = false; node.deferredUntil = null; }
@@ -7086,7 +7097,7 @@ const toggleMenu = () => document.getElementById('menuDropdown').classList.toggl
 const closeMenu  = () => document.getElementById('menuDropdown').classList.remove('open');
 
 // ─── INIT ───────────────────────────────────────────────────────────────────
-const BUILD_TS = 'build:2026-03-28T16:00'; // bumped each deploy — confirms fresh load
+const BUILD_TS = 'build:2026-03-28T17:00'; // bumped each deploy — confirms fresh load
 
 async function initApp() {
   // Show immediately with localStorage data
