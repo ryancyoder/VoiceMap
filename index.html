@@ -1572,14 +1572,32 @@
       word-break: break-word; touch-action: none;
       user-select: none; -webkit-user-select: none; cursor: grab;
     }
-    .cal-card.status-done      { text-decoration: line-through; color: var(--muted); }
+    .cal-card.status-done       { text-decoration: line-through; color: var(--muted); }
     .cal-card.cal-card-deferred { border-left: 3px solid var(--muted); color: var(--muted); }
-    .cal-card.dragging         { opacity: 0.3; }
-    .cal-tb-lane {
-      position: absolute; left: 0; right: 0; pointer-events: none;
-      opacity: 0.13; z-index: 0;
+    .cal-card.dragging          { opacity: 0.3; }
+    /* Swim lanes */
+    .cal-swim-lane  {
+      flex-shrink: 0; border-radius: 7px; overflow: hidden;
+      border: 1.5px solid transparent; margin-bottom: 4px;
     }
-    .cal-day-cards { position: relative; z-index: 1; }
+    .cal-swim-lane.cal-drop-active { outline: 2px solid var(--accent); }
+    .cal-swim-hdr   {
+      font-size: 9px; font-weight: 800; color: #fff;
+      padding: 3px 6px; letter-spacing: 0.3px;
+      display: flex; justify-content: space-between; align-items: center;
+    }
+    .cal-swim-body  {
+      background: rgba(255,255,255,0.55);
+      padding: 3px 4px; display: flex; flex-direction: column; gap: 3px;
+      min-height: 28px;
+    }
+    .cal-swim-empty {
+      font-size: 9px; color: var(--muted); padding: 4px 2px;
+      font-style: italic; text-align: center;
+    }
+    .cal-day-unassigned {
+      display: flex; flex-direction: column; gap: 4px;
+    }
     .cal-card-ghost {
       position: fixed; z-index: 9100;
       background: var(--surface); border: 1.5px solid var(--accent);
@@ -6185,57 +6203,76 @@ function renderCalendarWeek() {
       <div class="cal-day-add" data-cal-add="${iso}">+</div>
     </div>`;
 
-    // Time-block lanes: colored background strip for each active block on this day
     const jsDay     = day.getDay();
-    const dayBlocks = session.nodes.filter(
-      n => n.type === 'time_block' && !n.archived && (n.tb_days || []).includes(jsDay));
+    const dayBlocks = session.nodes
+      .filter(n => n.type === 'time_block' && !n.archived && (n.tb_days || []).includes(jsDay))
+      .sort((a, b) => tbParseTime(a.tb_start_time) - tbParseTime(b.tb_start_time));
 
     const cards = document.createElement('div');
     cards.className = 'cal-day-cards';
     cards.dataset.calDate = iso;
 
-    // Group cards by parent block so lane height covers their rows
-    nodes.forEach(({ node, kind }) => {
-      const card = document.createElement('div');
-      card.className = 'cal-card' + (node.status === 'done' ? ' status-done' : '') +
-                       (kind === 'deferred' ? ' cal-card-deferred' : '');
-      card.dataset.calCardId = node.id;
-      card.dataset.calKind   = kind;
-      // Colored left border for time-block children
-      const parentBlock = session.nodes.find(
-        p => p.id === node.parent_id && p.type === 'time_block');
-      if (parentBlock) {
-        card.style.borderLeftColor = tbColor(parentBlock.id);
-        card.style.borderLeftWidth = '3px';
+    // Build a Set of nodeIds already placed into a swim lane
+    const placed = new Set();
+
+    // Swim lane for each time block active on this day
+    dayBlocks.forEach(block => {
+      const color = tbColor(block.id);
+      const lane  = document.createElement('div');
+      lane.className = 'cal-swim-lane';
+      lane.style.borderColor = color + '55';
+      lane.dataset.calDate   = iso;  // makes it a valid drop target for existing drag logic
+
+      const hdr = document.createElement('div');
+      hdr.className = 'cal-swim-hdr';
+      hdr.style.background = color;
+      const timeStr = (block.tb_start_time || '') + '–' + (block.tb_end_time || '');
+      hdr.innerHTML = `<span>${block.label}</span><span style="opacity:0.8;font-weight:400">${timeStr}</span>`;
+      lane.appendChild(hdr);
+
+      const body = document.createElement('div');
+      body.className = 'cal-swim-body';
+      body.dataset.calDate = iso;
+
+      const laneNodes = nodes.filter(({ node }) => node.parent_id === block.id);
+      if (laneNodes.length === 0) {
+        const empty = document.createElement('div');
+        empty.className = 'cal-swim-empty';
+        empty.textContent = 'open';
+        body.appendChild(empty);
+      } else {
+        laneNodes.forEach(({ node, kind }) => {
+          placed.add(node.id);
+          const card = document.createElement('div');
+          card.className = 'cal-card' + (node.status === 'done' ? ' status-done' : '') +
+                           (kind === 'deferred' ? ' cal-card-deferred' : '');
+          card.style.borderLeftColor = color;
+          card.style.borderLeftWidth = '3px';
+          card.dataset.calCardId = node.id;
+          card.dataset.calKind   = kind;
+          card.textContent = (kind === 'deferred' ? '⏳ ' : '') + node.label;
+          body.appendChild(card);
+        });
       }
-      card.textContent = (kind === 'deferred' ? '⏳ ' : '') + node.label;
-      cards.appendChild(card);
+      lane.appendChild(body);
+      cards.appendChild(lane);
     });
 
-    // After appending cards, inject lane backgrounds behind block children
-    if (dayBlocks.length) {
-      // One lane per block: spans from first to last child card in this column
-      dayBlocks.forEach(block => {
-        const blockCards = Array.from(cards.querySelectorAll('.cal-card')).filter(c => {
-          const n = session.nodes.find(nd => nd.id === c.dataset.calCardId);
-          return n && n.parent_id === block.id;
-        });
-        if (!blockCards.length) return;
-        const lane = document.createElement('div');
-        lane.className = 'cal-tb-lane';
-        lane.style.background = tbColor(block.id);
-        // Position lane to cover from first to last child card (set after layout via rAF)
-        lane.dataset.blockId = block.id;
-        cards.appendChild(lane);
-        // Use ResizeObserver/rAF to position after paint
-        requestAnimationFrame(() => {
-          const firstRect = blockCards[0].getBoundingClientRect();
-          const lastRect  = blockCards[blockCards.length - 1].getBoundingClientRect();
-          const parentRect = cards.getBoundingClientRect();
-          lane.style.top    = (firstRect.top  - parentRect.top  - 3) + 'px';
-          lane.style.height = (lastRect.bottom - firstRect.top + 6) + 'px';
-        });
+    // Unassigned cards (not in any swim lane)
+    const unassigned = nodes.filter(({ node }) => !placed.has(node.id));
+    if (unassigned.length) {
+      const bucket = document.createElement('div');
+      bucket.className = 'cal-day-unassigned';
+      unassigned.forEach(({ node, kind }) => {
+        const card = document.createElement('div');
+        card.className = 'cal-card' + (node.status === 'done' ? ' status-done' : '') +
+                         (kind === 'deferred' ? ' cal-card-deferred' : '');
+        card.dataset.calCardId = node.id;
+        card.dataset.calKind   = kind;
+        card.textContent = (kind === 'deferred' ? '⏳ ' : '') + node.label;
+        bucket.appendChild(card);
       });
+      cards.appendChild(bucket);
     }
 
     col.appendChild(cards);
@@ -7097,7 +7134,7 @@ const toggleMenu = () => document.getElementById('menuDropdown').classList.toggl
 const closeMenu  = () => document.getElementById('menuDropdown').classList.remove('open');
 
 // ─── INIT ───────────────────────────────────────────────────────────────────
-const BUILD_TS = 'build:2026-03-28T17:00'; // bumped each deploy — confirms fresh load
+const BUILD_TS = 'build:2026-03-28T18:00'; // bumped each deploy — confirms fresh load
 
 async function initApp() {
   // Show immediately with localStorage data
