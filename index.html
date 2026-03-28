@@ -3536,6 +3536,9 @@ function addNode(parsed, transcript) {
     });
   });
 
+  saveSession();
+  _maybeRescheduleTb(parentId);
+
   if (calVisible) renderCalendar(); else renderCards();
 
   if (listItems.length) {
@@ -3584,8 +3587,9 @@ function addKeyboardNode(text) {
     created:       now,
     last_modified: now
   });
-  renderCards();
   saveSession();
+  _maybeRescheduleTb(ctx.id);
+  renderCards();
   showToast(`Added: "${text.slice(0, 40)}"`);
 }
 
@@ -6548,6 +6552,18 @@ function onCalTouchCancel() {
 
 // ─── TIME BLOCKS ────────────────────────────────────────────────────────────
 
+function _maybeRescheduleTb(parentId) {
+  if (!parentId) return;
+  const parent = session.nodes.find(n => n.id === parentId && n.type === 'time_block');
+  if (!parent) return;
+  computeTimeBlockSchedule(parentId);
+  // Keep calWeekStart pointing at the first scheduled child so the calendar shows results
+  const first = session.nodes
+    .filter(n => n.parent_id === parentId && n.scheduled_date)
+    .sort((a, b) => a.scheduled_date.localeCompare(b.scheduled_date))[0];
+  if (first) calWeekStart = getWeekMonday(new Date(first.scheduled_date + 'T00:00:00'));
+}
+
 let tbVisible   = false;
 let tbBadgeMode = 'count'; // 'count' | 'hours'
 let tbModalNodeId = null;
@@ -6815,16 +6831,17 @@ function saveTbModal() {
   closeTbModal();
   computeTimeBlockSchedule(node.id);
 
-  // If calendar is visible (or will be next), jump to the week of the first scheduled child
-  const firstChild = session.nodes
+  // Jump calendar to the week of the first scheduled child
+  const scheduledChildren = session.nodes
     .filter(n => n.parent_id === node.id && n.scheduled_date)
-    .sort((a, b) => a.scheduled_date.localeCompare(b.scheduled_date))[0];
-  if (firstChild) {
-    calWeekStart = getWeekMonday(new Date(firstChild.scheduled_date + 'T00:00:00'));
+    .sort((a, b) => a.scheduled_date.localeCompare(b.scheduled_date));
+  if (scheduledChildren.length) {
+    calWeekStart = getWeekMonday(new Date(scheduledChildren[0].scheduled_date + 'T00:00:00'));
     if (calVisible) renderCalendar();
+    showToast(`⏱ ${scheduledChildren.length} task${scheduledChildren.length === 1 ? '' : 's'} scheduled`);
+  } else {
+    showToast('⏱ Time block saved — add child cards to schedule them');
   }
-
-  showToast('⏱ Time block saved & scheduled');
   if (tbVisible) renderTimeBlockView(); else renderCards();
 }
 
@@ -7056,7 +7073,7 @@ const toggleMenu = () => document.getElementById('menuDropdown').classList.toggl
 const closeMenu  = () => document.getElementById('menuDropdown').classList.remove('open');
 
 // ─── INIT ───────────────────────────────────────────────────────────────────
-const BUILD_TS = 'build:2026-03-28T14:00'; // bumped each deploy — confirms fresh load
+const BUILD_TS = 'build:2026-03-28T15:00'; // bumped each deploy — confirms fresh load
 
 async function initApp() {
   // Show immediately with localStorage data
