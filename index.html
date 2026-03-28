@@ -3526,12 +3526,10 @@ Return JSON: {"summary": "<improved summary>"}`;
   const logSchema = logParent?.log_schema || [];
   let logSchemaHint = '';
   if (logSchema.length) {
-    const fieldDesc = logSchema.map(f => `  "${f.key}" (${f.type}): ${f.label}`).join('\n');
-    logSchemaHint = `\n\nThis card will be a row in a structured log. The log has these fields:\n${fieldDesc}\n` +
-      `Extract values for as many fields as possible from the transcript. ` +
-      `Add a "log_fields" object to your JSON with {key: value} pairs for each field you can fill. ` +
-      `Use ISO date (YYYY-MM-DD) for date fields. Use numbers (not strings) for number fields. ` +
-      `Use true/false for boolean fields. Omit fields you cannot confidently extract.`;
+    const fieldLines = logSchema.map(f => `  key: "${f.key}"  type: ${f.type}  label: "${f.label}"`).join('\n');
+    logSchemaHint = `\n\nThis card will be a row in a structured log. Extract field values from the transcript and include a "log_fields" object in your JSON.\n` +
+      `Use EXACTLY these key names (the value after "key:"):\n${fieldLines}\n` +
+      `Rules: date fields → YYYY-MM-DD, number fields → numeric not string, boolean → true/false. Include every field you can find a value for.`;
   }
 
   let parsed;
@@ -4063,9 +4061,10 @@ async function skipImageDescription() {
     const parentNode = currentParentId() ? session.nodes.find(n => n.id === currentParentId()) : null;
     const logSchema  = (parentNode?.type === 'log') ? (parentNode.log_schema || []) : [];
     const logHint    = logSchema.length
-      ? '\n\nThis image will be a row in a structured log with these fields:\n' +
-        logSchema.map(f => `  "${f.key}" (${f.type}): ${f.label}`).join('\n') +
-        '\nIf you can extract values for any of these fields from the image, include a "log_fields" object in your JSON response.'
+      ? '\n\nThis image will be a row in a structured log. If you can read field values from the image, include a "log_fields" object in your JSON response.\n' +
+        'Use EXACTLY these key names (the value after "key:"):\n' +
+        logSchema.map(f => `  key: "${f.key}"  type: ${f.type}  label: "${f.label}"`).join('\n') +
+        '\nRules: date → YYYY-MM-DD, number → numeric, boolean → true/false.'
       : '';
     const contextPrompt = (parentNode
       ? `Parent context: "${parentNode.label}"${parentNode.summary ? ` — ${parentNode.summary}` : ''}.\n\nAnalyze this image in that context.`
@@ -7284,7 +7283,7 @@ function _maybeInitLogRow(parentId, nodeId) {
   });
 }
 
-// Shared helper: call Claude to extract log_fields from arbitrary text and
+/// Shared helper: call Claude to extract log_fields from arbitrary text and
 // apply them to an already-created node. Re-renders table view if visible.
 async function _enrichLogFields(nodeId, text) {
   const node = session.nodes.find(n => n.id === nodeId);
@@ -7294,14 +7293,20 @@ async function _enrichLogFields(nodeId, text) {
   const schema = parent.log_schema || [];
   if (!schema.length) return;
 
-  const fieldDesc = schema.map(f => `  "${f.key}" (${f.type}): ${f.label}`).join('\n');
+  // Be explicit that the JSON keys must match the schema key names exactly
+  const fieldLines = schema.map(f => `  key: "${f.key}"  type: ${f.type}  label: "${f.label}"`).join('\n');
   const prompt =
-    `Extract structured log field values from the following text.\n` +
-    `Fields:\n${fieldDesc}\n\n` +
-    `Text: "${text}"\n\n` +
-    `Return ONLY a JSON object with {key: value} pairs for each field you can confidently extract. ` +
-    `Use ISO date (YYYY-MM-DD) for date fields. Use numbers for number fields. ` +
-    `Use true/false for boolean fields. Omit fields you cannot confidently extract.`;
+    `Extract data from the text below into a JSON object.\n\n` +
+    `Use EXACTLY these key names (the value after "key:"):\n${fieldLines}\n\n` +
+    `TEXT:\n${text}\n\n` +
+    `Rules:\n` +
+    `- Include every field you can find a value for, even if uncertain.\n` +
+    `- JSON keys must match the "key:" names above exactly (case-sensitive).\n` +
+    `- date fields: ISO format YYYY-MM-DD.\n` +
+    `- number fields: numeric value, not a string.\n` +
+    `- boolean fields: true or false.\n` +
+    `- text fields: the extracted string value.\n` +
+    `Return ONLY the JSON object, nothing else.`;
 
   try {
     const raw    = await callClaude(prompt, '', '{', 'Extract log fields');
@@ -7309,13 +7314,19 @@ async function _enrichLogFields(nodeId, text) {
     if (fields && typeof fields === 'object') {
       if (!node.log_fields) node.log_fields = {};
       schema.forEach(f => {
-        if (f.key in fields) node.log_fields[f.key] = fields[f.key];
+        if (f.key in fields && fields[f.key] !== null && fields[f.key] !== undefined) {
+          node.log_fields[f.key] = fields[f.key];
+        }
       });
       node.last_modified = new Date().toISOString();
       saveSession();
       if (tableVisible) renderTableView();
+    } else {
+      console.warn('[VoiceMap] _enrichLogFields: could not parse response', raw?.slice(0, 200));
     }
-  } catch {}
+  } catch (err) {
+    console.error('[VoiceMap] _enrichLogFields error:', err.message);
+  }
 }
 
 // ── Log Schema Modal ─────────────────────────────────────────────────────────
@@ -7628,7 +7639,7 @@ const toggleMenu = () => document.getElementById('menuDropdown').classList.toggl
 const closeMenu  = () => document.getElementById('menuDropdown').classList.remove('open');
 
 // ─── INIT ───────────────────────────────────────────────────────────────────
-const BUILD_TS = 'build:2026-03-28T22:20'; // bumped each deploy — confirms fresh load
+const BUILD_TS = 'build:2026-03-28T22:40'; // bumped each deploy — confirms fresh load
 
 async function initApp() {
   // Show immediately with localStorage data
