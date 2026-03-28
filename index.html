@@ -1575,6 +1575,18 @@
     .cal-card.status-done      { text-decoration: line-through; color: var(--muted); }
     .cal-card.cal-card-deferred { border-left: 3px solid var(--muted); color: var(--muted); }
     .cal-card.dragging         { opacity: 0.3; }
+    .cal-tb-bands {
+      display: flex; flex-direction: column; gap: 2px;
+      padding: 3px 4px; border-bottom: 0.5px solid var(--border);
+      flex-shrink: 0;
+    }
+    .cal-tb-band {
+      border-radius: 4px; padding: 2px 5px;
+      font-size: 9px; font-weight: 700; color: #fff;
+      line-height: 1.3; white-space: nowrap; overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .cal-tb-band:empty { display: none; }
     .cal-card-ghost {
       position: fixed; z-index: 9100;
       background: var(--surface); border: 1.5px solid var(--accent);
@@ -6176,6 +6188,25 @@ function renderCalendarWeek() {
       <div class="cal-day-add" data-cal-add="${iso}">+</div>
     </div>`;
 
+    // Time-block bands: one per active block on this JS day-of-week
+    const jsDay     = day.getDay();
+    const dayBlocks = session.nodes.filter(
+      n => n.type === 'time_block' && !n.archived && (n.tb_days || []).includes(jsDay));
+    if (dayBlocks.length) {
+      const bandsRow = document.createElement('div');
+      bandsRow.className = 'cal-tb-bands';
+      dayBlocks.forEach(block => {
+        const band = document.createElement('div');
+        band.className       = 'cal-tb-band';
+        band.style.background = tbColor(block.id);
+        const startH = block.tb_start_time || '?';
+        const endH   = block.tb_end_time   || '?';
+        band.textContent = block.label + '  ' + startH + '–' + endH;
+        bandsRow.appendChild(band);
+      });
+      col.appendChild(bandsRow);
+    }
+
     const cards = document.createElement('div');
     cards.className = 'cal-day-cards';
     cards.dataset.calDate = iso;
@@ -6186,6 +6217,13 @@ function renderCalendarWeek() {
                        (kind === 'deferred' ? ' cal-card-deferred' : '');
       card.dataset.calCardId = node.id;
       card.dataset.calKind   = kind;
+      // Color left border if card belongs to a time block
+      const parentBlock = session.nodes.find(
+        p => p.id === node.parent_id && p.type === 'time_block');
+      if (parentBlock) {
+        card.style.borderLeftColor = tbColor(parentBlock.id);
+        card.style.borderLeftWidth = '3px';
+      }
       card.textContent = (kind === 'deferred' ? '⏳ ' : '') + node.label;
       cards.appendChild(card);
     });
@@ -7018,7 +7056,7 @@ const toggleMenu = () => document.getElementById('menuDropdown').classList.toggl
 const closeMenu  = () => document.getElementById('menuDropdown').classList.remove('open');
 
 // ─── INIT ───────────────────────────────────────────────────────────────────
-const BUILD_TS = 'build:2026-03-28T13:00'; // bumped each deploy — confirms fresh load
+const BUILD_TS = 'build:2026-03-28T14:00'; // bumped each deploy — confirms fresh load
 
 async function initApp() {
   // Show immediately with localStorage data
