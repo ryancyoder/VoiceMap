@@ -3776,14 +3776,22 @@ async function pasteAsNode() {
     id: nodeId, label, summary, transcript: text,
     parent_id: parentId, status: 'untouched', created: now, last_modified: now
   });
+  _maybeInitLogRow(parentId, nodeId);
   saveSession();
   if (mmVisible) {
     renderMindMap();
     setTimeout(() => selectMmNode(nodeId), 50);
+  } else if (tableVisible) {
+    renderTableView();
   } else {
     renderCards();
   }
   showToast(`Pasted: "${label.slice(0, 40)}"`);
+  // If inside a log node, enrich log_fields from pasted text via Claude
+  const logParent = parentId ? session.nodes.find(n => n.id === parentId && n.type === 'log') : null;
+  if (logParent?.log_schema?.length && getApiKey()) {
+    _enrichLogFields(nodeId, text);
+  }
 }
 
 // ─── EXTERNAL DRAG-DROP ──────────────────────────────────────────────────────
@@ -4035,14 +4043,16 @@ async function skipImageDescription() {
   clearPendingImage();
   setStatus('Analyzing photo…', 'processing');
 
-  const nodeId = makeId();
-  const now    = new Date().toISOString();
-  const node   = {
+  const nodeId   = makeId();
+  const now      = new Date().toISOString();
+  const skipPid  = currentParentId();
+  const node     = {
     id: nodeId, type: 'image', label: 'Photo', summary: '',
-    transcript: '', parent_id: currentParentId(),
+    transcript: '', parent_id: skipPid,
     status: 'untouched', created: now, last_modified: now
   };
   session.nodes.push(node);
+  _maybeInitLogRow(skipPid, nodeId);
   await saveImageToDB(nodeId, dataUrl);
   renderCards();
   showToast('Analyzing photo…');
@@ -4051,9 +4061,15 @@ async function skipImageDescription() {
   try {
     const base64     = dataUrl.split(',')[1];
     const parentNode = currentParentId() ? session.nodes.find(n => n.id === currentParentId()) : null;
-    const contextPrompt = parentNode
+    const logSchema  = (parentNode?.type === 'log') ? (parentNode.log_schema || []) : [];
+    const logHint    = logSchema.length
+      ? '\n\nThis image will be a row in a structured log with these fields:\n' +
+        logSchema.map(f => `  "${f.key}" (${f.type}): ${f.label}`).join('\n') +
+        '\nIf you can extract values for any of these fields from the image, include a "log_fields" object in your JSON response.'
+      : '';
+    const contextPrompt = (parentNode
       ? `Parent context: "${parentNode.label}"${parentNode.summary ? ` — ${parentNode.summary}` : ''}.\n\nAnalyze this image in that context.`
-      : 'Analyze this image.';
+      : 'Analyze this image.') + logHint;
 
     const visionSystem = getSystemPrompt('vision');
 
@@ -4105,6 +4121,13 @@ async function skipImageDescription() {
           node.label         = String(cards[0].label).slice(0, 60);
           node.summary       = cards[0].summary || '';
           node.last_modified = new Date().toISOString();
+          // Apply log_fields if vision returned them
+          if (parsed.log_fields && typeof parsed.log_fields === 'object' && logSchema.length) {
+            if (!node.log_fields) node.log_fields = {};
+            logSchema.forEach(f => {
+              if (f.key in parsed.log_fields) node.log_fields[f.key] = parsed.log_fields[f.key];
+            });
+          }
           showToast(`Photo: "${node.label}"`);
         } else {
           // Multiple sticky notes — replace placeholder with one card per note
@@ -7261,6 +7284,40 @@ function _maybeInitLogRow(parentId, nodeId) {
   });
 }
 
+// Shared helper: call Claude to extract log_fields from arbitrary text and
+// apply them to an already-created node. Re-renders table view if visible.
+async function _enrichLogFields(nodeId, text) {
+  const node = session.nodes.find(n => n.id === nodeId);
+  if (!node) return;
+  const parent = session.nodes.find(n => n.id === node.parent_id && n.type === 'log');
+  if (!parent) return;
+  const schema = parent.log_schema || [];
+  if (!schema.length) return;
+
+  const fieldDesc = schema.map(f => `  "${f.key}" (${f.type}): ${f.label}`).join('\n');
+  const prompt =
+    `Extract structured log field values from the following text.\n` +
+    `Fields:\n${fieldDesc}\n\n` +
+    `Text: "${text}"\n\n` +
+    `Return ONLY a JSON object with {key: value} pairs for each field you can confidently extract. ` +
+    `Use ISO date (YYYY-MM-DD) for date fields. Use numbers for number fields. ` +
+    `Use true/false for boolean fields. Omit fields you cannot confidently extract.`;
+
+  try {
+    const raw    = await callClaude(prompt, '', '{', 'Extract log fields');
+    const fields = extractJSON(raw);
+    if (fields && typeof fields === 'object') {
+      if (!node.log_fields) node.log_fields = {};
+      schema.forEach(f => {
+        if (f.key in fields) node.log_fields[f.key] = fields[f.key];
+      });
+      node.last_modified = new Date().toISOString();
+      saveSession();
+      if (tableVisible) renderTableView();
+    }
+  } catch {}
+}
+
 // ── Log Schema Modal ─────────────────────────────────────────────────────────
 function openLogModal(nodeId) {
   logModalNodeId = nodeId;
@@ -7571,7 +7628,7 @@ const toggleMenu = () => document.getElementById('menuDropdown').classList.toggl
 const closeMenu  = () => document.getElementById('menuDropdown').classList.remove('open');
 
 // ─── INIT ───────────────────────────────────────────────────────────────────
-const BUILD_TS = 'build:2026-03-28T22:00'; // bumped each deploy — confirms fresh load
+const BUILD_TS = 'build:2026-03-28T22:20'; // bumped each deploy — confirms fresh load
 
 async function initApp() {
   // Show immediately with localStorage data
