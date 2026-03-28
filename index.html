@@ -1718,6 +1718,9 @@
     .log-field-row .title-field-btn { padding: 4px 7px; border-radius: 6px; background: var(--border);
                                  color: var(--muted); border: none; font-size: 13px; cursor: pointer; }
     .log-field-row .title-field-btn.active { background: #fef3c7; color: #92400e; }
+    .log-field-row .field-drag-handle { padding: 4px 6px; cursor: grab; color: var(--muted);
+                                 font-size: 16px; line-height: 1; touch-action: none; flex-shrink: 0; }
+    .log-field-row.drag-over { border-top: 2px solid var(--accent); }
     .log-add-field-btn        { padding: 6px 14px; border-radius: 8px; background: var(--border);
                                  color: var(--text); font-size: 13px; border: none; cursor: pointer;
                                  margin-top: 4px; }
@@ -7406,6 +7409,12 @@ function _renderLogModalFields(schema, titleField) {
     const row = document.createElement('div');
     row.className = 'log-field-row';
 
+    // Drag handle
+    const handle = document.createElement('span');
+    handle.className = 'field-drag-handle';
+    handle.textContent = '⠿';
+    handle.title = 'Drag to reorder';
+
     const keyInput = document.createElement('input');
     keyInput.type = 'text';
     keyInput.placeholder = 'key (no spaces)';
@@ -7431,7 +7440,6 @@ function _renderLogModalFields(schema, titleField) {
     pinBtn.addEventListener('click', () => {
       const key = row.querySelectorAll('input')[0].value.replace(/\s+/g,'_').toLowerCase();
       list.dataset.titleField = (list.dataset.titleField === key) ? '' : key;
-      // Keep dataset.key in sync with current key input value
       list.querySelectorAll('.title-field-btn').forEach((btn, i) => {
         btn.dataset.key = list.querySelectorAll('.log-field-row input')[i * 2]?.value.replace(/\s+/g,'_').toLowerCase() || '';
       });
@@ -7448,6 +7456,7 @@ function _renderLogModalFields(schema, titleField) {
       _renderLogModalFields(cur, curTitle);
     });
 
+    row.appendChild(handle);
     row.appendChild(keyInput);
     row.appendChild(labelInput);
     row.appendChild(typeSelect);
@@ -7457,6 +7466,86 @@ function _renderLogModalFields(schema, titleField) {
   });
 
   refreshPinBtns();
+  _initFieldDrag(list);
+}
+
+function _initFieldDrag(list) {
+  let dragSrc = null;
+
+  function getRows() { return Array.from(list.querySelectorAll('.log-field-row')); }
+
+  function rowIdx(row) { return getRows().indexOf(row); }
+
+  function applyReorder(fromIdx, toIdx) {
+    if (fromIdx === toIdx) return;
+    const cur      = _readLogModalSchema();
+    const curTitle = list.dataset.titleField;
+    const [moved]  = cur.splice(fromIdx, 1);
+    cur.splice(toIdx, 0, moved);
+    _renderLogModalFields(cur, curTitle);
+  }
+
+  list.querySelectorAll('.field-drag-handle').forEach(handle => {
+    const row = handle.closest('.log-field-row');
+
+    // ── Mouse ──────────────────────────────────────────────────────────────
+    handle.addEventListener('mousedown', e => {
+      e.preventDefault();
+      dragSrc = row;
+      row.style.opacity = '0.5';
+
+      function onMouseMove(e) {
+        const target = document.elementFromPoint(e.clientX, e.clientY)?.closest('.log-field-row');
+        getRows().forEach(r => r.classList.remove('drag-over'));
+        if (target && target !== dragSrc) target.classList.add('drag-over');
+      }
+
+      function onMouseUp(e) {
+        document.removeEventListener('mousemove', onMouseMove);
+        document.removeEventListener('mouseup', onMouseUp);
+        row.style.opacity = '';
+        const target = document.elementFromPoint(e.clientX, e.clientY)?.closest('.log-field-row');
+        getRows().forEach(r => r.classList.remove('drag-over'));
+        if (target && target !== dragSrc) {
+          applyReorder(rowIdx(dragSrc), rowIdx(target));
+        }
+        dragSrc = null;
+      }
+
+      document.addEventListener('mousemove', onMouseMove);
+      document.addEventListener('mouseup', onMouseUp);
+    });
+
+    // ── Touch ──────────────────────────────────────────────────────────────
+    handle.addEventListener('touchstart', e => {
+      e.preventDefault();
+      dragSrc = row;
+      row.style.opacity = '0.5';
+
+      function onTouchMove(e) {
+        const t = e.touches[0];
+        const target = document.elementFromPoint(t.clientX, t.clientY)?.closest('.log-field-row');
+        getRows().forEach(r => r.classList.remove('drag-over'));
+        if (target && target !== dragSrc) target.classList.add('drag-over');
+      }
+
+      function onTouchEnd(e) {
+        handle.removeEventListener('touchmove', onTouchMove);
+        handle.removeEventListener('touchend', onTouchEnd);
+        row.style.opacity = '';
+        const t = e.changedTouches[0];
+        const target = document.elementFromPoint(t.clientX, t.clientY)?.closest('.log-field-row');
+        getRows().forEach(r => r.classList.remove('drag-over'));
+        if (target && target !== dragSrc) {
+          applyReorder(rowIdx(dragSrc), rowIdx(target));
+        }
+        dragSrc = null;
+      }
+
+      handle.addEventListener('touchmove', onTouchMove, { passive: false });
+      handle.addEventListener('touchend', onTouchEnd);
+    }, { passive: false });
+  });
 }
 
 function _readLogModalSchema() {
@@ -7713,7 +7802,7 @@ const toggleMenu = () => document.getElementById('menuDropdown').classList.toggl
 const closeMenu  = () => document.getElementById('menuDropdown').classList.remove('open');
 
 // ─── INIT ───────────────────────────────────────────────────────────────────
-const BUILD_TS = 'build:2026-03-29T00:10'; // bumped each deploy — confirms fresh load
+const BUILD_TS = 'build:2026-03-29T00:30'; // bumped each deploy — confirms fresh load
 
 async function initApp() {
   // Show immediately with localStorage data
