@@ -7080,6 +7080,14 @@ function hideTableView() {
   tableVisible = false;
   document.getElementById('tableView').classList.add('hidden');
   document.getElementById('cardScroll').style.display = '';
+  // Restore nav context to the active log node so card/map view lands there
+  if (tableLogId) {
+    const logNode = session.nodes.find(n => n.id === tableLogId);
+    if (logNode) {
+      navStack = [{ id: null, label: 'Home' }, { id: tableLogId, label: logNode.label }];
+      updateNavBar();
+    }
+  }
   setViewTab('cards');
   renderCards();
 }
@@ -7646,7 +7654,7 @@ const toggleMenu = () => document.getElementById('menuDropdown').classList.toggl
 const closeMenu  = () => document.getElementById('menuDropdown').classList.remove('open');
 
 // ─── INIT ───────────────────────────────────────────────────────────────────
-const BUILD_TS = 'build:2026-03-28T23:30'; // bumped each deploy — confirms fresh load
+const BUILD_TS = 'build:2026-03-28T23:40'; // bumped each deploy — confirms fresh load
 
 async function initApp() {
   // Show immediately with localStorage data
