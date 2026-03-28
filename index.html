@@ -1715,6 +1715,9 @@
                                  border-radius: 6px; padding: 6px 8px; font-size: 13px; color: var(--text); }
     .log-field-row .del-field { padding: 4px 8px; border-radius: 6px; background: rgba(255,69,58,0.12);
                                  color: var(--accent); border: none; font-size: 14px; cursor: pointer; }
+    .log-field-row .title-field-btn { padding: 4px 7px; border-radius: 6px; background: var(--border);
+                                 color: var(--muted); border: none; font-size: 13px; cursor: pointer; }
+    .log-field-row .title-field-btn.active { background: #fef3c7; color: #92400e; }
     .log-add-field-btn        { padding: 6px 14px; border-radius: 8px; background: var(--border);
                                  color: var(--text); font-size: 13px; border: none; cursor: pointer;
                                  margin-top: 4px; }
@@ -3619,6 +3622,15 @@ function addNode(parsed, transcript) {
     last_modified:    now
   });
 
+  // Sync label from title field if parent is a log with a title field designated
+  if (parsed.log_fields) {
+    const logParentNode = parentId ? session.nodes.find(n => n.id === parentId && n.type === 'log') : null;
+    if (logParentNode) {
+      const newNode = session.nodes.find(n => n.id === nodeId);
+      if (newNode) _syncLogLabel(newNode, logParentNode);
+    }
+  }
+
   const listItems = Array.isArray(parsed.children) ? parsed.children.filter(Boolean) : [];
   listItems.forEach(childLabel => {
     session.nodes.push({
@@ -4133,6 +4145,8 @@ async function skipImageDescription() {
             logSchema.forEach(f => {
               if (f.key in parsed.log_fields) node.log_fields[f.key] = parsed.log_fields[f.key];
             });
+            const logParentNode = parentNode?.type === 'log' ? parentNode : null;
+            if (logParentNode) _syncLogLabel(node, logParentNode);
           }
           showToast(`Photo: "${node.label}"`);
         } else {
@@ -7120,9 +7134,10 @@ function renderTableView() {
     bar.appendChild(chip);
   });
 
-  const logNode = session.nodes.find(n => n.id === tableLogId);
+  const logNode    = session.nodes.find(n => n.id === tableLogId);
   if (!logNode) return;
-  const schema = logNode.log_schema || [];
+  const schema     = logNode.log_schema || [];
+  const titleField = logNode.log_title_field || null;
   const rows = session.nodes.filter(n => n.parent_id === tableLogId && !n.archived);
 
   // Sort: if schema has a 'date' field, sort by that; else by created desc
@@ -7145,14 +7160,15 @@ function renderTableView() {
   // Header
   const thead = document.createElement('thead');
   const htr = document.createElement('tr');
-  // Node label column
-  const thLabel = document.createElement('th');
-  thLabel.textContent = 'Title';
-  htr.appendChild(thLabel);
-  // Custom schema columns
+  // Title column — shown only when no field is designated as title
+  if (!titleField) {
+    const thLabel = document.createElement('th');
+    thLabel.textContent = 'Title';
+    htr.appendChild(thLabel);
+  }
   schema.forEach(f => {
     const th = document.createElement('th');
-    th.textContent = f.label;
+    th.textContent = f.label + (f.key === titleField ? ' 📌' : '');
     htr.appendChild(th);
   });
   thead.appendChild(htr);
@@ -7162,15 +7178,15 @@ function renderTableView() {
   const tbody = document.createElement('tbody');
   rows.forEach(row => {
     const tr = document.createElement('tr');
-    // Title cell
-    const tdLabel = document.createElement('td');
-    tdLabel.appendChild(_tblEditCell(row.id, '__label__', 'text', row.label));
-    tr.appendChild(tdLabel);
-    // Field cells
+    if (!titleField) {
+      const tdLabel = document.createElement('td');
+      tdLabel.appendChild(_tblEditCell(row.id, '__label__', 'text', row.label));
+      tr.appendChild(tdLabel);
+    }
     schema.forEach(f => {
       const td = document.createElement('td');
       const val = (row.log_fields || {})[f.key];
-      td.appendChild(_tblEditCell(row.id, f.key, f.type, val != null ? val : ''));
+      td.appendChild(_tblEditCell(row.id, f.key, f.type, val != null ? val : '', f.key === titleField));
       tr.appendChild(td);
     });
     tbody.appendChild(tr);
@@ -7186,7 +7202,7 @@ function renderTableView() {
   wrap.appendChild(addBtn);
 }
 
-function _tblEditCell(nodeId, fieldKey, fieldType, currentVal) {
+function _tblEditCell(nodeId, fieldKey, fieldType, currentVal, isTitleField = false) {
   const span = document.createElement('span');
   span.className = 'tbl-cell-edit';
 
@@ -7231,6 +7247,8 @@ function _tblEditCell(nodeId, fieldKey, fieldType, currentVal) {
         } else {
           if (!node.log_fields) node.log_fields = {};
           node.log_fields[fieldKey] = fieldType === 'number' ? (raw === '' ? '' : Number(raw)) : raw;
+          // If this field drives the node label, keep them in sync
+          if (isTitleField && raw) node.label = raw.slice(0, 60);
         }
         node.last_modified = new Date().toISOString();
         saveSession();
@@ -7264,7 +7282,7 @@ function _addLogRow(logId) {
     else if (f.type === 'boolean') fields[f.key] = false;
     else fields[f.key] = '';
   });
-  session.nodes.push({
+  const newNode = {
     id:            makeId(),
     label:         'New entry',
     summary:       '',
@@ -7274,7 +7292,9 @@ function _addLogRow(logId) {
     log_fields:    fields,
     created:       now,
     last_modified: now
-  });
+  };
+  session.nodes.push(newNode);
+  _syncLogLabel(newNode, logNode);
   saveSession();
   renderTableView();
 }
@@ -7298,7 +7318,17 @@ function _maybeInitLogRow(parentId, nodeId) {
   });
 }
 
-/// Shared helper: call Claude to extract log_fields from arbitrary text and
+/// Sync node.label from the log's title field (if one is designated)
+function _syncLogLabel(node, logNode) {
+  const tf = logNode.log_title_field;
+  if (!tf) return;
+  const val = (node.log_fields || {})[tf];
+  if (val !== null && val !== undefined && String(val).trim()) {
+    node.label = String(val).trim().slice(0, 60);
+  }
+}
+
+// Shared helper: call Claude to extract log_fields from arbitrary text and
 // apply them to an already-created node. Re-renders table view if visible.
 async function _enrichLogFields(nodeId, text) {
   const node = session.nodes.find(n => n.id === nodeId);
@@ -7333,6 +7363,7 @@ async function _enrichLogFields(nodeId, text) {
           node.log_fields[f.key] = fields[f.key];
         }
       });
+      _syncLogLabel(node, parent);
       node.last_modified = new Date().toISOString();
       saveSession();
       if (tableVisible) renderTableView();
@@ -7349,7 +7380,7 @@ function openLogModal(nodeId) {
   logModalNodeId = nodeId;
   const node = session.nodes.find(n => n.id === nodeId);
   if (!node) return;
-  _renderLogModalFields(node.log_schema || []);
+  _renderLogModalFields(node.log_schema || [], node.log_title_field || '');
   document.getElementById('logModal').classList.remove('hidden');
 }
 
@@ -7358,9 +7389,19 @@ function closeLogModal() {
   logModalNodeId = null;
 }
 
-function _renderLogModalFields(schema) {
+function _renderLogModalFields(schema, titleField) {
   const list = document.getElementById('logFieldsList');
   list.innerHTML = '';
+  list.dataset.titleField = titleField || '';
+
+  function refreshPinBtns() {
+    const cur = list.dataset.titleField;
+    list.querySelectorAll('.title-field-btn').forEach(btn => {
+      btn.classList.toggle('active', btn.dataset.key === cur);
+      btn.title = btn.dataset.key === cur ? 'Title field (click to unset)' : 'Use as title';
+    });
+  }
+
   schema.forEach((f, idx) => {
     const row = document.createElement('div');
     row.className = 'log-field-row';
@@ -7369,15 +7410,11 @@ function _renderLogModalFields(schema) {
     keyInput.type = 'text';
     keyInput.placeholder = 'key (no spaces)';
     keyInput.value = f.key || '';
-    keyInput.dataset.idx = idx;
-    keyInput.dataset.prop = 'key';
 
     const labelInput = document.createElement('input');
     labelInput.type = 'text';
     labelInput.placeholder = 'Label';
     labelInput.value = f.label || '';
-    labelInput.dataset.idx = idx;
-    labelInput.dataset.prop = 'label';
 
     const typeSelect = document.createElement('select');
     ['text','number','date','boolean'].forEach(t => {
@@ -7386,24 +7423,40 @@ function _renderLogModalFields(schema) {
       if (t === f.type) opt.selected = true;
       typeSelect.appendChild(opt);
     });
-    typeSelect.dataset.idx = idx;
-    typeSelect.dataset.prop = 'type';
+
+    const pinBtn = document.createElement('button');
+    pinBtn.className = 'title-field-btn';
+    pinBtn.textContent = '📌';
+    pinBtn.dataset.key = f.key || '';
+    pinBtn.addEventListener('click', () => {
+      const key = row.querySelectorAll('input')[0].value.replace(/\s+/g,'_').toLowerCase();
+      list.dataset.titleField = (list.dataset.titleField === key) ? '' : key;
+      // Keep dataset.key in sync with current key input value
+      list.querySelectorAll('.title-field-btn').forEach((btn, i) => {
+        btn.dataset.key = list.querySelectorAll('.log-field-row input')[i * 2]?.value.replace(/\s+/g,'_').toLowerCase() || '';
+      });
+      refreshPinBtns();
+    });
 
     const delBtn = document.createElement('button');
     delBtn.className = 'del-field';
     delBtn.textContent = '✕';
     delBtn.addEventListener('click', () => {
       const cur = _readLogModalSchema();
+      const curTitle = list.dataset.titleField;
       cur.splice(idx, 1);
-      _renderLogModalFields(cur);
+      _renderLogModalFields(cur, curTitle);
     });
 
     row.appendChild(keyInput);
     row.appendChild(labelInput);
     row.appendChild(typeSelect);
+    row.appendChild(pinBtn);
     row.appendChild(delBtn);
     list.appendChild(row);
   });
+
+  refreshPinBtns();
 }
 
 function _readLogModalSchema() {
@@ -7418,13 +7471,19 @@ function _readLogModalSchema() {
   return schema;
 }
 
+function _readLogModalTitleField() {
+  return document.getElementById('logFieldsList').dataset.titleField || '';
+}
+
 function saveLogModal() {
-  const schema = _readLogModalSchema();
+  const schema     = _readLogModalSchema();
+  const titleField = _readLogModalTitleField();
   const node = session.nodes.find(n => n.id === logModalNodeId);
   if (!node) { closeLogModal(); return; }
-  node.type = 'log';
-  node.log_schema = schema;
-  node.last_modified = new Date().toISOString();
+  node.type            = 'log';
+  node.log_schema      = schema;
+  node.log_title_field = titleField || null;
+  node.last_modified   = new Date().toISOString();
   saveSession();
   closeLogModal();
   showToast('📋 Log schema saved');
@@ -7654,7 +7713,7 @@ const toggleMenu = () => document.getElementById('menuDropdown').classList.toggl
 const closeMenu  = () => document.getElementById('menuDropdown').classList.remove('open');
 
 // ─── INIT ───────────────────────────────────────────────────────────────────
-const BUILD_TS = 'build:2026-03-28T23:40'; // bumped each deploy — confirms fresh load
+const BUILD_TS = 'build:2026-03-29T00:10'; // bumped each deploy — confirms fresh load
 
 async function initApp() {
   // Show immediately with localStorage data
@@ -7888,8 +7947,9 @@ document.addEventListener('DOMContentLoaded', () => {
   });
   document.getElementById('logAddFieldBtn').addEventListener('click', () => {
     const cur = _readLogModalSchema();
+    const curTitle = _readLogModalTitleField();
     cur.push({ key: '', label: '', type: 'text' });
-    _renderLogModalFields(cur);
+    _renderLogModalFields(cur, curTitle);
   });
   // Calendar navigation
   document.getElementById('calPrevBtn').addEventListener('click', () => {
