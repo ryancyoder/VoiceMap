@@ -3428,14 +3428,15 @@ function addNode(parsed, transcript) {
   const nodeId = makeId();
 
   session.nodes.push({
-    id:            nodeId,
-    label:         parsed.label   || transcript.slice(0, 50),
-    summary:       parsed.summary || transcript,
+    id:               nodeId,
+    label:            parsed.label   || transcript.slice(0, 50),
+    summary:          parsed.summary || transcript,
     transcript,
-    parent_id:     parentId,
-    status:        'untouched',
-    created:       now,
-    last_modified: now
+    parent_id:        parentId,
+    status:           'untouched',
+    needs_scheduling: calVisible ? true : undefined,
+    created:          now,
+    last_modified:    now
   });
 
   const listItems = Array.isArray(parsed.children) ? parsed.children.filter(Boolean) : [];
@@ -3452,7 +3453,7 @@ function addNode(parsed, transcript) {
     });
   });
 
-  renderCards();
+  if (calVisible) renderCalendar(); else renderCards();
 
   if (listItems.length) {
     showToast(`Added "${parsed.label}" + ${listItems.length} items`);
@@ -6626,7 +6627,7 @@ const toggleMenu = () => document.getElementById('menuDropdown').classList.toggl
 const closeMenu  = () => document.getElementById('menuDropdown').classList.remove('open');
 
 // ─── INIT ───────────────────────────────────────────────────────────────────
-const BUILD_TS = 'build:2026-03-28T09:00'; // bumped each deploy — confirms fresh load
+const BUILD_TS = 'build:2026-03-28T10:00'; // bumped each deploy — confirms fresh load
 
 async function initApp() {
   // Show immediately with localStorage data
