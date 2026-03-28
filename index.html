@@ -1589,11 +1589,15 @@
     .cal-swim-body  {
       background: rgba(255,255,255,0.55);
       padding: 3px 4px; display: flex; flex-direction: column; gap: 3px;
-      min-height: 28px;
     }
-    .cal-swim-empty {
-      font-size: 9px; color: var(--muted); padding: 4px 2px;
-      font-style: italic; text-align: center;
+    .cal-swim-slot  {
+      border-radius: 7px; padding: 5px 6px; font-size: 11px;
+      line-height: 1.3; min-height: 24px; box-sizing: border-box;
+    }
+    .cal-swim-slot.open {
+      border: 1px dashed; opacity: 0.45;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 9px; font-style: italic; color: inherit;
     }
     .cal-day-unassigned {
       display: flex; flex-direction: column; gap: 4px;
@@ -6234,26 +6238,51 @@ function renderCalendarWeek() {
       body.className = 'cal-swim-body';
       body.dataset.calDate = iso;
 
+      // Capacity = how many tasks fit per slot
+      const blockMins = tbParseTime(block.tb_end_time) - tbParseTime(block.tb_start_time);
+      const avgMins   = block.tb_avg_task_minutes || 60;
+      const capacity  = Math.max(1, Math.floor(blockMins / avgMins));
+
       const laneNodes = nodes.filter(({ node }) => node.parent_id === block.id);
-      if (laneNodes.length === 0) {
-        const empty = document.createElement('div');
-        empty.className = 'cal-swim-empty';
-        empty.textContent = 'open';
-        body.appendChild(empty);
-      } else {
-        laneNodes.forEach(({ node, kind }) => {
-          placed.add(node.id);
+
+      // Always render exactly `capacity` rows so all days have the same lane height
+      for (let s = 0; s < capacity; s++) {
+        const entry = laneNodes[s];
+        if (entry) {
+          placed.add(entry.node.id);
           const card = document.createElement('div');
-          card.className = 'cal-card' + (node.status === 'done' ? ' status-done' : '') +
-                           (kind === 'deferred' ? ' cal-card-deferred' : '');
+          card.className = 'cal-swim-slot cal-card' +
+                           (entry.node.status === 'done' ? ' status-done' : '') +
+                           (entry.kind === 'deferred' ? ' cal-card-deferred' : '');
           card.style.borderLeftColor = color;
           card.style.borderLeftWidth = '3px';
-          card.dataset.calCardId = node.id;
-          card.dataset.calKind   = kind;
-          card.textContent = (kind === 'deferred' ? '⏳ ' : '') + node.label;
+          card.dataset.calCardId = entry.node.id;
+          card.dataset.calKind   = entry.kind;
+          card.textContent = (entry.kind === 'deferred' ? '⏳ ' : '') + entry.node.label;
           body.appendChild(card);
-        });
+        } else {
+          const slot = document.createElement('div');
+          slot.className = 'cal-swim-slot open';
+          slot.style.borderColor = color;
+          slot.style.color       = color;
+          slot.textContent = 'open';
+          body.appendChild(slot);
+        }
       }
+      // Any overflow cards beyond capacity (edge case) still shown
+      laneNodes.slice(capacity).forEach(({ node, kind }) => {
+        placed.add(node.id);
+        const card = document.createElement('div');
+        card.className = 'cal-swim-slot cal-card' +
+                         (node.status === 'done' ? ' status-done' : '');
+        card.style.borderLeftColor = color;
+        card.style.borderLeftWidth = '3px';
+        card.dataset.calCardId = node.id;
+        card.dataset.calKind   = kind;
+        card.textContent = node.label;
+        body.appendChild(card);
+      });
+
       lane.appendChild(body);
       cards.appendChild(lane);
     });
@@ -7134,7 +7163,7 @@ const toggleMenu = () => document.getElementById('menuDropdown').classList.toggl
 const closeMenu  = () => document.getElementById('menuDropdown').classList.remove('open');
 
 // ─── INIT ───────────────────────────────────────────────────────────────────
-const BUILD_TS = 'build:2026-03-28T18:00'; // bumped each deploy — confirms fresh load
+const BUILD_TS = 'build:2026-03-28T19:00'; // bumped each deploy — confirms fresh load
 
 async function initApp() {
   // Show immediately with localStorage data
