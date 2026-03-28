@@ -1680,6 +1680,44 @@
                        border: 1px solid var(--border); cursor: pointer;
                        background: var(--bg); color: var(--muted); user-select: none; }
     .tb-day-chip.on  { background: var(--accent); color: #fff; border-color: var(--accent); }
+
+    /* ── TABLE LOG VIEW ─────────────────────────────────────────────── */
+    #tableView                { flex: 1; display: flex; flex-direction: column; min-height: 0; overflow: hidden; }
+    #tableView.hidden         { display: none; }
+    .tbl-log-bar              { display: flex; gap: 6px; padding: 8px 12px; overflow-x: auto; flex-shrink: 0;
+                                 border-bottom: 0.5px solid var(--border); background: var(--bg); }
+    .tbl-log-chip             { padding: 5px 12px; border-radius: 20px; font-size: 12px; font-weight: 600;
+                                 border: 1px solid var(--border); cursor: pointer; white-space: nowrap;
+                                 background: var(--card-bg); color: var(--text); }
+    .tbl-log-chip.active      { background: var(--accent); color: #fff; border-color: var(--accent); }
+    .tbl-wrap                 { flex: 1; overflow: auto; min-height: 0; }
+    .tbl-table                { width: 100%; border-collapse: collapse; font-size: 13px; }
+    .tbl-table th             { position: sticky; top: 0; background: var(--card-bg); padding: 8px 10px;
+                                 text-align: left; font-size: 11px; font-weight: 700; text-transform: uppercase;
+                                 letter-spacing: 0.4px; color: var(--muted); border-bottom: 1px solid var(--border);
+                                 white-space: nowrap; z-index: 2; }
+    .tbl-table td             { padding: 7px 10px; border-bottom: 0.5px solid var(--border);
+                                 vertical-align: middle; }
+    .tbl-table tr:hover td    { background: rgba(0,0,0,0.03); }
+    .tbl-cell-edit            { min-width: 60px; cursor: pointer; border-radius: 4px; padding: 2px 4px; }
+    .tbl-cell-edit:hover      { background: var(--border); }
+    .tbl-cell-input           { background: var(--card-bg); border: 1px solid var(--accent);
+                                 border-radius: 4px; padding: 2px 6px; font-size: 13px; color: var(--text);
+                                 width: 100%; min-width: 60px; }
+    .tbl-add-row-btn          { margin: 10px 12px; padding: 7px 16px; border-radius: 8px;
+                                 background: var(--accent); color: #fff; font-size: 13px; font-weight: 600;
+                                 border: none; cursor: pointer; }
+    .tbl-empty                { padding: 40px; text-align: center; color: var(--muted); font-size: 14px; }
+    /* Log schema modal */
+    .log-field-row            { display: flex; gap: 8px; align-items: center; margin-bottom: 8px; }
+    .log-field-row input,
+    .log-field-row select     { flex: 1; background: var(--card-bg); border: 1px solid var(--border);
+                                 border-radius: 6px; padding: 6px 8px; font-size: 13px; color: var(--text); }
+    .log-field-row .del-field { padding: 4px 8px; border-radius: 6px; background: rgba(255,69,58,0.12);
+                                 color: var(--accent); border: none; font-size: 14px; cursor: pointer; }
+    .log-add-field-btn        { padding: 6px 14px; border-radius: 8px; background: var(--border);
+                                 color: var(--text); font-size: 13px; border: none; cursor: pointer;
+                                 margin-top: 4px; }
   </style>
 </head>
 <body>
@@ -1718,6 +1756,7 @@
     <button class="view-tab" id="tabMap">🗺 Map</button>
     <button class="view-tab" id="tabBoard">⊞ Board</button>
     <button class="view-tab" id="tabCal">📅 Week</button>
+    <button class="view-tab" id="tabTable">📋 Table</button>
   </div>
 
   <!-- Card-view filter pills -->
@@ -1770,6 +1809,30 @@
       <button class="cal-today-btn" id="tbBadgeToggle">Count</button>
     </div>
     <div class="tb-grid-wrap" id="tbGridWrap"></div>
+  </div>
+
+  <!-- Table Log view -->
+  <div id="tableView" class="hidden">
+    <div class="tbl-log-bar" id="tblLogBar">
+      <span style="font-size:12px;color:var(--muted);align-self:center;flex-shrink:0">Log:</span>
+    </div>
+    <div class="tbl-wrap" id="tblWrap">
+      <div class="tbl-empty" id="tblEmpty">No log nodes found.<br>Right-click a card and choose "Define as log" to get started.</div>
+    </div>
+  </div>
+
+  <!-- Log schema modal -->
+  <div class="modal-overlay hidden" id="logModal">
+    <div class="modal-sheet" style="max-width:420px">
+      <div class="modal-title">📋 Define Log Schema</div>
+      <div class="modal-desc">This card becomes a log table. Child cards will have the fields below as structured columns.</div>
+      <div style="font-size:11px;color:var(--muted);margin-bottom:6px;font-weight:700;text-transform:uppercase">Fields</div>
+      <div id="logFieldsList"></div>
+      <button class="log-add-field-btn" id="logAddFieldBtn">+ Add field</button>
+      <div style="height:16px"></div>
+      <button class="modal-save" id="logSaveBtn">Save Schema</button>
+      <button class="modal-save" id="logCancelBtn" style="background:#6b7280;margin-top:8px">Cancel</button>
+    </div>
   </div>
 
   <!-- Schedule modal -->
@@ -3552,6 +3615,7 @@ function addNode(parsed, transcript) {
 
   saveSession();
   _maybeRescheduleTb(parentId);
+  _maybeInitLogRow(parentId, nodeId);
 
   if (calVisible) renderCalendar(); else renderCards();
 
@@ -3603,6 +3667,7 @@ function addKeyboardNode(text) {
   });
   saveSession();
   _maybeRescheduleTb(ctx.id);
+  _maybeInitLogRow(ctx.id, nodeId);
   renderCards();
   showToast(`Added: "${text.slice(0, 40)}"`);
 }
@@ -4744,9 +4809,10 @@ function mmStartRecording() {
 }
 
 function showMindMap() {
-  if (kbVisible)  hideKanban();
-  if (calVisible) hideCalendar();
-  if (tbVisible)  hideTimeBlockView();
+  if (kbVisible)     hideKanban();
+  if (calVisible)    hideCalendar();
+  if (tbVisible)     hideTimeBlockView();
+  if (tableVisible)  hideTableView();
   mmVisible = true;
   setViewTab('map');
   mmTransform = { x: 40, y: 40, scale: 1 };
@@ -6061,6 +6127,7 @@ function initNodeCtxMenu() {
   document.getElementById('ctxQueue').addEventListener('click',       () => { closeNodeCtxMenu(); queueNode(getCtxNode()); });
   document.getElementById('ctxTimeBlock').addEventListener('click',   () => { closeNodeCtxMenu(); openTbModal(getCtxNode()); });
   document.getElementById('ctxTaskMinutes').addEventListener('click', () => { closeNodeCtxMenu(); setTaskMinutes(getCtxNode()); });
+  document.getElementById('ctxDefineLog').addEventListener('click',   () => { closeNodeCtxMenu(); openLogModal(getCtxNode()); });
   document.getElementById('ctxEditTitle').addEventListener('click',   () => { closeNodeCtxMenu(); startEditField(getCtxNode(), 'label'); });
   document.getElementById('ctxEditDesc').addEventListener('click',  () => { closeNodeCtxMenu(); startEditField(getCtxNode(), 'summary'); });
   document.getElementById('ctxDraw').addEventListener('click',        () => { closeNodeCtxMenu(); openDrawModal(getCtxNode()); });
@@ -6119,9 +6186,10 @@ function toISODate(date) {
 }
 
 function showCalendar() {
-  if (mmVisible)  hideMindMap();
-  if (kbVisible)  hideKanban();
-  if (tbVisible)  hideTimeBlockView();
+  if (mmVisible)     hideMindMap();
+  if (kbVisible)     hideKanban();
+  if (tbVisible)     hideTimeBlockView();
+  if (tableVisible)  hideTableView();
   calVisible = true;
   if (!calWeekStart) calWeekStart = getWeekMonday(new Date());
   document.getElementById('cardScroll').style.display = 'none';
@@ -6737,9 +6805,10 @@ function tbConflicts(a, b) {
 }
 
 function showTimeBlockView() {
-  if (mmVisible)  hideMindMap();
-  if (kbVisible)  hideKanban();
-  if (calVisible) hideCalendar();
+  if (mmVisible)     hideMindMap();
+  if (kbVisible)     hideKanban();
+  if (calVisible)    hideCalendar();
+  if (tableVisible)  hideTableView();
   tbVisible = true;
   document.getElementById('cardScroll').style.display = 'none';
   document.getElementById('tbView').classList.remove('hidden');
@@ -6945,24 +7014,347 @@ function setTaskMinutes(nodeId) {
   setTimeout(() => document.getElementById('editFieldInput').focus(), 50);
 }
 
+// ─── TABLE LOG ───────────────────────────────────────────────────────────────
+let tableVisible  = false;
+let tableLogId    = null;   // currently selected log node id
+let logModalNodeId = null;
+
+function showTableView() {
+  if (mmVisible)  hideMindMap();
+  if (kbVisible)  hideKanban();
+  if (calVisible) hideCalendar();
+  if (tbVisible)  hideTimeBlockView();
+  tableVisible = true;
+  document.getElementById('cardScroll').style.display = 'none';
+  document.getElementById('tableView').classList.remove('hidden');
+  setViewTab('table');
+  renderTableView();
+}
+
+function hideTableView() {
+  tableVisible = false;
+  document.getElementById('tableView').classList.add('hidden');
+  document.getElementById('cardScroll').style.display = '';
+  setViewTab('cards');
+  renderCards();
+}
+
+function renderTableView() {
+  if (!tableVisible) return;
+
+  // Gather all log nodes
+  const logNodes = session.nodes.filter(n => n.type === 'log' && !n.archived);
+
+  // Build chip bar
+  const bar = document.getElementById('tblLogBar');
+  bar.innerHTML = '<span style="font-size:12px;color:var(--muted);align-self:center;flex-shrink:0">Log:</span>';
+  if (logNodes.length === 0) {
+    document.getElementById('tblWrap').innerHTML =
+      '<div class="tbl-empty">No log nodes found.<br>Right-click a card and choose "📋 Define as log" to get started.</div>';
+    return;
+  }
+
+  // If current tableLogId is gone, reset
+  if (!tableLogId || !logNodes.find(n => n.id === tableLogId)) {
+    tableLogId = logNodes[0].id;
+  }
+
+  logNodes.forEach(n => {
+    const chip = document.createElement('button');
+    chip.className = 'tbl-log-chip' + (n.id === tableLogId ? ' active' : '');
+    chip.textContent = n.label;
+    chip.addEventListener('click', () => { tableLogId = n.id; renderTableView(); });
+    bar.appendChild(chip);
+  });
+
+  const logNode = session.nodes.find(n => n.id === tableLogId);
+  if (!logNode) return;
+  const schema = logNode.log_schema || [];
+  const rows = session.nodes.filter(n => n.parent_id === tableLogId && !n.archived);
+
+  // Sort: if schema has a 'date' field, sort by that; else by created desc
+  const dateField = schema.find(f => f.type === 'date');
+  rows.sort((a, b) => {
+    if (dateField) {
+      const av = (a.log_fields || {})[dateField.key] || '';
+      const bv = (b.log_fields || {})[dateField.key] || '';
+      return bv.localeCompare(av);
+    }
+    return (b.created || '').localeCompare(a.created || '');
+  });
+
+  const wrap = document.getElementById('tblWrap');
+  wrap.innerHTML = '';
+
+  const table = document.createElement('table');
+  table.className = 'tbl-table';
+
+  // Header
+  const thead = document.createElement('thead');
+  const htr = document.createElement('tr');
+  // Node label column
+  const thLabel = document.createElement('th');
+  thLabel.textContent = 'Title';
+  htr.appendChild(thLabel);
+  // Custom schema columns
+  schema.forEach(f => {
+    const th = document.createElement('th');
+    th.textContent = f.label;
+    htr.appendChild(th);
+  });
+  thead.appendChild(htr);
+  table.appendChild(thead);
+
+  // Body
+  const tbody = document.createElement('tbody');
+  rows.forEach(row => {
+    const tr = document.createElement('tr');
+    // Title cell
+    const tdLabel = document.createElement('td');
+    tdLabel.appendChild(_tblEditCell(row.id, '__label__', 'text', row.label));
+    tr.appendChild(tdLabel);
+    // Field cells
+    schema.forEach(f => {
+      const td = document.createElement('td');
+      const val = (row.log_fields || {})[f.key];
+      td.appendChild(_tblEditCell(row.id, f.key, f.type, val != null ? val : ''));
+      tr.appendChild(td);
+    });
+    tbody.appendChild(tr);
+  });
+  table.appendChild(tbody);
+  wrap.appendChild(table);
+
+  // Add row button
+  const addBtn = document.createElement('button');
+  addBtn.className = 'tbl-add-row-btn';
+  addBtn.textContent = '+ Add row';
+  addBtn.addEventListener('click', () => _addLogRow(tableLogId));
+  wrap.appendChild(addBtn);
+}
+
+function _tblEditCell(nodeId, fieldKey, fieldType, currentVal) {
+  const span = document.createElement('span');
+  span.className = 'tbl-cell-edit';
+
+  function displayVal(v) {
+    if (v === null || v === undefined || v === '') return '—';
+    if (fieldType === 'boolean') return v ? '✓' : '✗';
+    return String(v);
+  }
+
+  span.textContent = displayVal(currentVal);
+
+  span.addEventListener('click', () => {
+    if (span.querySelector('input,select')) return; // already editing
+    span.textContent = '';
+
+    if (fieldType === 'boolean') {
+      // Toggle immediately
+      const node = session.nodes.find(n => n.id === nodeId);
+      if (!node) return;
+      if (fieldKey === '__label__') return;
+      if (!node.log_fields) node.log_fields = {};
+      node.log_fields[fieldKey] = !node.log_fields[fieldKey];
+      node.last_modified = new Date().toISOString();
+      saveSession();
+      span.textContent = displayVal(node.log_fields[fieldKey]);
+      return;
+    }
+
+    const input = document.createElement('input');
+    input.className = 'tbl-cell-input';
+    input.type = fieldType === 'number' ? 'number' : fieldType === 'date' ? 'date' : 'text';
+    input.value = currentVal !== null && currentVal !== undefined ? String(currentVal) : '';
+    span.appendChild(input);
+    input.focus();
+
+    function commit() {
+      const raw = input.value.trim();
+      const node = session.nodes.find(n => n.id === nodeId);
+      if (node) {
+        if (fieldKey === '__label__') {
+          node.label = raw || node.label;
+        } else {
+          if (!node.log_fields) node.log_fields = {};
+          node.log_fields[fieldKey] = fieldType === 'number' ? (raw === '' ? '' : Number(raw)) : raw;
+        }
+        node.last_modified = new Date().toISOString();
+        saveSession();
+      }
+      const newVal = fieldKey === '__label__' ? (node ? node.label : raw) : (node ? (node.log_fields || {})[fieldKey] : raw);
+      span.textContent = displayVal(newVal);
+    }
+
+    input.addEventListener('blur', commit);
+    input.addEventListener('keydown', e => {
+      if (e.key === 'Enter') { input.blur(); }
+      if (e.key === 'Escape') {
+        span.textContent = displayVal(currentVal);
+        e.preventDefault();
+      }
+    });
+  });
+
+  return span;
+}
+
+function _addLogRow(logId) {
+  const logNode = session.nodes.find(n => n.id === logId && n.type === 'log');
+  if (!logNode) return;
+  const schema = logNode.log_schema || [];
+  const now = new Date().toISOString();
+  const fields = {};
+  schema.forEach(f => {
+    if (f.type === 'date') fields[f.key] = toISODate(new Date());
+    else if (f.type === 'number') fields[f.key] = '';
+    else if (f.type === 'boolean') fields[f.key] = false;
+    else fields[f.key] = '';
+  });
+  session.nodes.push({
+    id:            makeId(),
+    label:         'New entry',
+    summary:       '',
+    transcript:    '',
+    parent_id:     logId,
+    status:        'untouched',
+    log_fields:    fields,
+    created:       now,
+    last_modified: now
+  });
+  saveSession();
+  renderTableView();
+}
+
+function _maybeInitLogRow(parentId, nodeId) {
+  if (!parentId) return;
+  const parent = session.nodes.find(n => n.id === parentId && n.type === 'log');
+  if (!parent) return;
+  const schema = parent.log_schema || [];
+  if (!schema.length) return;
+  const node = session.nodes.find(n => n.id === nodeId);
+  if (!node) return;
+  if (!node.log_fields) node.log_fields = {};
+  schema.forEach(f => {
+    if (!(f.key in node.log_fields)) {
+      if (f.type === 'date')    node.log_fields[f.key] = toISODate(new Date());
+      else if (f.type === 'number')  node.log_fields[f.key] = '';
+      else if (f.type === 'boolean') node.log_fields[f.key] = false;
+      else node.log_fields[f.key] = '';
+    }
+  });
+}
+
+// ── Log Schema Modal ─────────────────────────────────────────────────────────
+function openLogModal(nodeId) {
+  logModalNodeId = nodeId;
+  const node = session.nodes.find(n => n.id === nodeId);
+  if (!node) return;
+  _renderLogModalFields(node.log_schema || []);
+  document.getElementById('logModal').classList.remove('hidden');
+}
+
+function closeLogModal() {
+  document.getElementById('logModal').classList.add('hidden');
+  logModalNodeId = null;
+}
+
+function _renderLogModalFields(schema) {
+  const list = document.getElementById('logFieldsList');
+  list.innerHTML = '';
+  schema.forEach((f, idx) => {
+    const row = document.createElement('div');
+    row.className = 'log-field-row';
+
+    const keyInput = document.createElement('input');
+    keyInput.type = 'text';
+    keyInput.placeholder = 'key (no spaces)';
+    keyInput.value = f.key || '';
+    keyInput.dataset.idx = idx;
+    keyInput.dataset.prop = 'key';
+
+    const labelInput = document.createElement('input');
+    labelInput.type = 'text';
+    labelInput.placeholder = 'Label';
+    labelInput.value = f.label || '';
+    labelInput.dataset.idx = idx;
+    labelInput.dataset.prop = 'label';
+
+    const typeSelect = document.createElement('select');
+    ['text','number','date','boolean'].forEach(t => {
+      const opt = document.createElement('option');
+      opt.value = t; opt.textContent = t;
+      if (t === f.type) opt.selected = true;
+      typeSelect.appendChild(opt);
+    });
+    typeSelect.dataset.idx = idx;
+    typeSelect.dataset.prop = 'type';
+
+    const delBtn = document.createElement('button');
+    delBtn.className = 'del-field';
+    delBtn.textContent = '✕';
+    delBtn.addEventListener('click', () => {
+      const cur = _readLogModalSchema();
+      cur.splice(idx, 1);
+      _renderLogModalFields(cur);
+    });
+
+    row.appendChild(keyInput);
+    row.appendChild(labelInput);
+    row.appendChild(typeSelect);
+    row.appendChild(delBtn);
+    list.appendChild(row);
+  });
+}
+
+function _readLogModalSchema() {
+  const list = document.getElementById('logFieldsList');
+  const schema = [];
+  list.querySelectorAll('.log-field-row').forEach(row => {
+    const key   = row.querySelectorAll('input')[0].value.replace(/\s+/g,'_').toLowerCase();
+    const label = row.querySelectorAll('input')[1].value;
+    const type  = row.querySelector('select').value;
+    if (key) schema.push({ key, label: label || key, type });
+  });
+  return schema;
+}
+
+function saveLogModal() {
+  const schema = _readLogModalSchema();
+  const node = session.nodes.find(n => n.id === logModalNodeId);
+  if (!node) { closeLogModal(); return; }
+  node.type = 'log';
+  node.log_schema = schema;
+  node.last_modified = new Date().toISOString();
+  saveSession();
+  closeLogModal();
+  showToast('📋 Log schema saved');
+  if (tableVisible) renderTableView();
+}
+
 // ─── KANBAN BOARD ───────────────────────────────────────────────────────────
 let kbDragState = null;
 
 function setViewTab(tab) {
-  // tab: 'cards' | 'map' | 'board' | 'calendar' | 'tb'
+  // tab: 'cards' | 'map' | 'board' | 'calendar' | 'tb' | 'table'
   document.getElementById('tabCards').classList.toggle('active',  tab === 'cards');
   document.getElementById('tabMap').classList.toggle('active',    tab === 'map');
   document.getElementById('tabBoard').classList.toggle('active',  tab === 'board');
+  document.getElementById('tabTable').classList.toggle('active',  tab === 'table');
   const calTab = document.getElementById('tabCal');
   calTab.classList.toggle('active', tab === 'calendar' || tab === 'tb');
   calTab.textContent = tab === 'tb' ? '⏱ Blocks' : '📅 Week';
   document.getElementById('cardFilterBar').style.display = (tab === 'cards') ? '' : 'none';
+  // Sync inner map tab bar
+  const mmTbl = document.getElementById('mmTabTable');
+  if (mmTbl) mmTbl.classList.toggle('active', tab === 'table');
 }
 
 function showKanban() {
-  if (mmVisible)  hideMindMap();
-  if (calVisible) hideCalendar();
-  if (tbVisible)  hideTimeBlockView();
+  if (mmVisible)     hideMindMap();
+  if (calVisible)    hideCalendar();
+  if (tbVisible)     hideTimeBlockView();
+  if (tableVisible)  hideTableView();
   kbVisible = true;
   document.getElementById('cardScroll').style.display = 'none';
   document.getElementById('kbView').classList.remove('hidden');
@@ -7163,7 +7555,7 @@ const toggleMenu = () => document.getElementById('menuDropdown').classList.toggl
 const closeMenu  = () => document.getElementById('menuDropdown').classList.remove('open');
 
 // ─── INIT ───────────────────────────────────────────────────────────────────
-const BUILD_TS = 'build:2026-03-28T20:00'; // bumped each deploy — confirms fresh load
+const BUILD_TS = 'build:2026-03-28T21:30'; // bumped each deploy — confirms fresh load
 
 async function initApp() {
   // Show immediately with localStorage data
@@ -7379,6 +7771,23 @@ document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('tbCancelBtn').addEventListener('click', closeTbModal);
   document.getElementById('tbModal').addEventListener('click', e => {
     if (e.target === document.getElementById('tbModal')) closeTbModal();
+  });
+  // Table view
+  document.getElementById('tabTable').addEventListener('click', () => {
+    if (!tableVisible) showTableView(); else hideTableView();
+  });
+  document.getElementById('mmTabTable').addEventListener('click', () => {
+    hideMindMap(); showTableView();
+  });
+  document.getElementById('logSaveBtn').addEventListener('click', saveLogModal);
+  document.getElementById('logCancelBtn').addEventListener('click', closeLogModal);
+  document.getElementById('logModal').addEventListener('click', e => {
+    if (e.target === document.getElementById('logModal')) closeLogModal();
+  });
+  document.getElementById('logAddFieldBtn').addEventListener('click', () => {
+    const cur = _readLogModalSchema();
+    cur.push({ key: '', label: '', type: 'text' });
+    _renderLogModalFields(cur);
   });
   // Calendar navigation
   document.getElementById('calPrevBtn').addEventListener('click', () => {
@@ -7769,6 +8178,7 @@ document.addEventListener('DOMContentLoaded', () => {
       <button class="view-tab active" id="mmTabMap">🗺 Map</button>
       <button class="view-tab" id="mmKbBtn">⊞ Board</button>
       <button class="view-tab" id="mmTabCal">📅 Week</button>
+      <button class="view-tab" id="mmTabTable">📋 Table</button>
     </div>
     <div class="mm-focus-bar" id="mmFocusBar">
       <span>🔍 Focused:</span>
@@ -7878,6 +8288,7 @@ document.addEventListener('DOMContentLoaded', () => {
   <button class="node-ctx-item" id="ctxQueue">📋 Queue for scheduling</button>
   <button class="node-ctx-item" id="ctxTimeBlock">⏱ Make time block</button>
   <button class="node-ctx-item" id="ctxTaskMinutes">⏱ Set time estimate</button>
+  <button class="node-ctx-item" id="ctxDefineLog">📋 Define as log</button>
   <button class="node-ctx-item" id="ctxEditTitle">✎ Edit Title</button>
   <button class="node-ctx-item" id="ctxEditDesc">📝 Edit Description</button>
   <button class="node-ctx-item" id="ctxDraw">✏ Sketch / Annotate</button>
