@@ -3617,7 +3617,7 @@ function addNode(parsed, transcript) {
   _maybeRescheduleTb(parentId);
   _maybeInitLogRow(parentId, nodeId);
 
-  if (calVisible) renderCalendar(); else renderCards();
+  if (calVisible) renderCalendar(); else if (tableVisible) renderTableView(); else renderCards();
 
   if (listItems.length) {
     showToast(`Added "${parsed.label}" + ${listItems.length} items`);
@@ -3668,7 +3668,7 @@ function addKeyboardNode(text) {
   saveSession();
   _maybeRescheduleTb(ctx.id);
   _maybeInitLogRow(ctx.id, nodeId);
-  renderCards();
+  if (tableVisible) renderTableView(); else renderCards();
   showToast(`Added: "${text.slice(0, 40)}"`);
 }
 
@@ -7555,7 +7555,7 @@ const toggleMenu = () => document.getElementById('menuDropdown').classList.toggl
 const closeMenu  = () => document.getElementById('menuDropdown').classList.remove('open');
 
 // ─── INIT ───────────────────────────────────────────────────────────────────
-const BUILD_TS = 'build:2026-03-28T21:30'; // bumped each deploy — confirms fresh load
+const BUILD_TS = 'build:2026-03-28T21:45'; // bumped each deploy — confirms fresh load
 
 async function initApp() {
   // Show immediately with localStorage data
