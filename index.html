@@ -2288,6 +2288,8 @@ const PROMPT_LOG_MAX = 100;
 // ─── HELPERS ────────────────────────────────────────────────────────────────
 const currentCtx      = ()   => navStack[navStack.length - 1];
 const currentParentId = ()   => currentCtx().id;
+// When table view is active, new nodes belong to the focused log, not the nav context
+const activeParentId  = ()   => (tableVisible && tableLogId) ? tableLogId : currentParentId();
 const childrenOf      = (id) => session.nodes.filter(n => n.parent_id === id);
 const esc = str =>
   String(str ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
@@ -3522,7 +3524,8 @@ Return JSON: {"summary": "<improved summary>"}`;
   // ── Log-context injection ────────────────────────────────────────────────
   // If we are inside a log node, tell Claude about the schema so it can
   // populate the structured fields from the transcript.
-  const logParent = ctx.id ? session.nodes.find(n => n.id === ctx.id && n.type === 'log') : null;
+  const logContextId = tableVisible && tableLogId ? tableLogId : ctx.id;
+  const logParent = logContextId ? session.nodes.find(n => n.id === logContextId && n.type === 'log') : null;
   const logSchema = logParent?.log_schema || [];
   let logSchemaHint = '';
   if (logSchema.length) {
@@ -3592,7 +3595,10 @@ function addNode(parsed, transcript) {
   const ctx = currentCtx();
 
   let parentId = ctx.id;
-  if (navStack.length === 1) {
+  if (tableVisible && tableLogId) {
+    // Table view: always add under the active log node
+    parentId = tableLogId;
+  } else if (navStack.length === 1) {
     // At home — respect Claude's relationship choice
     if (parsed.relationship === R.SIBLING || parsed.relationship === R.ROOT) parentId = null;
   }
@@ -3666,22 +3672,23 @@ function setKeyboardMode(on) {
 
 function addKeyboardNode(text) {
   // Direct insert — no AI, typed text becomes the card as-is
-  const now    = new Date().toISOString();
-  const ctx    = currentCtx();
-  const nodeId = makeId();
+  const now      = new Date().toISOString();
+  const ctx      = currentCtx();
+  const nodeId   = makeId();
+  const parentId = activeParentId();
   session.nodes.push({
     id:            nodeId,
     label:         text.slice(0, 60),
     summary:       text,
     transcript:    text,
-    parent_id:     ctx.id,
+    parent_id:     parentId,
     status:        'untouched',
     created:       now,
     last_modified: now
   });
   saveSession();
-  _maybeRescheduleTb(ctx.id);
-  _maybeInitLogRow(ctx.id, nodeId);
+  _maybeRescheduleTb(parentId);
+  _maybeInitLogRow(parentId, nodeId);
   if (tableVisible) renderTableView(); else renderCards();
   showToast(`Added: "${text.slice(0, 40)}"`);
 }
@@ -3760,12 +3767,12 @@ async function pasteAsNode() {
   const label   = lines[0].trim().slice(0, 60);
   const summary = lines.slice(1).join('\n').trim();
 
-  // Determine parent: map context takes priority, then card nav stack
+  // Determine parent: map context takes priority, then table log, then card nav stack
   let parentId;
   if (mmVisible) {
     parentId = mmSelectedId || mmFocusNodeId || null;
   } else {
-    parentId = currentCtx().id;
+    parentId = activeParentId();
   }
 
   const now    = new Date().toISOString();
@@ -4043,7 +4050,7 @@ async function skipImageDescription() {
 
   const nodeId   = makeId();
   const now      = new Date().toISOString();
-  const skipPid  = currentParentId();
+  const skipPid  = activeParentId();
   const node     = {
     id: nodeId, type: 'image', label: 'Photo', summary: '',
     transcript: '', parent_id: skipPid,
@@ -4052,13 +4059,13 @@ async function skipImageDescription() {
   session.nodes.push(node);
   _maybeInitLogRow(skipPid, nodeId);
   await saveImageToDB(nodeId, dataUrl);
-  renderCards();
+  if (tableVisible) renderTableView(); else renderCards();
   showToast('Analyzing photo…');
 
   let visionError = null;
   try {
     const base64     = dataUrl.split(',')[1];
-    const parentNode = currentParentId() ? session.nodes.find(n => n.id === currentParentId()) : null;
+    const parentNode = skipPid ? session.nodes.find(n => n.id === skipPid) : null;
     const logSchema  = (parentNode?.type === 'log') ? (parentNode.log_schema || []) : [];
     const logHint    = logSchema.length
       ? '\n\nThis image will be a row in a structured log. If you can read field values from the image, include a "log_fields" object in your JSON response.\n' +
@@ -4157,7 +4164,7 @@ async function skipImageDescription() {
             ? `"${cards[0].label}" + ${childCount} child note${childCount !== 1 ? 's' : ''}`
             : `${cards.length} sticky notes found`);
         }
-        renderCards();
+        if (tableVisible) renderTableView(); else renderCards();
         saveSession();
       } else {
         visionError = 'Could not parse vision response';
@@ -7639,7 +7646,7 @@ const toggleMenu = () => document.getElementById('menuDropdown').classList.toggl
 const closeMenu  = () => document.getElementById('menuDropdown').classList.remove('open');
 
 // ─── INIT ───────────────────────────────────────────────────────────────────
-const BUILD_TS = 'build:2026-03-28T22:40'; // bumped each deploy — confirms fresh load
+const BUILD_TS = 'build:2026-03-28T23:00'; // bumped each deploy — confirms fresh load
 
 async function initApp() {
   // Show immediately with localStorage data
