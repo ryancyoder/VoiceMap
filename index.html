@@ -3519,10 +3519,25 @@ Return JSON: {"summary": "<improved summary>"}`;
     `\nTranscript: "${transcript}"`
   ].filter(Boolean).join('\n');
 
+  // ── Log-context injection ────────────────────────────────────────────────
+  // If we are inside a log node, tell Claude about the schema so it can
+  // populate the structured fields from the transcript.
+  const logParent = ctx.id ? session.nodes.find(n => n.id === ctx.id && n.type === 'log') : null;
+  const logSchema = logParent?.log_schema || [];
+  let logSchemaHint = '';
+  if (logSchema.length) {
+    const fieldDesc = logSchema.map(f => `  "${f.key}" (${f.type}): ${f.label}`).join('\n');
+    logSchemaHint = `\n\nThis card will be a row in a structured log. The log has these fields:\n${fieldDesc}\n` +
+      `Extract values for as many fields as possible from the transcript. ` +
+      `Add a "log_fields" object to your JSON with {key: value} pairs for each field you can fill. ` +
+      `Use ISO date (YYYY-MM-DD) for date fields. Use numbers (not strings) for number fields. ` +
+      `Use true/false for boolean fields. Omit fields you cannot confidently extract.`;
+  }
+
   let parsed;
   let claudeError = null;
   try {
-    const raw = await callClaude(userMsg, systemPrompt, '{', 'New card');
+    const raw = await callClaude(userMsg + logSchemaHint, systemPrompt, '{', 'New card');
     console.log('[VoiceMap] Claude raw response:', raw);
     parsed = extractJSON(raw);
     if (!parsed?.action) throw new Error('Bad JSON from Claude: ' + raw.slice(0, 120));
@@ -3595,6 +3610,7 @@ function addNode(parsed, transcript) {
     parent_id:        parentId,
     status:           'untouched',
     needs_scheduling: calVisible ? true : undefined,
+    log_fields:       (parsed.log_fields && typeof parsed.log_fields === 'object') ? parsed.log_fields : undefined,
     created:          now,
     last_modified:    now
   });
@@ -7555,7 +7571,7 @@ const toggleMenu = () => document.getElementById('menuDropdown').classList.toggl
 const closeMenu  = () => document.getElementById('menuDropdown').classList.remove('open');
 
 // ─── INIT ───────────────────────────────────────────────────────────────────
-const BUILD_TS = 'build:2026-03-28T21:45'; // bumped each deploy — confirms fresh load
+const BUILD_TS = 'build:2026-03-28T22:00'; // bumped each deploy — confirms fresh load
 
 async function initApp() {
   // Show immediately with localStorage data
