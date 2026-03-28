@@ -1739,12 +1739,9 @@
 
   <!-- Time Block view -->
   <div id="tbView" class="hidden">
-    <div class="cal-week-nav">
-      <button class="cal-nav-btn" id="tbPrevBtn">‹</button>
-      <span class="cal-week-label" id="tbWeekLabel"></span>
-      <button class="cal-nav-btn" id="tbNextBtn">›</button>
-      <button class="cal-today-btn" id="tbTodayBtn">Today</button>
-      <button class="cal-today-btn" id="tbBadgeToggle" style="margin-left:auto">Count</button>
+    <div class="cal-week-nav" style="justify-content:flex-end">
+      <span style="flex:1;font-size:12px;font-weight:600;color:var(--muted);padding-left:4px">Weekly Time Blocks</span>
+      <button class="cal-today-btn" id="tbBadgeToggle">Count</button>
     </div>
     <div class="tb-grid-wrap" id="tbGridWrap"></div>
   </div>
@@ -6513,9 +6510,8 @@ function onCalTouchCancel() {
 
 // ─── TIME BLOCKS ────────────────────────────────────────────────────────────
 
-let tbVisible     = false;
-let tbWeekStart   = null;
-let tbBadgeMode   = 'count'; // 'count' | 'hours'
+let tbVisible   = false;
+let tbBadgeMode = 'count'; // 'count' | 'hours'
 let tbModalNodeId = null;
 let pendingTaskMinutes = null; // { nodeId }
 
@@ -6602,7 +6598,6 @@ function showTimeBlockView() {
   if (kbVisible)  hideKanban();
   if (calVisible) hideCalendar();
   tbVisible = true;
-  if (!tbWeekStart) tbWeekStart = getWeekMonday(new Date());
   document.getElementById('cardScroll').style.display = 'none';
   document.getElementById('tbView').classList.remove('hidden');
   setViewTab('tb');
@@ -6620,21 +6615,17 @@ function hideTimeBlockView() {
 function renderTimeBlockView() {
   if (!tbVisible) return;
 
-  // Update week label
-  const weekEnd = new Date(tbWeekStart);
-  weekEnd.setDate(weekEnd.getDate() + 6);
-  const fmt = d => d.toLocaleDateString([], { month: 'short', day: 'numeric' });
-  document.getElementById('tbWeekLabel').textContent = fmt(tbWeekStart) + ' – ' + fmt(weekEnd);
-
   const wrap = document.getElementById('tbGridWrap');
   wrap.innerHTML = '';
 
-  const todayIso = toISODate(new Date());
+  // Fixed 7-day template: Sun=0 … Sat=6 but display Mon-Sun (JS days 1,2,3,4,5,6,0)
+  const displayOrder = [1,2,3,4,5,6,0]; // Mon…Sun
+  const displayNames = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
+  const todayJsDay   = new Date().getDay();
 
-  // Collect all time_block nodes
   const allBlocks = session.nodes.filter(n => n.type === 'time_block' && !n.archived);
 
-  // Time column
+  // Time column (4am–8pm)
   const timeCol = document.createElement('div');
   timeCol.className = 'tb-time-col';
   for (let hr = 4; hr <= 20; hr++) {
@@ -6645,33 +6636,24 @@ function renderTimeBlockView() {
   }
   wrap.appendChild(timeCol);
 
-  // Day columns
   const daysArea = document.createElement('div');
   daysArea.className = 'tb-days-area';
   wrap.appendChild(daysArea);
 
-  for (let d = 0; d < 7; d++) {
-    const colDate = new Date(tbWeekStart);
-    colDate.setDate(colDate.getDate() + d);
-    const colIso = toISODate(colDate);
-    const jsDay  = colDate.getDay(); // 0=Sun … 6=Sat
-
+  displayOrder.forEach((jsDay, i) => {
     const col = document.createElement('div');
     col.className = 'tb-day-col';
 
-    // Header
     const hdr = document.createElement('div');
-    hdr.className = 'tb-day-hdr' + (colIso === todayIso ? ' today' : '');
-    hdr.textContent = TB_DAY_NAMES[d] + ' ' + colDate.getDate();
+    hdr.className = 'tb-day-hdr' + (jsDay === todayJsDay ? ' today' : '');
+    hdr.textContent = displayNames[i];
     col.appendChild(hdr);
 
-    // Body (17 hours: 4am → 8pm inclusive = rows 4..20 = 17 hour slots)
     const body = document.createElement('div');
     body.className = 'tb-day-body';
-    body.style.height = (17 * TB_HOUR_PX) + 'px';
+    body.style.height   = (17 * TB_HOUR_PX) + 'px';
     body.style.position = 'relative';
 
-    // Hour grid lines
     for (let hr = 0; hr < 17; hr++) {
       const line = document.createElement('div');
       line.className = 'tb-hour-line';
@@ -6679,9 +6661,7 @@ function renderTimeBlockView() {
       body.appendChild(line);
     }
 
-    // Blocks for this day
     const dayBlocks = allBlocks.filter(b => (b.tb_days || []).includes(jsDay));
-
     for (const block of dayBlocks) {
       const startMins = tbParseTime(block.tb_start_time);
       const endMins   = tbParseTime(block.tb_end_time);
@@ -6689,7 +6669,7 @@ function renderTimeBlockView() {
       const heightPx  = Math.max(((endMins - startMins) / 60) * TB_HOUR_PX, 24);
 
       const blockEl = document.createElement('div');
-      blockEl.className = 'tb-block';
+      blockEl.className        = 'tb-block';
       blockEl.style.top        = topPx + 'px';
       blockEl.style.height     = heightPx + 'px';
       blockEl.style.background = tbColor(block.id);
@@ -6700,11 +6680,10 @@ function renderTimeBlockView() {
       labelEl.textContent = block.label || 'Time Block';
       blockEl.appendChild(labelEl);
 
-      // Badge
-      const tasks = session.nodes.filter(
-        n => n.parent_id === block.id && !n.archived && n.status !== 'done');
+      // Badge: all active children (backlog count / hours)
+      const tasks   = session.nodes.filter(n => n.parent_id === block.id && !n.archived && n.status !== 'done');
       const avgMins = block.tb_avg_task_minutes || 60;
-      const badge = document.createElement('div');
+      const badge   = document.createElement('div');
       badge.className = 'tb-block-badge';
       if (tbBadgeMode === 'count') {
         badge.textContent = tasks.length + (tasks.length === 1 ? ' task' : ' tasks');
@@ -6715,13 +6694,11 @@ function renderTimeBlockView() {
       badge.addEventListener('click', e => {
         e.stopPropagation();
         tbBadgeMode = tbBadgeMode === 'count' ? 'hours' : 'count';
-        document.getElementById('tbBadgeToggle').textContent =
-          tbBadgeMode === 'count' ? 'Count' : 'Hours';
+        document.getElementById('tbBadgeToggle').textContent = tbBadgeMode === 'count' ? 'Count' : 'Hours';
         renderTimeBlockView();
       });
       blockEl.appendChild(badge);
 
-      // Conflict indicator
       const conflicts = allBlocks.filter(other => other.id !== block.id && tbConflicts(block, other));
       if (conflicts.length > 0) {
         const overlay = document.createElement('div');
@@ -6735,7 +6712,7 @@ function renderTimeBlockView() {
 
     col.appendChild(body);
     daysArea.appendChild(col);
-  }
+  });
 }
 
 function openTbModal(nodeId) {
@@ -6786,6 +6763,9 @@ function saveTbModal() {
   document.querySelectorAll('#tbDaysRow .tb-day-chip.on').forEach(c => {
     days.push(parseInt(c.dataset.day, 10));
   });
+  if (!days.length) {
+    showToast('⚠ Select at least one day'); return;
+  }
 
   node.type                = 'time_block';
   node.tb_start_time       = start;
@@ -6796,6 +6776,16 @@ function saveTbModal() {
 
   closeTbModal();
   computeTimeBlockSchedule(node.id);
+
+  // If calendar is visible (or will be next), jump to the week of the first scheduled child
+  const firstChild = session.nodes
+    .filter(n => n.parent_id === node.id && n.scheduled_date)
+    .sort((a, b) => a.scheduled_date.localeCompare(b.scheduled_date))[0];
+  if (firstChild) {
+    calWeekStart = getWeekMonday(new Date(firstChild.scheduled_date + 'T00:00:00'));
+    if (calVisible) renderCalendar();
+  }
+
   showToast('⏱ Time block saved & scheduled');
   if (tbVisible) renderTimeBlockView(); else renderCards();
 }
@@ -7028,7 +7018,7 @@ const toggleMenu = () => document.getElementById('menuDropdown').classList.toggl
 const closeMenu  = () => document.getElementById('menuDropdown').classList.remove('open');
 
 // ─── INIT ───────────────────────────────────────────────────────────────────
-const BUILD_TS = 'build:2026-03-28T12:00'; // bumped each deploy — confirms fresh load
+const BUILD_TS = 'build:2026-03-28T13:00'; // bumped each deploy — confirms fresh load
 
 async function initApp() {
   // Show immediately with localStorage data
@@ -7229,16 +7219,6 @@ document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('tabBoard').addEventListener('click', () => { if (!kbVisible) showKanban(); else cycleCardSort(); });
   document.getElementById('tabCal').addEventListener('click', () => { if (!calVisible) showCalendar(); else hideCalendar(); });
   document.getElementById('tabTb').addEventListener('click', () => { if (!tbVisible) showTimeBlockView(); else hideTimeBlockView(); });
-  // Time Block navigation
-  document.getElementById('tbPrevBtn').addEventListener('click', () => {
-    tbWeekStart = new Date(tbWeekStart); tbWeekStart.setDate(tbWeekStart.getDate() - 7); renderTimeBlockView();
-  });
-  document.getElementById('tbNextBtn').addEventListener('click', () => {
-    tbWeekStart = new Date(tbWeekStart); tbWeekStart.setDate(tbWeekStart.getDate() + 7); renderTimeBlockView();
-  });
-  document.getElementById('tbTodayBtn').addEventListener('click', () => {
-    tbWeekStart = getWeekMonday(new Date()); renderTimeBlockView();
-  });
   document.getElementById('tbBadgeToggle').addEventListener('click', () => {
     tbBadgeMode = tbBadgeMode === 'count' ? 'hours' : 'count';
     document.getElementById('tbBadgeToggle').textContent = tbBadgeMode === 'count' ? 'Count' : 'Hours';
