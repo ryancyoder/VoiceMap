@@ -140,7 +140,7 @@
 
     /* ── Card list ────────────────────────────────────────────── */
     .card-scroll {
-      flex: 1;
+      flex: 1; min-width: 0;
       overflow-y: auto;
       -webkit-overflow-scrolling: touch;
       padding: 12px 14px 8px;
@@ -1176,31 +1176,25 @@
     .node-ctx-item:active { background: rgba(255,255,255,0.08); }
     .node-ctx-item.danger { color: #ff3b30; }
     .node-ctx-sep { height: 0.5px; background: var(--border); margin: 4px 2px; }
-    /* ─── Card View Panel (bottom sheet) ─────────────────────────── */
+    /* ─── Card View Sidebar Panel ────────────────────────────────── */
     #cvPanel {
-      position: fixed; bottom: 0; left: 0; right: 0; z-index: 500;
-      background: var(--surface); border-radius: 20px 20px 0 0;
-      box-shadow: 0 -4px 24px rgba(0,0,0,0.18);
-      padding: 0 16px; padding-bottom: env(safe-area-inset-bottom, 12px);
-      transform: translateY(100%); transition: transform 0.3s cubic-bezier(0.4,0,0.2,1);
-      max-height: 65dvh; display: flex; flex-direction: column;
+      width: 0; flex-shrink: 0; overflow: hidden; background: var(--surface);
+      border-left: 0.5px solid var(--border);
+      display: flex; flex-direction: column; padding: 0; gap: 12px;
+      transition: width 0.25s ease, padding 0.25s ease;
     }
-    #cvPanel.visible { transform: translateY(0); }
-    .cv-panel-handle {
-      width: 36px; height: 4px; border-radius: 2px;
-      background: var(--border); margin: 10px auto 14px; flex-shrink: 0;
+    #cvPanel.visible { width: 300px; padding: 16px; overflow-y: auto; }
+    .cv-panel-top-row { display: flex; justify-content: flex-end; flex-shrink: 0; }
+    .cv-panel-close {
+      background: none; border: none; color: var(--muted);
+      font-size: 18px; cursor: pointer; padding: 4px 8px;
+      border-radius: 8px; font-family: var(--font);
     }
-    .cv-panel-title {
-      font-size: 20px; font-weight: 700; color: var(--text);
-      line-height: 1.3; flex-shrink: 0; margin-bottom: 4px;
-    }
-    .cv-panel-meta {
-      font-size: 13px; color: var(--muted); flex-shrink: 0; margin-bottom: 10px;
-    }
+    .cv-panel-title { font-size: 20px; font-weight: 700; color: var(--text); line-height: 1.3; }
+    .cv-panel-meta { font-size: 13px; color: var(--muted); }
     .cv-panel-summary {
       font-size: 14px; color: var(--text); line-height: 1.6;
-      background: var(--bg); border-radius: 10px; padding: 12px;
-      overflow-y: auto; flex: 1 1 auto; min-height: 0; margin-bottom: 12px;
+      background: var(--bg); border-radius: 10px; padding: 12px; min-height: 48px;
     }
     .cv-panel-summary:empty { display: none; }
     .cv-panel-summary h1 { font-size: 16px; font-weight: 700; margin: 8px 0 4px; }
@@ -1210,23 +1204,18 @@
     .cv-panel-summary ul, .cv-panel-summary ol { padding-left: 20px; margin: 4px 0; }
     .cv-panel-summary li { margin: 2px 0; }
     .cv-panel-summary strong { font-weight: 700; }
+    .cv-panel-summary em { font-style: italic; }
     .cv-panel-summary code { background: rgba(0,0,0,0.08); border-radius: 4px; padding: 1px 5px; font-size: 12px; font-family: monospace; }
-    .cv-panel-actions {
-      display: grid; grid-template-columns: 1fr 1fr; gap: 8px;
-      overflow-y: auto; flex-shrink: 0; padding-bottom: 8px;
-    }
+    .cv-panel-actions { display: flex; flex-direction: column; gap: 8px; }
     .cv-panel-btn {
-      padding: 12px 14px; border-radius: 10px;
+      padding: 12px 16px; border-radius: 10px;
       background: rgba(0,0,0,0.04); color: var(--text);
-      border: 0.5px solid var(--border); font-size: 13px; font-weight: 500;
-      cursor: pointer; text-align: center; font-family: var(--font);
+      border: 0.5px solid var(--border); font-size: 14px; font-weight: 500;
+      cursor: pointer; text-align: left; font-family: var(--font);
     }
     .cv-panel-btn:active { opacity: 0.7; }
-    .cv-panel-btn.primary {
-      grid-column: 1 / -1; background: var(--accent); color: #fff;
-      border-color: var(--accent); font-size: 15px; padding: 14px;
-    }
-    .cv-panel-btn.danger { color: #ff3b30; background: rgba(255,59,48,0.08); grid-column: 1 / -1; }
+    .cv-panel-btn.primary { background: var(--accent); color: #fff; border-color: var(--accent); }
+    .cv-panel-btn.danger { color: #ff3b30; background: rgba(255,59,48,0.08); }
     .card.cv-selected .card-front { background: rgba(0,122,255,0.06); }
     /* ─────────────────────────────────────────────────────────────── */
 
@@ -1907,7 +1896,8 @@
     <button class="filter-pill" data-view="orphaned">◎ Orphaned</button>
   </div>
 
-  <!-- Card list -->
+  <!-- Card list + sidebar wrapper -->
+  <div id="cvBody" style="flex:1;display:flex;flex-direction:row;overflow:hidden;min-height:0">
   <div class="card-scroll" id="cardScroll">
     <div id="cardList"></div>
     <div class="empty-state" id="emptyState" style="display:none">
@@ -1917,9 +1907,11 @@
     </div>
   </div>
 
-  <!-- Card view bottom-sheet panel -->
+  <!-- Card view sidebar panel -->
   <div id="cvPanel">
-    <div class="cv-panel-handle"></div>
+    <div class="cv-panel-top-row">
+      <button class="cv-panel-close" id="cvPanelClose">✕</button>
+    </div>
     <div class="cv-panel-title" id="cvPanelTitle"></div>
     <div class="cv-panel-meta" id="cvPanelMeta"></div>
     <div class="cv-panel-summary" id="cvPanelSummary"></div>
@@ -1933,6 +1925,7 @@
       <button class="cv-panel-btn danger" id="cvDeleteBtn">✕ Delete card</button>
     </div>
   </div>
+  </div><!-- end #cvBody -->
 
   <!-- Kanban board view -->
   <div class="kb-view hidden" id="kbView">
@@ -6642,7 +6635,7 @@ function showCalendar() {
   if (yrVisible)     hideYearlyView();
   calVisible = true;
   if (!calWeekStart) calWeekStart = getWeekMonday(new Date());
-  document.getElementById('cardScroll').style.display = 'none';
+  document.getElementById('cvBody').style.display = 'none';
   document.getElementById('calView').classList.remove('hidden');
   setViewTab('calendar');
   renderCalendar();
@@ -6651,7 +6644,7 @@ function showCalendar() {
 function hideCalendar() {
   calVisible = false;
   document.getElementById('calView').classList.add('hidden');
-  document.getElementById('cardScroll').style.display = '';
+  document.getElementById('cvBody').style.display = '';
   setViewTab('cards');
   renderCards();
 }
@@ -7262,7 +7255,7 @@ function showTimeBlockView() {
   if (tableVisible)  hideTableView();
   if (yrVisible)     hideYearlyView();
   tbVisible = true;
-  document.getElementById('cardScroll').style.display = 'none';
+  document.getElementById('cvBody').style.display = 'none';
   document.getElementById('tbView').classList.remove('hidden');
   setViewTab('tb');
   renderTimeBlockView();
@@ -7271,7 +7264,7 @@ function showTimeBlockView() {
 function hideTimeBlockView() {
   tbVisible = false;
   document.getElementById('tbView').classList.add('hidden');
-  document.getElementById('cardScroll').style.display = '';
+  document.getElementById('cvBody').style.display = '';
   setViewTab('cards');
   renderCards();
 }
@@ -7479,7 +7472,7 @@ function showTableView() {
   if (tbVisible)  hideTimeBlockView();
   if (yrVisible)  hideYearlyView();
   tableVisible = true;
-  document.getElementById('cardScroll').style.display = 'none';
+  document.getElementById('cvBody').style.display = 'none';
   document.getElementById('tableView').classList.remove('hidden');
   setViewTab('table');
   renderTableView();
@@ -7488,7 +7481,7 @@ function showTableView() {
 function hideTableView() {
   tableVisible = false;
   document.getElementById('tableView').classList.add('hidden');
-  document.getElementById('cardScroll').style.display = '';
+  document.getElementById('cvBody').style.display = '';
   // Restore nav context to the active log node so card/map view lands there
   if (tableLogId) {
     const logNode = session.nodes.find(n => n.id === tableLogId);
@@ -8085,7 +8078,7 @@ function showYearlyView() {
   if (tbVisible)    hideTimeBlockView();
   if (tableVisible) hideTableView();
   yrVisible = true;
-  document.getElementById('cardScroll').style.display = 'none';
+  document.getElementById('cvBody').style.display = 'none';
   document.getElementById('yrView').classList.remove('hidden');
   setViewTab('yr');
   renderYearlyView();
@@ -8094,7 +8087,7 @@ function showYearlyView() {
 function hideYearlyView() {
   yrVisible = false;
   document.getElementById('yrView').classList.add('hidden');
-  document.getElementById('cardScroll').style.display = '';
+  document.getElementById('cvBody').style.display = '';
   setViewTab('cards');
   renderCards();
 }
@@ -8341,7 +8334,7 @@ function showKanban() {
   if (tableVisible)  hideTableView();
   if (yrVisible)     hideYearlyView();
   kbVisible = true;
-  document.getElementById('cardScroll').style.display = 'none';
+  document.getElementById('cvBody').style.display = 'none';
   document.getElementById('kbView').classList.remove('hidden');
   setViewTab('board');
   renderKanban();
@@ -8350,7 +8343,7 @@ function showKanban() {
 function hideKanban() {
   kbVisible = false;
   document.getElementById('kbView').classList.add('hidden');
-  document.getElementById('cardScroll').style.display = '';
+  document.getElementById('cvBody').style.display = '';
   setViewTab('cards');
   renderCards();
 }
@@ -8552,7 +8545,7 @@ const toggleMenu = () => document.getElementById('menuDropdown').classList.toggl
 const closeMenu  = () => document.getElementById('menuDropdown').classList.remove('open');
 
 // ─── INIT ───────────────────────────────────────────────────────────────────
-const BUILD_TS = 'build:2026-03-29T14:00'; // bumped each deploy — confirms fresh load
+const BUILD_TS = 'build:2026-03-29T14:30'; // bumped each deploy — confirms fresh load
 
 async function initApp() {
   // Show immediately with localStorage data
@@ -9231,8 +9224,7 @@ document.addEventListener('DOMContentLoaded', () => {
     dismissCardPanel();
     deleteNode(id);
   });
-  // Dismiss panel on drag handle (panel swipe down via drag-handle tap)
-  document.querySelector('#cvPanel .cv-panel-handle').addEventListener('click', dismissCardPanel);
+  document.getElementById('cvPanelClose').addEventListener('click', dismissCardPanel);
 });
 </script>
 
