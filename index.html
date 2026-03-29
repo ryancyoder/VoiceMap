@@ -2123,6 +2123,7 @@
 
 // ─── CONSTANTS ──────────────────────────────────────────────────────────────
 const CLAUDE_MODEL   = 'claude-haiku-4-5-20251001';
+const TRANSCRIPT_PAUSE_MS = 2000; // ms of silence before voice input is sent as a new node
 const API_KEY_STORE      = 'voicemap_api_key';
 const SESSION_STORE      = 'voicemap_session';
 const GITHUB_TOKEN_STORE = 'voicemap_github_token';
@@ -3310,6 +3311,31 @@ function initRecognition() {
   r.interimResults = true;
   r.lang           = 'en-US';
 
+  let pendingTranscript = '';
+  let transcriptFlushTimer = null;
+
+  const flushTranscript = () => {
+    clearTimeout(transcriptFlushTimer);
+    transcriptFlushTimer = null;
+    const text = pendingTranscript.trim();
+    pendingTranscript = '';
+    if (!text) return;
+    // In map view: update nav context to whichever node is selected right now,
+    // so cards file under wherever the user last tapped — even mid-session.
+    if (mmVisible) {
+      if (mmSelectedId) {
+        const node = session.nodes.find(n => n.id === mmSelectedId);
+        if (node) navStack = [{ id: null, label: 'Home' }, { id: node.id, label: node.label }];
+      } else {
+        navStack = [{ id: null, label: 'Home' }];
+      }
+    }
+    handleTranscript(text);
+  };
+
+  // Expose flush so stopRecording can drain any buffered text immediately
+  r._flush = flushTranscript;
+
   r.onresult = e => {
     let interim = '', final = '';
     for (let i = e.resultIndex; i < e.results.length; i++) {
@@ -3317,21 +3343,18 @@ function initRecognition() {
       e.results[i].isFinal ? (final += t) : (interim += t);
     }
     if (final.trim()) {
-      document.getElementById('liveText').textContent = '';
-      // In map view: update nav context to whichever node is selected right now,
-      // so cards file under wherever the user last tapped — even mid-session.
-      if (mmVisible) {
-        if (mmSelectedId) {
-          const node = session.nodes.find(n => n.id === mmSelectedId);
-          if (node) navStack = [{ id: null, label: 'Home' }, { id: node.id, label: node.label }];
-        } else {
-          navStack = [{ id: null, label: 'Home' }];
-        }
-      }
-      handleTranscript(final.trim());
+      pendingTranscript += (pendingTranscript ? ' ' : '') + final.trim();
+      // Show accumulated text + interim in live display
+      const display = pendingTranscript + (interim ? ' ' + interim : '');
+      document.getElementById('liveText').textContent = display;
+      if (mmVisible) document.getElementById('mmLiveText').textContent = display || 'Listening…';
+      // Reset the debounce window — wait for a real pause before creating a node
+      clearTimeout(transcriptFlushTimer);
+      transcriptFlushTimer = setTimeout(flushTranscript, TRANSCRIPT_PAUSE_MS);
     } else {
-      document.getElementById('liveText').textContent = interim;
-      if (mmVisible) document.getElementById('mmLiveText').textContent = interim || 'Listening…';
+      const display = (pendingTranscript ? pendingTranscript + ' ' : '') + interim;
+      document.getElementById('liveText').textContent = display;
+      if (mmVisible) document.getElementById('mmLiveText').textContent = display || 'Listening…';
     }
   };
 
@@ -3362,7 +3385,13 @@ function startRecording() {
 
 function stopRecording() {
   isRecording = false;
-  if (recognition) { recognition.stop(); recognition = null; }
+  const rec = recognition;
+  recognition = null;
+  if (rec) {
+    // Flush any buffered transcript before stopping (handles mid-sentence stop)
+    if (rec._flush) rec._flush();
+    rec.stop();
+  }
   setRecordingState(false);
   document.getElementById('liveText').textContent = '';
 }
@@ -8210,7 +8239,7 @@ const toggleMenu = () => document.getElementById('menuDropdown').classList.toggl
 const closeMenu  = () => document.getElementById('menuDropdown').classList.remove('open');
 
 // ─── INIT ───────────────────────────────────────────────────────────────────
-const BUILD_TS = 'build:2026-03-29T03:00'; // bumped each deploy — confirms fresh load
+const BUILD_TS = 'build:2026-03-29T03:15'; // bumped each deploy — confirms fresh load
 
 async function initApp() {
   // Show immediately with localStorage data
