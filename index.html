@@ -1780,6 +1780,9 @@
                              border-top: 1px solid var(--border); border-bottom: 0.5px solid var(--border); }
     .yr-group-label       { padding: 4px 10px; font-size: 11px; font-weight: 700;
                              text-transform: uppercase; letter-spacing: 0.4px; white-space: nowrap; }
+    .yr-sub-group-row     { display: flex; min-width: max-content; background: rgba(0,0,0,0.03);
+                             border-top: 0.5px solid var(--border); }
+    .yr-sub-group-row .yr-label-col { font-size: 11px; height: 26px; padding: 0 8px; }
     .yr-entry-row         { display: flex; min-width: max-content; border-bottom: 0.5px solid var(--border); }
     .yr-entry-row .yr-label-col { font-size: 12px; height: 34px; }
     .yr-cells             { position: relative; height: 34px; width: 1352px; flex-shrink: 0; } /* 52*26 */
@@ -8034,10 +8037,27 @@ function renderYearlyView() {
   logNodes.forEach((logNode, li) => {
     const color       = YR_COLORS[li % YR_COLORS.length];
     const yearlyField = logNode.log_yearly_field;
-    const entries     = session.nodes.filter(n => n.parent_id === logNode.id && !n.archived);
-    if (entries.length === 0) return;
 
-    // Group header
+    // Collect rows — direct children, or grandchildren when flag is set
+    let directEntries, groups;
+    if (logNode.log_include_grandchildren) {
+      const children = session.nodes.filter(n => n.parent_id === logNode.id && !n.archived);
+      groups        = [];
+      directEntries = [];
+      children.forEach(child => {
+        const gc = session.nodes.filter(n => n.parent_id === child.id && !n.archived);
+        if (gc.length > 0) groups.push({ parent: child, rows: gc });
+        else directEntries.push(child);
+      });
+    } else {
+      directEntries = session.nodes.filter(n => n.parent_id === logNode.id && !n.archived);
+      groups        = [];
+    }
+
+    const totalEntries = directEntries.length + groups.reduce((s, g) => s + g.rows.length, 0);
+    if (totalEntries === 0) return;
+
+    // Group header for the log node itself
     const grpRow = document.createElement('div');
     grpRow.className = 'yr-group-row';
     const grpLabel = document.createElement('div');
@@ -8047,8 +8067,8 @@ function renderYearlyView() {
     grpRow.appendChild(grpLabel);
     wrap.appendChild(grpRow);
 
-    // Entry rows
-    entries.forEach(entry => {
+    // Build one Gantt bar row for an entry node
+    function buildEntryRow(entry) {
       const startWeek     = Math.max(1, Math.min(52, entry.yearly_start_week || curWeek));
       const rawVal        = parseFloat((entry.log_fields || {})[yearlyField]);
       const durationWeeks = (!isNaN(rawVal) && rawVal > 0) ? Math.ceil(rawVal / 7) : 1;
@@ -8065,7 +8085,6 @@ function renderYearlyView() {
       const cells = document.createElement('div');
       cells.className = 'yr-cells';
 
-      // Background column grid
       const bgStrip = document.createElement('div');
       bgStrip.className = 'yr-col-bg';
       for (let w = 1; w <= 52; w++) {
@@ -8075,13 +8094,12 @@ function renderYearlyView() {
       }
       cells.appendChild(bgStrip);
 
-      // Gantt bar
       const bar = document.createElement('div');
       bar.className = 'yr-bar';
-      bar.style.left       = ((startWeek - 1) * YR_COL_W) + 'px';
-      bar.style.width      = Math.max(4, spanWeeks * YR_COL_W - 4) + 'px';
-      bar.style.background = color;
-      bar.dataset.nodeId   = entry.id;
+      bar.style.left        = ((startWeek - 1) * YR_COL_W) + 'px';
+      bar.style.width       = Math.max(4, spanWeeks * YR_COL_W - 4) + 'px';
+      bar.style.background  = color;
+      bar.dataset.nodeId    = entry.id;
       bar.dataset.startWeek = startWeek;
       const endWeek = startWeek + spanWeeks - 1;
       bar.title = `${entry.label}\nWeek ${startWeek} → ${endWeek}` +
@@ -8098,6 +8116,23 @@ function renderYearlyView() {
       wrap.appendChild(entryRow);
 
       _initYrBarDrag(bar, entry.id);
+    }
+
+    // Render ungrouped direct entries first
+    directEntries.forEach(buildEntryRow);
+
+    // Render each group with a sub-header
+    groups.forEach(({ parent, rows }) => {
+      const subHdr = document.createElement('div');
+      subHdr.className = 'yr-sub-group-row';
+      const subLabel = document.createElement('div');
+      subLabel.className = 'yr-label-col';
+      subLabel.style.fontWeight = '600';
+      subLabel.style.color = color;
+      subLabel.textContent = '▸ ' + parent.label;
+      subHdr.appendChild(subLabel);
+      wrap.appendChild(subHdr);
+      rows.forEach(buildEntryRow);
     });
   });
 }
@@ -8395,7 +8430,7 @@ const toggleMenu = () => document.getElementById('menuDropdown').classList.toggl
 const closeMenu  = () => document.getElementById('menuDropdown').classList.remove('open');
 
 // ─── INIT ───────────────────────────────────────────────────────────────────
-const BUILD_TS = 'build:2026-03-29T06:00'; // bumped each deploy — confirms fresh load
+const BUILD_TS = 'build:2026-03-29T07:00'; // bumped each deploy — confirms fresh load
 
 async function initApp() {
   // Show immediately with localStorage data
