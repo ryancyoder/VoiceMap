@@ -1830,6 +1830,7 @@
         <button class="menu-item" id="miGithubSync">☁️ GitHub Sync</button>
         <button class="menu-item" id="miPrompts">⚙ System Prompts</button>
         <button class="menu-item" id="miArchive">📁 View Archive</button>
+        <button class="menu-item" id="miForceRefresh">🔄 Force Refresh</button>
         <button class="menu-item danger" id="miClear">Clear all</button>
       </div>
     </div>
@@ -8430,7 +8431,7 @@ const toggleMenu = () => document.getElementById('menuDropdown').classList.toggl
 const closeMenu  = () => document.getElementById('menuDropdown').classList.remove('open');
 
 // ─── INIT ───────────────────────────────────────────────────────────────────
-const BUILD_TS = 'build:2026-03-29T07:00'; // bumped each deploy — confirms fresh load
+const BUILD_TS = 'build:2026-03-29T07:30'; // bumped each deploy — confirms fresh load
 
 async function initApp() {
   // Show immediately with localStorage data
@@ -8603,6 +8604,15 @@ document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('miExportPrompt').addEventListener('click', () => { closeMenu(); exportPrompt(null); });
   document.getElementById('miPromptLog').addEventListener('click', () => { closeMenu(); openPromptLog(); });
   document.getElementById('miClear').addEventListener('click', clearAll);
+  document.getElementById('miForceRefresh').addEventListener('click', () => {
+    closeMenu();
+    if ('caches' in window) {
+      caches.keys().then(keys => Promise.all(keys.map(k => caches.delete(k))))
+        .then(() => location.reload(true));
+    } else {
+      location.reload(true);
+    }
+  });
 
   initNodeCtxMenu();
   initConsolidateModal();
