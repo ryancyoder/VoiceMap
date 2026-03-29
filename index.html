@@ -1738,9 +1738,9 @@
     .yr-month-cell        { flex-shrink: 0; text-align: center; font-size: 11px; font-weight: 700;
                              color: var(--text); border-right: 1px solid var(--border); height: 23px;
                              display: flex; align-items: center; justify-content: center; overflow: hidden; }
-    .yr-week-cell         { flex-shrink: 0; width: 26px; text-align: center; font-size: 9px;
+    .yr-week-cell         { flex-shrink: 0; width: 26px; text-align: center; font-size: 8px;
                              color: var(--muted); border-right: 0.5px solid var(--border); height: 20px;
-                             display: flex; align-items: center; justify-content: center; }
+                             display: flex; align-items: center; justify-content: center; letter-spacing: -0.3px; }
     .yr-week-cell.current { background: rgba(226,75,74,0.12); color: var(--accent); font-weight: 700; }
     .yr-group-row         { display: flex; min-width: max-content; background: var(--card-bg);
                              border-top: 1px solid var(--border); border-bottom: 0.5px solid var(--border); }
@@ -7815,7 +7815,7 @@ function renderYearlyView() {
   for (let w = 1; w <= 52; w++) {
     const cell = document.createElement('div');
     cell.className = 'yr-week-cell' + (w === curWeek ? ' current' : '');
-    cell.textContent = (w % 4 === 1) ? w : '';
+    cell.textContent = w;
     weekRow.appendChild(cell);
   }
   wrap.appendChild(weekRow);
@@ -8182,7 +8182,7 @@ const toggleMenu = () => document.getElementById('menuDropdown').classList.toggl
 const closeMenu  = () => document.getElementById('menuDropdown').classList.remove('open');
 
 // ─── INIT ───────────────────────────────────────────────────────────────────
-const BUILD_TS = 'build:2026-03-29T02:00'; // bumped each deploy — confirms fresh load
+const BUILD_TS = 'build:2026-03-29T02:10'; // bumped each deploy — confirms fresh load
 
 async function initApp() {
   // Show immediately with localStorage data
