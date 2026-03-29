@@ -1718,6 +1718,48 @@
     .log-field-row .title-field-btn { padding: 4px 7px; border-radius: 6px; background: var(--border);
                                  color: var(--muted); border: none; font-size: 13px; cursor: pointer; }
     .log-field-row .title-field-btn.active { background: #fef3c7; color: #92400e; }
+    .log-field-row .yr-field-btn  { padding: 4px 7px; border-radius: 6px; background: var(--border);
+                                 color: var(--muted); border: none; font-size: 13px; cursor: pointer; }
+    .log-field-row .yr-field-btn.active { background: #dbeafe; color: #1e40af; }
+
+    /* ── YEARLY PLAN VIEW ────────────────────────────────────────────── */
+    #yrView               { flex: 1; display: flex; flex-direction: column; min-height: 0; overflow: hidden; }
+    #yrView.hidden        { display: none; }
+    .yr-wrap              { flex: 1; overflow: auto; min-height: 0; position: relative; }
+    .yr-row               { display: flex; min-width: max-content; }
+    .yr-label-col         { position: sticky; left: 0; z-index: 3; flex-shrink: 0; width: 150px;
+                             background: var(--bg); border-right: 1px solid var(--border);
+                             overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+                             display: flex; align-items: center; padding: 0 8px; font-size: 12px; }
+    .yr-month-row         { background: var(--card-bg); border-bottom: 1px solid var(--border); position: sticky; top: 0; z-index: 4; }
+    .yr-month-row .yr-label-col { font-weight: 700; font-size: 12px; z-index: 5; }
+    .yr-week-row          { background: var(--card-bg); border-bottom: 1px solid var(--border); position: sticky; top: 23px; z-index: 4; }
+    .yr-week-row .yr-label-col  { font-size: 11px; color: var(--muted); z-index: 5; }
+    .yr-month-cell        { flex-shrink: 0; text-align: center; font-size: 11px; font-weight: 700;
+                             color: var(--text); border-right: 1px solid var(--border); height: 23px;
+                             display: flex; align-items: center; justify-content: center; overflow: hidden; }
+    .yr-week-cell         { flex-shrink: 0; width: 26px; text-align: center; font-size: 9px;
+                             color: var(--muted); border-right: 0.5px solid var(--border); height: 20px;
+                             display: flex; align-items: center; justify-content: center; }
+    .yr-week-cell.current { background: rgba(226,75,74,0.12); color: var(--accent); font-weight: 700; }
+    .yr-group-row         { display: flex; min-width: max-content; background: var(--card-bg);
+                             border-top: 1px solid var(--border); border-bottom: 0.5px solid var(--border); }
+    .yr-group-label       { padding: 4px 10px; font-size: 11px; font-weight: 700;
+                             text-transform: uppercase; letter-spacing: 0.4px; white-space: nowrap; }
+    .yr-entry-row         { display: flex; min-width: max-content; border-bottom: 0.5px solid var(--border); }
+    .yr-entry-row .yr-label-col { font-size: 12px; height: 34px; }
+    .yr-cells             { position: relative; height: 34px; width: 1352px; flex-shrink: 0; } /* 52*26 */
+    .yr-col-bg            { position: absolute; inset: 0; display: flex; pointer-events: none; }
+    .yr-col               { width: 26px; flex-shrink: 0; border-right: 0.5px solid rgba(0,0,0,0.05); height: 100%; }
+    .yr-col:nth-child(4n+1) { background: rgba(0,0,0,0.018); }
+    .yr-col.current       { background: rgba(226,75,74,0.09) !important; }
+    .yr-bar               { position: absolute; top: 5px; bottom: 5px; border-radius: 6px;
+                             cursor: grab; display: flex; align-items: center; padding: 0 5px;
+                             min-width: 4px; z-index: 2; box-shadow: 0 1px 4px rgba(0,0,0,0.15); }
+    .yr-bar:active        { cursor: grabbing; }
+    .yr-bar-label         { font-size: 10px; font-weight: 600; color: #fff; white-space: nowrap;
+                             overflow: hidden; text-overflow: ellipsis; pointer-events: none; }
+    .yr-empty             { padding: 40px 20px; text-align: center; color: var(--muted); font-size: 14px; line-height: 1.6; }
     .log-field-row .field-drag-handle { padding: 4px 6px; cursor: grab; color: var(--muted);
                                  font-size: 16px; line-height: 1; touch-action: none; flex-shrink: 0; }
     .log-field-row.drag-over { border-top: 2px solid var(--accent); }
@@ -1825,6 +1867,11 @@
     <div class="tbl-wrap" id="tblWrap">
       <div class="tbl-empty" id="tblEmpty">No log nodes found.<br>Right-click a card and choose "Define as log" to get started.</div>
     </div>
+  </div>
+
+  <!-- Yearly plan view -->
+  <div id="yrView" class="hidden">
+    <div class="yr-wrap" id="yrWrap"></div>
   </div>
 
   <!-- Log schema modal -->
@@ -4952,6 +4999,7 @@ function showMindMap() {
   if (calVisible)    hideCalendar();
   if (tbVisible)     hideTimeBlockView();
   if (tableVisible)  hideTableView();
+  if (yrVisible)     hideYearlyView();
   mmVisible = true;
   setViewTab('map');
   mmTransform = { x: 40, y: 40, scale: 1 };
@@ -6329,6 +6377,7 @@ function showCalendar() {
   if (kbVisible)     hideKanban();
   if (tbVisible)     hideTimeBlockView();
   if (tableVisible)  hideTableView();
+  if (yrVisible)     hideYearlyView();
   calVisible = true;
   if (!calWeekStart) calWeekStart = getWeekMonday(new Date());
   document.getElementById('cardScroll').style.display = 'none';
@@ -6948,6 +6997,7 @@ function showTimeBlockView() {
   if (kbVisible)     hideKanban();
   if (calVisible)    hideCalendar();
   if (tableVisible)  hideTableView();
+  if (yrVisible)     hideYearlyView();
   tbVisible = true;
   document.getElementById('cardScroll').style.display = 'none';
   document.getElementById('tbView').classList.remove('hidden');
@@ -7163,6 +7213,7 @@ function showTableView() {
   if (kbVisible)  hideKanban();
   if (calVisible) hideCalendar();
   if (tbVisible)  hideTimeBlockView();
+  if (yrVisible)  hideYearlyView();
   tableVisible = true;
   document.getElementById('cardScroll').style.display = 'none';
   document.getElementById('tableView').classList.remove('hidden');
@@ -7363,15 +7414,16 @@ function _addLogRow(logId) {
     else fields[f.key] = '';
   });
   const newNode = {
-    id:            makeId(),
-    label:         'New entry',
-    summary:       '',
-    transcript:    '',
-    parent_id:     logId,
-    status:        'untouched',
-    log_fields:    fields,
-    created:       now,
-    last_modified: now
+    id:                 makeId(),
+    label:              'New entry',
+    summary:            '',
+    transcript:         '',
+    parent_id:          logId,
+    status:             'untouched',
+    log_fields:         fields,
+    yearly_start_week:  logNode.log_yearly_field ? currentWeekOfYear() : undefined,
+    created:            now,
+    last_modified:      now
   };
   session.nodes.push(newNode);
   _syncLogLabel(newNode, logNode);
@@ -7390,12 +7442,15 @@ function _maybeInitLogRow(parentId, nodeId) {
   if (!node.log_fields) node.log_fields = {};
   schema.forEach(f => {
     if (!(f.key in node.log_fields)) {
-      if (f.type === 'date')    node.log_fields[f.key] = toISODate(new Date());
+      if (f.type === 'date')         node.log_fields[f.key] = toISODate(new Date());
       else if (f.type === 'number')  node.log_fields[f.key] = '';
       else if (f.type === 'boolean') node.log_fields[f.key] = false;
-      else node.log_fields[f.key] = '';
+      else                           node.log_fields[f.key] = '';
     }
   });
+  if (parent.log_yearly_field && node.yearly_start_week == null) {
+    node.yearly_start_week = currentWeekOfYear();
+  }
 }
 
 /// Sync node.label from the log's title field (if one is designated)
@@ -7460,7 +7515,7 @@ function openLogModal(nodeId) {
   logModalNodeId = nodeId;
   const node = session.nodes.find(n => n.id === nodeId);
   if (!node) return;
-  _renderLogModalFields(node.log_schema || [], node.log_title_field || '');
+  _renderLogModalFields(node.log_schema || [], node.log_title_field || '', node.log_yearly_field || '');
   document.getElementById('logModal').classList.remove('hidden');
 }
 
@@ -7469,16 +7524,35 @@ function closeLogModal() {
   logModalNodeId = null;
 }
 
-function _renderLogModalFields(schema, titleField) {
+function _renderLogModalFields(schema, titleField, yearlyField) {
   const list = document.getElementById('logFieldsList');
   list.innerHTML = '';
-  list.dataset.titleField = titleField || '';
+  list.dataset.titleField  = titleField  || '';
+  list.dataset.yearlyField = yearlyField || '';
 
-  function refreshPinBtns() {
-    const cur = list.dataset.titleField;
+  function refreshToggleBtns() {
+    const curPin = list.dataset.titleField;
+    const curYr  = list.dataset.yearlyField;
     list.querySelectorAll('.title-field-btn').forEach(btn => {
-      btn.classList.toggle('active', btn.dataset.key === cur);
-      btn.title = btn.dataset.key === cur ? 'Title field (click to unset)' : 'Use as title';
+      btn.classList.toggle('active', btn.dataset.key === curPin);
+      btn.title = btn.dataset.key === curPin ? 'Title field (click to unset)' : 'Use as title';
+    });
+    list.querySelectorAll('.yr-field-btn').forEach(btn => {
+      btn.classList.toggle('active', btn.dataset.key === curYr);
+      btn.title = btn.dataset.key === curYr ? 'Yearly duration field (click to unset)' : 'Use as yearly duration (days)';
+    });
+  }
+
+  function getKeyForRow(rowEl) {
+    return rowEl.querySelectorAll('input')[0].value.replace(/\s+/g,'_').toLowerCase();
+  }
+
+  function syncAllBtnKeys() {
+    const rows = list.querySelectorAll('.log-field-row');
+    rows.forEach(r => {
+      const k = getKeyForRow(r);
+      r.querySelector('.title-field-btn').dataset.key = k;
+      r.querySelector('.yr-field-btn').dataset.key    = k;
     });
   }
 
@@ -7486,7 +7560,6 @@ function _renderLogModalFields(schema, titleField) {
     const row = document.createElement('div');
     row.className = 'log-field-row';
 
-    // Drag handle
     const handle = document.createElement('span');
     handle.className = 'field-drag-handle';
     handle.textContent = '⠿';
@@ -7515,22 +7588,32 @@ function _renderLogModalFields(schema, titleField) {
     pinBtn.textContent = '📌';
     pinBtn.dataset.key = f.key || '';
     pinBtn.addEventListener('click', () => {
-      const key = row.querySelectorAll('input')[0].value.replace(/\s+/g,'_').toLowerCase();
+      syncAllBtnKeys();
+      const key = getKeyForRow(row);
       list.dataset.titleField = (list.dataset.titleField === key) ? '' : key;
-      list.querySelectorAll('.title-field-btn').forEach((btn, i) => {
-        btn.dataset.key = list.querySelectorAll('.log-field-row input')[i * 2]?.value.replace(/\s+/g,'_').toLowerCase() || '';
-      });
-      refreshPinBtns();
+      refreshToggleBtns();
+    });
+
+    const yrBtn = document.createElement('button');
+    yrBtn.className = 'yr-field-btn';
+    yrBtn.textContent = '📅';
+    yrBtn.dataset.key = f.key || '';
+    yrBtn.addEventListener('click', () => {
+      syncAllBtnKeys();
+      const key = getKeyForRow(row);
+      list.dataset.yearlyField = (list.dataset.yearlyField === key) ? '' : key;
+      refreshToggleBtns();
     });
 
     const delBtn = document.createElement('button');
     delBtn.className = 'del-field';
     delBtn.textContent = '✕';
     delBtn.addEventListener('click', () => {
-      const cur = _readLogModalSchema();
+      const cur      = _readLogModalSchema();
       const curTitle = list.dataset.titleField;
+      const curYr    = list.dataset.yearlyField;
       cur.splice(idx, 1);
-      _renderLogModalFields(cur, curTitle);
+      _renderLogModalFields(cur, curTitle, curYr);
     });
 
     row.appendChild(handle);
@@ -7538,11 +7621,12 @@ function _renderLogModalFields(schema, titleField) {
     row.appendChild(labelInput);
     row.appendChild(typeSelect);
     row.appendChild(pinBtn);
+    row.appendChild(yrBtn);
     row.appendChild(delBtn);
     list.appendChild(row);
   });
 
-  refreshPinBtns();
+  refreshToggleBtns();
   _initFieldDrag(list);
 }
 
@@ -7556,10 +7640,9 @@ function _initFieldDrag(list) {
   function applyReorder(fromIdx, toIdx) {
     if (fromIdx === toIdx) return;
     const cur      = _readLogModalSchema();
-    const curTitle = list.dataset.titleField;
     const [moved]  = cur.splice(fromIdx, 1);
     cur.splice(toIdx, 0, moved);
-    _renderLogModalFields(cur, curTitle);
+    _renderLogModalFields(cur, list.dataset.titleField, list.dataset.yearlyField);
   }
 
   list.querySelectorAll('.field-drag-handle').forEach(handle => {
@@ -7637,39 +7720,258 @@ function _readLogModalSchema() {
   return schema;
 }
 
-function _readLogModalTitleField() {
-  return document.getElementById('logFieldsList').dataset.titleField || '';
-}
+function _readLogModalTitleField()  { return document.getElementById('logFieldsList').dataset.titleField  || ''; }
+function _readLogModalYearlyField() { return document.getElementById('logFieldsList').dataset.yearlyField || ''; }
 
 function saveLogModal() {
-  const schema     = _readLogModalSchema();
-  const titleField = _readLogModalTitleField();
+  const schema       = _readLogModalSchema();
+  const titleField   = _readLogModalTitleField();
+  const yearlyField  = _readLogModalYearlyField();
   const node = session.nodes.find(n => n.id === logModalNodeId);
   if (!node) { closeLogModal(); return; }
-  node.type            = 'log';
-  node.log_schema      = schema;
-  node.log_title_field = titleField || null;
-  node.last_modified   = new Date().toISOString();
+  node.type             = 'log';
+  node.log_schema       = schema;
+  node.log_title_field  = titleField  || null;
+  node.log_yearly_field = yearlyField || null;
+  node.last_modified    = new Date().toISOString();
   saveSession();
   closeLogModal();
   showToast('📋 Log schema saved');
   if (tableVisible) renderTableView();
+  if (yrVisible)    renderYearlyView();
+}
+
+// ─── YEARLY PLAN VIEW ───────────────────────────────────────────────────────
+let yrVisible = false;
+
+const YR_COL_W  = 26;
+const YR_COLORS = ['#3b82f6','#10b981','#f59e0b','#8b5cf6','#ef4444','#06b6d4','#84cc16','#f97316','#ec4899'];
+
+function weekOfYear(date) {
+  const jan1   = new Date(date.getFullYear(), 0, 1);
+  const dayOfYear = Math.floor((date - jan1) / 86400000);
+  return Math.min(52, Math.max(1, Math.ceil((dayOfYear + jan1.getDay() + 1) / 7)));
+}
+function currentWeekOfYear() { return weekOfYear(new Date()); }
+
+function showYearlyView() {
+  if (mmVisible)    hideMindMap();
+  if (kbVisible)    hideKanban();
+  if (calVisible)   hideCalendar();
+  if (tbVisible)    hideTimeBlockView();
+  if (tableVisible) hideTableView();
+  yrVisible = true;
+  document.getElementById('cardScroll').style.display = 'none';
+  document.getElementById('yrView').classList.remove('hidden');
+  setViewTab('yr');
+  renderYearlyView();
+}
+
+function hideYearlyView() {
+  yrVisible = false;
+  document.getElementById('yrView').classList.add('hidden');
+  document.getElementById('cardScroll').style.display = '';
+  setViewTab('cards');
+  renderCards();
+}
+
+function renderYearlyView() {
+  if (!yrVisible) return;
+  const year     = new Date().getFullYear();
+  const isLeap   = (year % 4 === 0 && year % 100 !== 0) || year % 400 === 0;
+  const mDays    = [31, isLeap ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+  const mNames   = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  const totalDays = mDays.reduce((a, b) => a + b, 0);
+  const curWeek  = currentWeekOfYear();
+  const TOTAL_W  = 52 * YR_COL_W;
+
+  const wrap = document.getElementById('yrWrap');
+  wrap.innerHTML = '';
+
+  // ── Month header row ──────────────────────────────────────────────────────
+  const monthRow = document.createElement('div');
+  monthRow.className = 'yr-row yr-month-row';
+  const mCorner = document.createElement('div');
+  mCorner.className = 'yr-label-col';
+  mCorner.style.fontWeight = '700';
+  mCorner.textContent = String(year);
+  monthRow.appendChild(mCorner);
+  mDays.forEach((days, i) => {
+    const cell = document.createElement('div');
+    cell.className = 'yr-month-cell';
+    cell.style.width = ((days / totalDays) * TOTAL_W).toFixed(1) + 'px';
+    cell.textContent = mNames[i];
+    monthRow.appendChild(cell);
+  });
+  wrap.appendChild(monthRow);
+
+  // ── Week number row ───────────────────────────────────────────────────────
+  const weekRow = document.createElement('div');
+  weekRow.className = 'yr-row yr-week-row';
+  const wCorner = document.createElement('div');
+  wCorner.className = 'yr-label-col';
+  wCorner.textContent = 'Wk →';
+  weekRow.appendChild(wCorner);
+  for (let w = 1; w <= 52; w++) {
+    const cell = document.createElement('div');
+    cell.className = 'yr-week-cell' + (w === curWeek ? ' current' : '');
+    cell.textContent = (w % 4 === 1) ? w : '';
+    weekRow.appendChild(cell);
+  }
+  wrap.appendChild(weekRow);
+
+  // ── Log groups ────────────────────────────────────────────────────────────
+  const logNodes = session.nodes.filter(n => n.type === 'log' && n.log_yearly_field && !n.archived);
+
+  if (logNodes.length === 0) {
+    const empty = document.createElement('div');
+    empty.className = 'yr-empty';
+    empty.innerHTML = 'No yearly-tagged logs yet.<br>Open a log\'s schema (right-click → 📋 Define as log) and tap 📅 on a numeric duration field.';
+    wrap.appendChild(empty);
+    return;
+  }
+
+  logNodes.forEach((logNode, li) => {
+    const color       = YR_COLORS[li % YR_COLORS.length];
+    const yearlyField = logNode.log_yearly_field;
+    const entries     = session.nodes.filter(n => n.parent_id === logNode.id && !n.archived);
+    if (entries.length === 0) return;
+
+    // Group header
+    const grpRow = document.createElement('div');
+    grpRow.className = 'yr-group-row';
+    const grpLabel = document.createElement('div');
+    grpLabel.className = 'yr-group-label';
+    grpLabel.style.color = color;
+    grpLabel.textContent = logNode.label;
+    grpRow.appendChild(grpLabel);
+    wrap.appendChild(grpRow);
+
+    // Entry rows
+    entries.forEach(entry => {
+      const startWeek     = Math.max(1, Math.min(52, entry.yearly_start_week || curWeek));
+      const rawVal        = parseFloat((entry.log_fields || {})[yearlyField]);
+      const durationWeeks = (!isNaN(rawVal) && rawVal > 0) ? Math.ceil(rawVal / 7) : 1;
+      const spanWeeks     = Math.min(53 - startWeek, durationWeeks);
+
+      const entryRow  = document.createElement('div');
+      entryRow.className = 'yr-entry-row';
+
+      const labelCell = document.createElement('div');
+      labelCell.className = 'yr-label-col';
+      labelCell.textContent = entry.label;
+      labelCell.title = entry.label;
+
+      const cells = document.createElement('div');
+      cells.className = 'yr-cells';
+
+      // Background column grid
+      const bgStrip = document.createElement('div');
+      bgStrip.className = 'yr-col-bg';
+      for (let w = 1; w <= 52; w++) {
+        const col = document.createElement('div');
+        col.className = 'yr-col' + (w === curWeek ? ' current' : '');
+        bgStrip.appendChild(col);
+      }
+      cells.appendChild(bgStrip);
+
+      // Gantt bar
+      const bar = document.createElement('div');
+      bar.className = 'yr-bar';
+      bar.style.left       = ((startWeek - 1) * YR_COL_W) + 'px';
+      bar.style.width      = Math.max(4, spanWeeks * YR_COL_W - 4) + 'px';
+      bar.style.background = color;
+      bar.dataset.nodeId   = entry.id;
+      bar.dataset.startWeek = startWeek;
+      const endWeek = startWeek + spanWeeks - 1;
+      bar.title = `${entry.label}\nWeek ${startWeek} → ${endWeek}` +
+                  (rawVal ? `\n${rawVal} days = ${durationWeeks} weeks` : '');
+
+      const barLabel = document.createElement('span');
+      barLabel.className = 'yr-bar-label';
+      barLabel.textContent = rawVal ? rawVal + 'd' : spanWeeks + 'w';
+      bar.appendChild(barLabel);
+      cells.appendChild(bar);
+
+      entryRow.appendChild(labelCell);
+      entryRow.appendChild(cells);
+      wrap.appendChild(entryRow);
+
+      _initYrBarDrag(bar, entry.id);
+    });
+  });
+}
+
+function _initYrBarDrag(bar, nodeId) {
+  let dragStartX = 0, dragStartWeek = 0;
+
+  function startDrag(clientX) {
+    dragStartX    = clientX;
+    dragStartWeek = parseInt(bar.dataset.startWeek) || 1;
+  }
+  function moveDrag(clientX) {
+    const delta    = Math.round((clientX - dragStartX) / YR_COL_W);
+    const newStart = Math.max(1, Math.min(52, dragStartWeek + delta));
+    bar.style.left = ((newStart - 1) * YR_COL_W) + 'px';
+  }
+  function endDrag(clientX) {
+    const delta    = Math.round((clientX - dragStartX) / YR_COL_W);
+    const newStart = Math.max(1, Math.min(52, dragStartWeek + delta));
+    if (newStart !== dragStartWeek) {
+      const node = session.nodes.find(n => n.id === nodeId);
+      if (node) {
+        node.yearly_start_week = newStart;
+        node.last_modified     = new Date().toISOString();
+        saveSession();
+        renderYearlyView();
+      }
+    }
+  }
+
+  bar.addEventListener('mousedown', e => {
+    e.preventDefault();
+    startDrag(e.clientX);
+    bar.style.opacity = '0.75';
+    const onMove = e => moveDrag(e.clientX);
+    const onUp   = e => {
+      document.removeEventListener('mousemove', onMove);
+      document.removeEventListener('mouseup', onUp);
+      bar.style.opacity = '';
+      endDrag(e.clientX);
+    };
+    document.addEventListener('mousemove', onMove);
+    document.addEventListener('mouseup', onUp);
+  });
+
+  bar.addEventListener('touchstart', e => {
+    e.preventDefault();
+    startDrag(e.touches[0].clientX);
+    bar.style.opacity = '0.75';
+    const onMove = e => { e.preventDefault(); moveDrag(e.touches[0].clientX); };
+    const onEnd  = e => {
+      bar.removeEventListener('touchmove', onMove);
+      bar.removeEventListener('touchend', onEnd);
+      bar.style.opacity = '';
+      endDrag(e.changedTouches[0].clientX);
+    };
+    bar.addEventListener('touchmove', onMove, { passive: false });
+    bar.addEventListener('touchend', onEnd);
+  }, { passive: false });
 }
 
 // ─── KANBAN BOARD ───────────────────────────────────────────────────────────
 let kbDragState = null;
 
 function setViewTab(tab) {
-  // tab: 'cards' | 'map' | 'board' | 'calendar' | 'tb' | 'table'
+  // tab: 'cards' | 'map' | 'board' | 'calendar' | 'tb' | 'yr' | 'table'
   document.getElementById('tabCards').classList.toggle('active',  tab === 'cards');
   document.getElementById('tabMap').classList.toggle('active',    tab === 'map');
   document.getElementById('tabBoard').classList.toggle('active',  tab === 'board');
   document.getElementById('tabTable').classList.toggle('active',  tab === 'table');
   const calTab = document.getElementById('tabCal');
-  calTab.classList.toggle('active', tab === 'calendar' || tab === 'tb');
-  calTab.textContent = tab === 'tb' ? '⏱ Blocks' : '📅 Week';
+  calTab.classList.toggle('active', tab === 'calendar' || tab === 'tb' || tab === 'yr');
+  calTab.textContent = tab === 'tb' ? '⏱ Blocks' : tab === 'yr' ? '📆 Year' : '📅 Week';
   document.getElementById('cardFilterBar').style.display = (tab === 'cards') ? '' : 'none';
-  // Sync inner map tab bar
   const mmTbl = document.getElementById('mmTabTable');
   if (mmTbl) mmTbl.classList.toggle('active', tab === 'table');
 }
@@ -7679,6 +7981,7 @@ function showKanban() {
   if (calVisible)    hideCalendar();
   if (tbVisible)     hideTimeBlockView();
   if (tableVisible)  hideTableView();
+  if (yrVisible)     hideYearlyView();
   kbVisible = true;
   document.getElementById('cardScroll').style.display = 'none';
   document.getElementById('kbView').classList.remove('hidden');
@@ -7879,7 +8182,7 @@ const toggleMenu = () => document.getElementById('menuDropdown').classList.toggl
 const closeMenu  = () => document.getElementById('menuDropdown').classList.remove('open');
 
 // ─── INIT ───────────────────────────────────────────────────────────────────
-const BUILD_TS = 'build:2026-03-29T01:00'; // bumped each deploy — confirms fresh load
+const BUILD_TS = 'build:2026-03-29T02:00'; // bumped each deploy — confirms fresh load
 
 async function initApp() {
   // Show immediately with localStorage data
@@ -8081,10 +8384,11 @@ document.addEventListener('DOMContentLoaded', () => {
   initMmPanZoom();
   // View switcher tabs (Cards / Map / Board / Week)
   document.getElementById('tabCards').addEventListener('click', () => {
-    if (mmVisible)    hideMindMap();
+    if (mmVisible)         hideMindMap();
     else if (kbVisible)    hideKanban();
     else if (calVisible)   hideCalendar();
     else if (tbVisible)    hideTimeBlockView();
+    else if (yrVisible)    hideYearlyView();
     else if (tableVisible) hideTableView();
     else cycleCardSort();
   });
@@ -8093,9 +8397,10 @@ document.addEventListener('DOMContentLoaded', () => {
   });
   document.getElementById('tabBoard').addEventListener('click', () => { if (!kbVisible) showKanban(); else cycleCardSort(); });
   document.getElementById('tabCal').addEventListener('click', () => {
-    if (!calVisible && !tbVisible) { showCalendar(); }
-    else if (calVisible)           { showTimeBlockView(); }
-    else                           { showCalendar(); }
+    if (!calVisible && !tbVisible && !yrVisible) { showCalendar(); }
+    else if (calVisible)   { showTimeBlockView(); }
+    else if (tbVisible)    { showYearlyView(); }
+    else                   { showCalendar(); } // yrVisible → back to Week
   });
   document.getElementById('tbBadgeToggle').addEventListener('click', () => {
     tbBadgeMode = tbBadgeMode === 'count' ? 'hours' : 'count';
@@ -8121,9 +8426,8 @@ document.addEventListener('DOMContentLoaded', () => {
   });
   document.getElementById('logAddFieldBtn').addEventListener('click', () => {
     const cur = _readLogModalSchema();
-    const curTitle = _readLogModalTitleField();
     cur.push({ key: '', label: '', type: 'text' });
-    _renderLogModalFields(cur, curTitle);
+    _renderLogModalFields(cur, _readLogModalTitleField(), _readLogModalYearlyField());
   });
   // Calendar navigation
   document.getElementById('calPrevBtn').addEventListener('click', () => {
