@@ -1938,6 +1938,7 @@
       <button class="paste-btn" id="pasteBtn" title="Paste from clipboard">📋</button>
       <button class="record-btn" id="recordBtn">⏺</button>
       <button class="camera-btn" id="cameraBtn">📷</button>
+      <button class="camera-btn" id="ocrBtn" title="Scan text from photo">🔍</button>
     </div>
     <div class="keyboard-row hidden" id="keyboardRow">
       <textarea class="keyboard-input" id="keyboardInput" placeholder="Type your idea… (⌘Enter for AI)" rows="1"></textarea>
@@ -2066,6 +2067,8 @@
 <div class="toast" id="toast"></div>
 <input type="file" id="fileInput"  accept=".json"       style="display:none" />
 <input type="file" id="imageInput" accept="image/*"
+       style="opacity:0;position:absolute;width:1px;height:1px;pointer-events:none" />
+<input type="file" id="ocrInput"   accept="image/*"
        style="opacity:0;position:absolute;width:1px;height:1px;pointer-events:none" />
 
 <script>
@@ -4039,6 +4042,80 @@ async function handleImageCapture(file) {
   btn.classList.add('has-pending');
   setStatus('Photo ready — tap ⏺ to describe it', 'processing');
   showToast('Photo ready — describe it or tap Skip');
+}
+
+async function handleOcrCapture(file) {
+  if (!file) return;
+  if (!getApiKey()) { showKeyModal(); return; }
+
+  setStatus('Reading text from photo…', 'processing');
+  const dataUrl = await compressImage(file, 1600); // higher res for text
+  if (!dataUrl) { setStatus('Could not read image', 'error'); return; }
+
+  const ocrSystem =
+    `You extract text from images. Return ONLY a JSON object: {"text": "<extracted text>"}. ` +
+    `Preserve the original wording exactly. If multiple distinct sections exist, separate them with newlines. ` +
+    `If no readable text is found, return {"text": ""}.`;
+
+  const logEntry = {
+    id: makeId(), label: 'OCR scan',
+    timestamp: new Date().toISOString(),
+    system: ocrSystem, user: 'Extract all text from this image.',
+    prefill: '{', response: null, error: null, durationMs: null,
+  };
+  const t0 = Date.now();
+
+  try {
+    const base64 = dataUrl.split(',')[1];
+    const res = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type':                              'application/json',
+        'x-api-key':                                 getApiKey(),
+        'anthropic-version':                         '2023-06-01',
+        'anthropic-dangerous-direct-browser-access': 'true',
+      },
+      body: JSON.stringify({
+        model: CLAUDE_MODEL, max_tokens: 2048,
+        system: ocrSystem,
+        messages: [
+          { role: 'user', content: [
+            { type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: base64 } },
+            { type: 'text',  text: 'Extract all text from this image.' }
+          ]},
+          { role: 'assistant', content: '{' }
+        ]
+      })
+    });
+
+    const body = await res.text();
+    logEntry.durationMs = Date.now() - t0;
+
+    if (res.ok) {
+      const raw    = '{' + JSON.parse(body).content[0].text;
+      logEntry.response = raw;
+      addToPromptLog(logEntry);
+      const parsed = extractJSON(raw);
+      const text   = parsed?.text?.trim();
+      if (text) {
+        setStatus('Text extracted — processing…', 'processing');
+        await handleTranscript(text);
+      } else {
+        setStatus('No text found in image', 'error');
+      }
+    } else {
+      let msg = `OCR error ${res.status}`;
+      try { msg = JSON.parse(body).error?.message || msg; } catch {}
+      logEntry.error = msg;
+      addToPromptLog(logEntry);
+      setStatus('⚠ ' + msg, 'error');
+    }
+  } catch (err) {
+    logEntry.error = err.message;
+    logEntry.durationMs = Date.now() - t0;
+    addToPromptLog(logEntry);
+    setStatus('⚠ ' + err.message, 'error');
+  }
 }
 
 function clearPendingImage() {
@@ -7802,7 +7879,7 @@ const toggleMenu = () => document.getElementById('menuDropdown').classList.toggl
 const closeMenu  = () => document.getElementById('menuDropdown').classList.remove('open');
 
 // ─── INIT ───────────────────────────────────────────────────────────────────
-const BUILD_TS = 'build:2026-03-29T00:30'; // bumped each deploy — confirms fresh load
+const BUILD_TS = 'build:2026-03-29T01:00'; // bumped each deploy — confirms fresh load
 
 async function initApp() {
   // Show immediately with localStorage data
@@ -7945,6 +8022,14 @@ document.addEventListener('DOMContentLoaded', () => {
     const file = e.target.files[0];
     e.target.value = '';
     if (file) handleImageCapture(file);
+  });
+  document.getElementById('ocrBtn').addEventListener('click', () => {
+    document.getElementById('ocrInput').click();
+  });
+  document.getElementById('ocrInput').addEventListener('change', e => {
+    const file = e.target.files[0];
+    e.target.value = '';
+    if (file) handleOcrCapture(file);
   });
 
   document.getElementById('menuBtn').addEventListener('click', e => { e.stopPropagation(); toggleMenu(); });
