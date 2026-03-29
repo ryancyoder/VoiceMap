@@ -1718,6 +1718,9 @@
                                  background: var(--accent); color: #fff; font-size: 13px; font-weight: 600;
                                  border: none; cursor: pointer; }
     .tbl-empty                { padding: 40px; text-align: center; color: var(--muted); font-size: 14px; }
+    .tbl-group-header td      { background: var(--border); color: var(--text); font-size: 11px;
+                                 font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px;
+                                 padding: 5px 10px !important; }
     .tbl-del-col              { width: 32px; padding: 0 4px !important; text-align: center; }
     .tbl-del-btn              { background: none; border: none; color: var(--muted); font-size: 18px;
                                  line-height: 1; cursor: pointer; padding: 2px 6px; border-radius: 4px;
@@ -1898,7 +1901,12 @@
       <div style="font-size:11px;color:var(--muted);margin-bottom:6px;font-weight:700;text-transform:uppercase">Fields</div>
       <div id="logFieldsList"></div>
       <button class="log-add-field-btn" id="logAddFieldBtn">+ Add field</button>
-      <div style="height:16px"></div>
+      <div style="height:12px"></div>
+      <label style="display:flex;align-items:center;gap:9px;font-size:13px;color:var(--text);cursor:pointer;padding:4px 0">
+        <input type="checkbox" id="logGrandchildrenToggle" style="width:16px;height:16px;cursor:pointer">
+        Include grandchildren grouped by parent
+      </label>
+      <div style="height:12px"></div>
       <button class="modal-save" id="logSaveBtn">Save Schema</button>
       <button class="modal-save" id="logCancelBtn" style="background:#6b7280;margin-top:8px">Cancel</button>
     </div>
@@ -7387,18 +7395,18 @@ function renderTableView() {
   if (!logNode) return;
   const schema     = logNode.log_schema || [];
   const titleField = logNode.log_title_field || null;
-  const rows = session.nodes.filter(n => n.parent_id === tableLogId && !n.archived);
+  const dateField  = schema.find(f => f.type === 'date');
+  const colCount   = (titleField ? 0 : 1) + schema.length + 1; // used for group header colspan
 
-  // Sort: if schema has a 'date' field, sort by that; else by created desc
-  const dateField = schema.find(f => f.type === 'date');
-  rows.sort((a, b) => {
+  // Shared sort comparator
+  const rowSort = (a, b) => {
     if (dateField) {
       const av = (a.log_fields || {})[dateField.key] || '';
       const bv = (b.log_fields || {})[dateField.key] || '';
       return bv.localeCompare(av);
     }
     return (b.created || '').localeCompare(a.created || '');
-  });
+  };
 
   const wrap = document.getElementById('tblWrap');
   wrap.innerHTML = '';
@@ -7409,7 +7417,6 @@ function renderTableView() {
   // Header
   const thead = document.createElement('thead');
   const htr = document.createElement('tr');
-  // Title column — shown only when no field is designated as title
   if (!titleField) {
     const thLabel = document.createElement('th');
     thLabel.textContent = 'Title';
@@ -7420,16 +7427,14 @@ function renderTableView() {
     th.textContent = f.label + (f.key === titleField ? ' 📌' : '');
     htr.appendChild(th);
   });
-  // Delete column header
   const thDel = document.createElement('th');
   thDel.className = 'tbl-del-col';
   htr.appendChild(thDel);
   thead.appendChild(htr);
   table.appendChild(thead);
 
-  // Body
-  const tbody = document.createElement('tbody');
-  rows.forEach(row => {
+  // Row builder (shared between flat and grouped modes)
+  function buildTr(row) {
     const tr = document.createElement('tr');
     if (!titleField) {
       const tdLabel = document.createElement('td');
@@ -7442,7 +7447,6 @@ function renderTableView() {
       td.appendChild(_tblEditCell(row.id, f.key, f.type, val != null ? val : '', f.key === titleField));
       tr.appendChild(td);
     });
-    // Delete button cell
     const tdDel = document.createElement('td');
     tdDel.className = 'tbl-del-col';
     const delBtn = document.createElement('button');
@@ -7457,8 +7461,50 @@ function renderTableView() {
     });
     tdDel.appendChild(delBtn);
     tr.appendChild(tdDel);
-    tbody.appendChild(tr);
-  });
+    return tr;
+  }
+
+  // Body
+  const tbody = document.createElement('tbody');
+
+  if (logNode.log_include_grandchildren) {
+    // Group mode: children of the log node act as section headers;
+    // their children (grandchildren of the log node) are the data rows.
+    const children = session.nodes.filter(n => n.parent_id === tableLogId && !n.archived);
+    children.sort((a, b) => (a.created || '').localeCompare(b.created || ''));
+
+    // Separate children that have sub-entries from those that don't
+    const groups   = [];
+    const flatRows = [];
+    children.forEach(child => {
+      const grandchildren = session.nodes.filter(n => n.parent_id === child.id && !n.archived);
+      if (grandchildren.length > 0) {
+        groups.push({ parent: child, rows: grandchildren.sort(rowSort) });
+      } else {
+        flatRows.push(child);
+      }
+    });
+
+    // Ungrouped direct children first
+    flatRows.sort(rowSort).forEach(row => tbody.appendChild(buildTr(row)));
+
+    // Each group with a collapsible header
+    groups.forEach(({ parent, rows }) => {
+      const gtr = document.createElement('tr');
+      gtr.className = 'tbl-group-header';
+      const gtd = document.createElement('td');
+      gtd.colSpan = colCount;
+      gtd.textContent = parent.label;
+      gtr.appendChild(gtd);
+      tbody.appendChild(gtr);
+      rows.forEach(row => tbody.appendChild(buildTr(row)));
+    });
+  } else {
+    // Flat mode: direct children only
+    const rows = session.nodes.filter(n => n.parent_id === tableLogId && !n.archived);
+    rows.sort(rowSort).forEach(row => tbody.appendChild(buildTr(row)));
+  }
+
   table.appendChild(tbody);
   wrap.appendChild(table);
 
@@ -7653,6 +7699,7 @@ function openLogModal(nodeId) {
   const node = session.nodes.find(n => n.id === nodeId);
   if (!node) return;
   _renderLogModalFields(node.log_schema || [], node.log_title_field || '', node.log_yearly_field || '');
+  document.getElementById('logGrandchildrenToggle').checked = !!node.log_include_grandchildren;
   document.getElementById('logModal').classList.remove('hidden');
 }
 
@@ -7866,10 +7913,11 @@ function saveLogModal() {
   const yearlyField  = _readLogModalYearlyField();
   const node = session.nodes.find(n => n.id === logModalNodeId);
   if (!node) { closeLogModal(); return; }
-  node.type             = 'log';
-  node.log_schema       = schema;
-  node.log_title_field  = titleField  || null;
-  node.log_yearly_field = yearlyField || null;
+  node.type                     = 'log';
+  node.log_schema               = schema;
+  node.log_title_field          = titleField  || null;
+  node.log_yearly_field         = yearlyField || null;
+  node.log_include_grandchildren = document.getElementById('logGrandchildrenToggle').checked || false;
   node.last_modified    = new Date().toISOString();
   saveSession();
   closeLogModal();
@@ -8319,7 +8367,7 @@ const toggleMenu = () => document.getElementById('menuDropdown').classList.toggl
 const closeMenu  = () => document.getElementById('menuDropdown').classList.remove('open');
 
 // ─── INIT ───────────────────────────────────────────────────────────────────
-const BUILD_TS = 'build:2026-03-29T04:45'; // bumped each deploy — confirms fresh load
+const BUILD_TS = 'build:2026-03-29T05:15'; // bumped each deploy — confirms fresh load
 
 async function initApp() {
   // Show immediately with localStorage data
