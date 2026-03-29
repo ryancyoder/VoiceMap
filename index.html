@@ -5076,18 +5076,41 @@ function initMmPanZoom() {
   let lastTapTime = 0, lastTapNodeId = undefined, singleTapTimer = null, touchDblHandled = false;
   let mmLongPressTimer = null, mmLongPressX = 0, mmLongPressY = 0;
   let wasPinching = false; // guards against pinch-end being misread as double-tap
+  let mmMoveTriggerTimer = null; // multi-touch move gesture activation
 
   wrap.addEventListener('touchstart', e => {
     // Ignore ghost clicks fired shortly after Quick Find closes
     if (Date.now() - _qfCloseTime < 400) { e.preventDefault(); return; }
     if (e.touches.length === 2) {
       panning = false;
-      wasPinching = true;
-      pinchDist = Math.hypot(
-        e.touches[0].clientX - e.touches[1].clientX,
-        e.touches[0].clientY - e.touches[1].clientY
-      );
       clearTimeout(mmLongPressTimer); mmLongPressTimer = null;
+      clearTimeout(mmMoveTriggerTimer); mmMoveTriggerTimer = null;
+      if (!mmMoveMode) {
+        // Check for "hold empty + long-press node" move activation gesture
+        const t0el = document.elementFromPoint(e.touches[0].clientX, e.touches[0].clientY);
+        const t1el = document.elementFromPoint(e.touches[1].clientX, e.touches[1].clientY);
+        const t0node = t0el?.closest?.('[data-mmid]');
+        const t1node = t1el?.closest?.('[data-mmid]');
+        if ((t0node && !t1node) || (!t0node && t1node)) {
+          // One finger on a node, other on empty space → start move activation timer
+          const nodeId = (t0node || t1node).dataset.mmid;
+          mmMoveTriggerTimer = setTimeout(() => {
+            mmMoveTriggerTimer = null;
+            wasPinching = true; // suppress tap detection when fingers lift
+            mmSelectedId = nodeId;
+            startMmMove();
+            renderMindMap();
+            navigator.vibrate?.([30, 30, 30]);
+          }, 500);
+        } else {
+          // Normal pinch zoom
+          wasPinching = true;
+          pinchDist = Math.hypot(
+            e.touches[0].clientX - e.touches[1].clientX,
+            e.touches[0].clientY - e.touches[1].clientY
+          );
+        }
+      }
     } else if (e.touches.length === 1) {
       lastT = { x: e.touches[0].clientX, y: e.touches[0].clientY };
       panning = true;
@@ -5109,6 +5132,10 @@ function initMmPanZoom() {
   }, { passive: true });
 
   wrap.addEventListener('touchmove', e => {
+    if (e.touches.length === 2) {
+      // Any finger movement cancels the move-activation timer
+      clearTimeout(mmMoveTriggerTimer); mmMoveTriggerTimer = null;
+    }
     if (e.touches.length === 2 && pinchDist !== null) {
       e.preventDefault();
       const d = Math.hypot(
@@ -5136,6 +5163,7 @@ function initMmPanZoom() {
 
   wrap.addEventListener('touchend', e => {
     clearTimeout(mmLongPressTimer); mmLongPressTimer = null;
+    clearTimeout(mmMoveTriggerTimer); mmMoveTriggerTimer = null;
     // If a pinch was in progress, skip all tap detection until the last finger lifts
     if (wasPinching) {
       if (e.touches.length === 0) {
@@ -8182,7 +8210,7 @@ const toggleMenu = () => document.getElementById('menuDropdown').classList.toggl
 const closeMenu  = () => document.getElementById('menuDropdown').classList.remove('open');
 
 // ─── INIT ───────────────────────────────────────────────────────────────────
-const BUILD_TS = 'build:2026-03-29T02:10'; // bumped each deploy — confirms fresh load
+const BUILD_TS = 'build:2026-03-29T03:00'; // bumped each deploy — confirms fresh load
 
 async function initApp() {
   // Show immediately with localStorage data
