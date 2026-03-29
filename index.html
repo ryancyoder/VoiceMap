@@ -1708,6 +1708,12 @@
                                  background: var(--accent); color: #fff; font-size: 13px; font-weight: 600;
                                  border: none; cursor: pointer; }
     .tbl-empty                { padding: 40px; text-align: center; color: var(--muted); font-size: 14px; }
+    .tbl-del-col              { width: 32px; padding: 0 4px !important; text-align: center; }
+    .tbl-del-btn              { background: none; border: none; color: var(--muted); font-size: 18px;
+                                 line-height: 1; cursor: pointer; padding: 2px 6px; border-radius: 4px;
+                                 opacity: 0; transition: opacity 0.15s; }
+    .tbl-table tr:hover .tbl-del-btn { opacity: 1; }
+    .tbl-del-btn:hover        { color: var(--error, #e24b4a); background: rgba(226,75,74,0.1); }
     /* Log schema modal */
     .log-field-row            { display: flex; gap: 8px; align-items: center; margin-bottom: 8px; }
     .log-field-row input,
@@ -7359,6 +7365,10 @@ function renderTableView() {
     th.textContent = f.label + (f.key === titleField ? ' 📌' : '');
     htr.appendChild(th);
   });
+  // Delete column header
+  const thDel = document.createElement('th');
+  thDel.className = 'tbl-del-col';
+  htr.appendChild(thDel);
   thead.appendChild(htr);
   table.appendChild(thead);
 
@@ -7377,6 +7387,21 @@ function renderTableView() {
       td.appendChild(_tblEditCell(row.id, f.key, f.type, val != null ? val : '', f.key === titleField));
       tr.appendChild(td);
     });
+    // Delete button cell
+    const tdDel = document.createElement('td');
+    tdDel.className = 'tbl-del-col';
+    const delBtn = document.createElement('button');
+    delBtn.className = 'tbl-del-btn';
+    delBtn.textContent = '×';
+    delBtn.title = 'Delete row';
+    delBtn.addEventListener('click', () => {
+      const idx = session.nodes.findIndex(n => n.id === row.id);
+      if (idx !== -1) session.nodes.splice(idx, 1);
+      saveSession();
+      renderTableView();
+    });
+    tdDel.appendChild(delBtn);
+    tr.appendChild(tdDel);
     tbody.appendChild(tr);
   });
   table.appendChild(tbody);
@@ -8239,7 +8264,7 @@ const toggleMenu = () => document.getElementById('menuDropdown').classList.toggl
 const closeMenu  = () => document.getElementById('menuDropdown').classList.remove('open');
 
 // ─── INIT ───────────────────────────────────────────────────────────────────
-const BUILD_TS = 'build:2026-03-29T03:15'; // bumped each deploy — confirms fresh load
+const BUILD_TS = 'build:2026-03-29T03:30'; // bumped each deploy — confirms fresh load
 
 async function initApp() {
   // Show immediately with localStorage data
