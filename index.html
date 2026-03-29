@@ -1342,6 +1342,21 @@
       cursor: pointer;
     }
     .kb-col-header:active { background: rgba(0,0,0,0.09); }
+    .kb-col-collapse-btn  { background: none; border: none; cursor: pointer; color: var(--muted);
+                             font-size: 12px; padding: 0 2px; flex-shrink: 0; line-height: 1;
+                             font-family: var(--font); }
+    .kb-col-collapse-btn:hover { color: var(--text); }
+    .kb-column.collapsed  { width: 44px; min-width: 44px; }
+    .kb-column.collapsed .kb-cards { display: none; }
+    .kb-column.collapsed .kb-col-header {
+      flex-direction: column; align-items: center; cursor: default;
+      padding: 10px 6px; gap: 6px; height: auto; min-height: 100px;
+    }
+    .kb-column.collapsed .kb-col-title {
+      writing-mode: vertical-rl; transform: rotate(180deg);
+      white-space: nowrap; overflow: hidden; max-height: 140px; text-overflow: ellipsis;
+    }
+    .kb-column.collapsed .kb-col-count { writing-mode: vertical-rl; transform: rotate(180deg); }
     .kb-col-title {
       flex: 1;
       overflow: hidden;
@@ -8146,6 +8161,7 @@ function _initYrBarDrag(bar, nodeId) {
 
 // ─── KANBAN BOARD ───────────────────────────────────────────────────────────
 let kbDragState = null;
+let kbCollapsed = new Set(); // column IDs that are currently collapsed
 
 function setViewTab(tab) {
   // tab: 'cards' | 'map' | 'board' | 'calendar' | 'tb' | 'yr' | 'table'
@@ -8204,14 +8220,16 @@ function renderKanban() {
   board.innerHTML = columns.map(col => {
     const cards = childrenOf(col.id).filter(n => !isArchivedBeforeToday(n));
     const nid = esc(col.id);
+    const collapsed = kbCollapsed.has(col.id);
     return `
-      <div class="kb-column" data-col-id="${nid}">
+      <div class="kb-column${collapsed ? ' collapsed' : ''}" data-col-id="${nid}">
         <div class="kb-col-header" data-kb-nav-id="${nid}">
           <span class="kb-col-title">${esc(col.label)}</span>
           <span class="kb-col-count">${cards.length}</span>
+          <button class="kb-col-collapse-btn" data-kb-collapse-id="${nid}" title="${collapsed ? 'Expand column' : 'Collapse column'}">${collapsed ? '▸' : '▾'}</button>
         </div>
         <div class="kb-cards" data-drop-col="${nid}">
-          ${cards.map(card => {
+          ${collapsed ? '' : cards.map(card => {
             const childCount = childrenOf(card.id).length;
             const cid = esc(card.id);
             return `<div class="kb-card" data-kb-card-id="${cid}" data-kb-col-id="${nid}">
@@ -8231,9 +8249,19 @@ function initKbBoard() {
 }
 
 function onKbClick(e) {
-  // Column header → navigate into that node
+  // Collapse / expand button — must check before nav-id handler
+  const collapseBtn = e.target.closest('[data-kb-collapse-id]');
+  if (collapseBtn) {
+    const id = collapseBtn.dataset.kbCollapseId;
+    if (kbCollapsed.has(id)) kbCollapsed.delete(id); else kbCollapsed.add(id);
+    renderKanban();
+    return;
+  }
+  // Column header → navigate into that node (only when not collapsed)
   const navEl = e.target.closest('[data-kb-nav-id]');
   if (navEl) {
+    const colEl = navEl.closest('.kb-column');
+    if (colEl?.classList.contains('collapsed')) return; // tap on collapsed header → do nothing
     const node = session.nodes.find(n => n.id === navEl.dataset.kbNavId);
     if (node) { navigateInto(node.id, node.label); return; }
   }
@@ -8367,7 +8395,7 @@ const toggleMenu = () => document.getElementById('menuDropdown').classList.toggl
 const closeMenu  = () => document.getElementById('menuDropdown').classList.remove('open');
 
 // ─── INIT ───────────────────────────────────────────────────────────────────
-const BUILD_TS = 'build:2026-03-29T05:15'; // bumped each deploy — confirms fresh load
+const BUILD_TS = 'build:2026-03-29T05:45'; // bumped each deploy — confirms fresh load
 
 async function initApp() {
   // Show immediately with localStorage data
