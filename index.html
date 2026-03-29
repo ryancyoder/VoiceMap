@@ -1252,6 +1252,16 @@
       border-color: #007aff;
       box-shadow: 0 0 0 3px rgba(0,122,255,0.3);
     }
+    .mm-node.drag-source      { opacity: 0.35; }
+    .mm-node.drag-over        { border-color: #30d158; box-shadow: 0 0 0 3px rgba(48,209,88,0.35); }
+    .mm-drag-ghost            {
+      position: fixed; z-index: 9999; pointer-events: none;
+      background: var(--card-bg); border: 2px solid var(--accent); border-radius: 10px;
+      padding: 8px 12px; font-size: 13px; font-weight: 600; color: var(--text);
+      box-shadow: 0 8px 24px rgba(0,0,0,0.25);
+      transform: translate(-50%, calc(-100% - 18px));
+      max-width: 200px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
     .mm-focus-label { font-weight: 600; max-width: 200px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .mm-focus-exit {
       background: none; border: none; color: #007aff;
@@ -5113,6 +5123,56 @@ function initMmPanZoom() {
   let wasPinching = false; // guards against pinch-end being misread as double-tap
   let mmMoveTriggerTimer = null; // multi-touch move gesture activation
   let mmMoveTriggerStart = null; // {x0,y0,x1,y1} finger positions when timer started
+  // Touch drag state (long-press-hold → drag to reparent)
+  let mmDragActive = false, mmDragNodeId = null, mmDragOverId = null, mmDragSecondaryTimer = null;
+
+  function _startTouchDrag(nodeId, x, y) {
+    mmDragActive = true; mmDragNodeId = nodeId; mmDragOverId = null;
+    const node = session.nodes.find(n => n.id === nodeId);
+    const ghost = document.createElement('div');
+    ghost.id = 'mmDragGhost'; ghost.className = 'mm-drag-ghost';
+    ghost.textContent = node?.label || '';
+    ghost.style.left = x + 'px'; ghost.style.top = y + 'px';
+    document.body.appendChild(ghost);
+    document.querySelector(`[data-mmid="${nodeId}"]`)?.classList.add('drag-source');
+    navigator.vibrate?.([20, 20, 20]);
+  }
+
+  function _updateTouchDrag(x, y) {
+    const ghost = document.getElementById('mmDragGhost');
+    if (ghost) { ghost.style.left = x + 'px'; ghost.style.top = y + 'px'; }
+    const el = document.elementFromPoint(x, y);
+    const nodeEl = el?.closest('[data-mmid]');
+    const overId = nodeEl?.dataset.mmid || null;
+    const valid = overId && overId !== mmDragNodeId && !_mmIsDescendantOrSelf(overId, mmDragNodeId);
+    if (overId !== mmDragOverId) {
+      if (mmDragOverId) document.querySelector(`[data-mmid="${mmDragOverId}"]`)?.classList.remove('drag-over');
+      mmDragOverId = valid ? overId : null;
+      if (mmDragOverId) document.querySelector(`[data-mmid="${mmDragOverId}"]`)?.classList.add('drag-over');
+    }
+  }
+
+  function _endTouchDrag(x, y) {
+    mmDragActive = false;
+    document.getElementById('mmDragGhost')?.remove();
+    document.querySelector(`[data-mmid="${mmDragNodeId}"]`)?.classList.remove('drag-source');
+    if (mmDragOverId) document.querySelector(`[data-mmid="${mmDragOverId}"]`)?.classList.remove('drag-over');
+    const el = document.elementFromPoint(x, y);
+    const nodeEl = el?.closest('[data-mmid]');
+    const targetId = nodeEl?.dataset.mmid || null;
+    if (targetId && targetId !== mmDragNodeId && !_mmIsDescendantOrSelf(targetId, mmDragNodeId)) {
+      const node = session.nodes.find(n => n.id === mmDragNodeId);
+      const targetNode = session.nodes.find(n => n.id === targetId);
+      if (node && targetNode) {
+        node.parent_id = targetId;
+        node.last_modified = new Date().toISOString();
+        saveSession();
+        showToast(`Moved under "${targetNode.label}"`);
+        renderMindMap();
+      }
+    }
+    mmDragNodeId = null; mmDragOverId = null;
+  }
 
   wrap.addEventListener('touchstart', e => {
     // Ignore ghost clicks fired shortly after Quick Find closes
@@ -5166,6 +5226,12 @@ function initMmPanZoom() {
           clearTimeout(singleTapTimer); singleTapTimer = null;
           showNodeCtxMenu(capturedId, mmLongPressX, mmLongPressY);
           navigator.vibrate?.(40);
+          // Continue holding → close menu and enter touch-drag mode
+          mmDragSecondaryTimer = setTimeout(() => {
+            mmDragSecondaryTimer = null;
+            closeNodeCtxMenu();
+            _startTouchDrag(capturedId, mmLongPressX, mmLongPressY);
+          }, 500);
         }, 500);
       }
     }
@@ -5191,24 +5257,41 @@ function initMmPanZoom() {
       pinchDist = d;
       applyMmTransform();
       tapNode = null;
-    } else if (e.touches.length === 1 && panning && lastT) {
-      e.preventDefault();
-      const dx = e.touches[0].clientX - lastT.x;
-      const dy = e.touches[0].clientY - lastT.y;
-      if (Math.abs(dx) > 4 || Math.abs(dy) > 4) {
-        tapNode = null;
-        clearTimeout(mmLongPressTimer); mmLongPressTimer = null;
+    } else if (e.touches.length === 1) {
+      if (mmDragActive) {
+        e.preventDefault();
+        _updateTouchDrag(e.touches[0].clientX, e.touches[0].clientY);
+      } else if (panning && lastT) {
+        e.preventDefault();
+        const dx = e.touches[0].clientX - lastT.x;
+        const dy = e.touches[0].clientY - lastT.y;
+        if (Math.abs(dx) > 4 || Math.abs(dy) > 4) {
+          tapNode = null;
+          clearTimeout(mmLongPressTimer); mmLongPressTimer = null;
+          // Cancel drag-mode secondary timer if finger strays from long-press origin
+          if (mmDragSecondaryTimer !== null &&
+              Math.hypot(e.touches[0].clientX - mmLongPressX, e.touches[0].clientY - mmLongPressY) > 10) {
+            clearTimeout(mmDragSecondaryTimer); mmDragSecondaryTimer = null;
+            closeNodeCtxMenu();
+          }
+        }
+        mmTransform.x += dx;
+        mmTransform.y += dy;
+        lastT = { x: e.touches[0].clientX, y: e.touches[0].clientY };
+        applyMmTransform();
       }
-      mmTransform.x += dx;
-      mmTransform.y += dy;
-      lastT = { x: e.touches[0].clientX, y: e.touches[0].clientY };
-      applyMmTransform();
     }
   }, { passive: false });
 
   wrap.addEventListener('touchend', e => {
     clearTimeout(mmLongPressTimer); mmLongPressTimer = null;
     clearTimeout(mmMoveTriggerTimer); mmMoveTriggerTimer = null; mmMoveTriggerStart = null;
+    clearTimeout(mmDragSecondaryTimer); mmDragSecondaryTimer = null;
+    if (mmDragActive) {
+      _endTouchDrag(e.changedTouches[0].clientX, e.changedTouches[0].clientY);
+      panning = false; pinchDist = null; lastT = null; tapNode = null;
+      return;
+    }
     // If a pinch was in progress, skip all tap detection until the last finger lifts
     if (wasPinching) {
       if (e.touches.length === 0) {
@@ -8274,7 +8357,7 @@ const toggleMenu = () => document.getElementById('menuDropdown').classList.toggl
 const closeMenu  = () => document.getElementById('menuDropdown').classList.remove('open');
 
 // ─── INIT ───────────────────────────────────────────────────────────────────
-const BUILD_TS = 'build:2026-03-29T04:00'; // bumped each deploy — confirms fresh load
+const BUILD_TS = 'build:2026-03-29T04:30'; // bumped each deploy — confirms fresh load
 
 async function initApp() {
   // Show immediately with localStorage data
