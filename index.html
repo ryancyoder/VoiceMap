@@ -1910,7 +1910,7 @@
 
   <!-- Log schema modal -->
   <div class="modal-overlay hidden" id="logModal">
-    <div class="modal-sheet" style="max-width:420px">
+    <div class="modal-sheet" style="max-width:420px;max-height:85vh;overflow-y:auto">
       <div class="modal-title">📋 Define Log Schema</div>
       <div class="modal-desc">This card becomes a log table. Child cards will have the fields below as structured columns.</div>
       <div style="font-size:11px;color:var(--muted);margin-bottom:6px;font-weight:700;text-transform:uppercase">Fields</div>
@@ -8395,7 +8395,7 @@ const toggleMenu = () => document.getElementById('menuDropdown').classList.toggl
 const closeMenu  = () => document.getElementById('menuDropdown').classList.remove('open');
 
 // ─── INIT ───────────────────────────────────────────────────────────────────
-const BUILD_TS = 'build:2026-03-29T05:45'; // bumped each deploy — confirms fresh load
+const BUILD_TS = 'build:2026-03-29T06:00'; // bumped each deploy — confirms fresh load
 
 async function initApp() {
   // Show immediately with localStorage data
