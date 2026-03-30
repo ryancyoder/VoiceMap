@@ -6719,7 +6719,9 @@ let _annotateStraightenTimer  = null;
 let _annotatePreStrokeState   = null; // ImageData before current stroke (for straighten)
 let _annotateStraightened     = false;
 let _annotateStraightenOrigin = null; // position when timer was last reset (jitter detection)
-let _annotateSmoothedPoints   = null; // reduced control points after curve-smooth snap
+let _annotateSmoothedPoints   = null; // displaced control points (updated each drag frame)
+let _annotateBasePts          = null; // unmodified control points after smooth snap
+let _annotateSnapPos          = null; // pointer position when snap fired (bulge origin)
 
 function openPhotoAnnotate(nodeId, idx) {
   _annotateNodeId    = nodeId;
@@ -6840,12 +6842,30 @@ function _annotateStraighten() {
   navigator.vibrate?.(12);
 }
 
+// Returns a copy of basePts with each point displaced perpendicular to the
+// start→end axis by bulge * sin(π·u) — a smooth arch that's zero at both ends
+function _annotateBulgedPoints(basePts, bulge) {
+  if (basePts.length < 2) return basePts.slice();
+  const s = basePts[0], e = basePts[basePts.length - 1];
+  const len = Math.hypot(e.x - s.x, e.y - s.y);
+  if (len < 1) return basePts.slice();
+  const px = -(e.y - s.y) / len, py = (e.x - s.x) / len; // unit perpendicular
+  return basePts.map((pt, i) => {
+    const u = i / (basePts.length - 1);
+    const d = bulge * Math.sin(Math.PI * u);
+    return { x: pt.x + px * d, y: pt.y + py * d, pressure: pt.pressure };
+  });
+}
+
 // Smooth-curve snap: reduces points and redraws as Catmull-Rom spline
 function _annotateSmoothSnap() {
   _annotateCtx.putImageData(_annotatePreStrokeState, 0, 0);
   // Sample down to at most 12 control points to remove jitter while keeping shape
   const reduced = _annotateReducePoints(_annotatePoints, 12);
+  _annotateBasePts    = reduced.slice(); // frozen copy — drag adjusts bulge relative to this
   _annotateSmoothedPoints = reduced;
+  _annotateSnapPos    = { x: _annotatePoints[_annotatePoints.length - 1].x,
+                          y: _annotatePoints[_annotatePoints.length - 1].y };
   _annotateCtx.globalCompositeOperation = 'source-over';
   _annotateCtx.strokeStyle = _annotateColor;
   _annotateCtx.lineWidth   = _annotateSize * 1.5;
@@ -6863,6 +6883,8 @@ function _annotateBegin(e) {
   _annotatePreStrokeState   = null;
   _annotateStraightenOrigin = null;
   _annotateSmoothedPoints   = null;
+  _annotateBasePts          = null;
+  _annotateSnapPos          = null;
   _annotateSaveUndo();
   // Snapshot state before stroke for potential straightening
   _annotatePreStrokeState  = _annotateUndoStack[_annotateUndoStack.length - 1];
@@ -6890,27 +6912,35 @@ function _annotateMove(e) {
   e.preventDefault();
   const pos = _annotateGetPos(e);
 
-  // Procreate-style: after snap, drag repositions the endpoint live
+  // After snap: drag reshapes the curve or repositions the line endpoint
   if (_annotateStraightened) {
     _annotateCtx.putImageData(_annotatePreStrokeState, 0, 0);
     const base = _annotateTool === 'eraser' ? _annotateSize * 6 : _annotateSize;
     _annotateCtx.globalCompositeOperation = _annotateTool === 'eraser' ? 'destination-out' : 'source-over';
     _annotateCtx.strokeStyle = _annotateColor;
     _annotateCtx.lineWidth   = base * 1.5;
-    if (_annotateTool === 'curvepen' && _annotateSmoothedPoints) {
-      // Update endpoint of the reduced control points and redraw smooth curve
-      _annotateSmoothedPoints[_annotateSmoothedPoints.length - 1] = pos;
-      _drawAnnotateCatmullRom(_annotateCtx, _annotateSmoothedPoints);
+    if (_annotateTool === 'curvepen' && _annotateBasePts && _annotateSnapPos) {
+      // Project drag delta onto the perpendicular of the start→end axis.
+      // This gives a "bulge" amount: drag toward the curve to arch it,
+      // drag away to flatten it or arch the other direction.
+      const s  = _annotateBasePts[0], e = _annotateBasePts[_annotateBasePts.length - 1];
+      const axLen = Math.hypot(e.x - s.x, e.y - s.y) || 1;
+      const perpX = -(e.y - s.y) / axLen, perpY = (e.x - s.x) / axLen;
+      const dx = pos.x - _annotateSnapPos.x, dy = pos.y - _annotateSnapPos.y;
+      const bulge = dx * perpX + dy * perpY;
+      const displaced = _annotateBulgedPoints(_annotateBasePts, bulge);
+      _annotateSmoothedPoints = displaced;
+      _drawAnnotateCatmullRom(_annotateCtx, displaced);
     } else {
-      // Straight line: drag endpoint
+      // Straight pen / eraser: drag repositions the endpoint
       const p1 = _annotatePoints[0];
       _annotateCtx.beginPath();
       _annotateCtx.moveTo(p1.x, p1.y);
       _annotateCtx.lineTo(pos.x, pos.y);
       _annotateCtx.stroke();
+      _annotatePoints[_annotatePoints.length - 1] = pos;
     }
     _annotateCtx.globalCompositeOperation = 'source-over';
-    _annotatePoints[_annotatePoints.length - 1] = pos;
     return;
   }
 
@@ -6988,7 +7018,8 @@ function _annotateClose() {
   document.getElementById('photoAnnotateOverlay').classList.add('hidden');
   _annotateNodeId = null; _annotateIdx = null;
   _annotatePoints = []; _annotateUndoStack = [];
-  _annotatePreStrokeState = null; _annotateStraightened = false; _annotateStraightenOrigin = null; _annotateSmoothedPoints = null;
+  _annotatePreStrokeState = null; _annotateStraightened = false; _annotateStraightenOrigin = null;
+  _annotateSmoothedPoints = null; _annotateBasePts = null; _annotateSnapPos = null;
   _annotateCtx = null;
   document.getElementById('annotateBg').src = '';
 }
@@ -9158,7 +9189,7 @@ const toggleMenu = () => document.getElementById('menuDropdown').classList.toggl
 const closeMenu  = () => document.getElementById('menuDropdown').classList.remove('open');
 
 // ─── INIT ───────────────────────────────────────────────────────────────────
-const BUILD_TS = 'build:2026-03-30T18:00'; // bumped each deploy — confirms fresh load
+const BUILD_TS = 'build:2026-03-30T19:00'; // bumped each deploy — confirms fresh load
 
 async function initApp() {
   // Show immediately with localStorage data
