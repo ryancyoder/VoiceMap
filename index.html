@@ -6706,15 +6706,18 @@ function initQuickFind() {
 
 // ─── NODE CONTEXT MENU ───────────────────────────────────────────────────────
 // ─── PHOTO ANNOTATION ────────────────────────────────────────────────────────
-let _annotateNodeId    = null;
-let _annotateIdx       = null;
-let _annotateCtx       = null;
-let _annotateTool      = 'pen';
-let _annotateColor     = '#ff3b30';
-let _annotateSize      = 3;
-let _annotatePoints    = [];
-let _annotateUndoStack = [];
-let _annotatePenExpiry = 0;
+let _annotateNodeId       = null;
+let _annotateIdx          = null;
+let _annotateCtx          = null;
+let _annotateTool         = 'pen';
+let _annotateColor        = '#ff3b30';
+let _annotateSize         = 3;
+let _annotatePoints       = [];
+let _annotateUndoStack    = [];
+let _annotatePenExpiry    = 0;
+let _annotateStraightenTimer = null;
+let _annotatePreStrokeState  = null; // ImageData before current stroke (for straighten)
+let _annotateStraightened    = false;
 
 function openPhotoAnnotate(nodeId, idx) {
   _annotateNodeId    = nodeId;
@@ -6782,11 +6785,38 @@ function _annotateGetPos(e) {
            pressure: e.pressure > 0 ? e.pressure : 0.5 };
 }
 
+function _annotateStraighten() {
+  if (_annotatePoints.length < 2 || !_annotatePreStrokeState) return;
+  const canvas = document.getElementById('annotateCanvas');
+  // Restore canvas to the state just before this stroke
+  _annotateCtx.putImageData(_annotatePreStrokeState, 0, 0);
+  // Draw a clean straight line from start to current end point
+  const p1   = _annotatePoints[0];
+  const p2   = _annotatePoints[_annotatePoints.length - 1];
+  const base = _annotateTool === 'eraser' ? _annotateSize * 6 : _annotateSize;
+  _annotateCtx.globalCompositeOperation = _annotateTool === 'eraser' ? 'destination-out' : 'source-over';
+  _annotateCtx.strokeStyle = _annotateColor;
+  _annotateCtx.fillStyle   = _annotateColor;
+  _annotateCtx.lineWidth   = base * 1.5; // slightly thicker — visually distinct as "snapped"
+  _annotateCtx.beginPath();
+  _annotateCtx.moveTo(p1.x, p1.y);
+  _annotateCtx.lineTo(p2.x, p2.y);
+  _annotateCtx.stroke();
+  _annotateCtx.globalCompositeOperation = 'source-over';
+  _annotateStraightened = true;
+  navigator.vibrate?.(12);
+}
+
 function _annotateBegin(e) {
   if (e.pointerType === 'touch' && Date.now() < _annotatePenExpiry) return;
   if (e.pointerType === 'pen') _annotatePenExpiry = Date.now() + _DRAW_PEN_LOCK;
   e.preventDefault();
+  clearTimeout(_annotateStraightenTimer);
+  _annotateStraightened    = false;
+  _annotatePreStrokeState  = null;
   _annotateSaveUndo();
+  // Snapshot state before stroke for potential straightening
+  _annotatePreStrokeState  = _annotateUndoStack[_annotateUndoStack.length - 1];
   const pos = _annotateGetPos(e);
   _annotatePoints = [pos];
   _annotateCtx.beginPath();
@@ -6818,10 +6848,23 @@ function _annotateMove(e) {
   _annotateCtx.stroke();
   _annotateCtx.beginPath();
   _annotateCtx.moveTo(mid.x, mid.y);
+  // Restart the hold-to-straighten timer on every movement
+  clearTimeout(_annotateStraightenTimer);
+  _annotateStraightenTimer = setTimeout(_annotateStraighten, 600);
 }
 
 function _annotateEnd(e) {
+  clearTimeout(_annotateStraightenTimer);
+  _annotateStraightenTimer = null;
   if (e.pointerType === 'pen') _annotatePenExpiry = Date.now() + _DRAW_PEN_LOCK;
+  if (_annotateStraightened) {
+    // Line was already snapped — just clean up
+    _annotatePoints = [];
+    _annotateStraightened   = false;
+    _annotatePreStrokeState = null;
+    _annotateCtx.globalCompositeOperation = 'source-over';
+    return;
+  }
   if (_annotatePoints.length === 1) {
     const pos  = _annotatePoints[0];
     const base = _annotateTool === 'eraser' ? _annotateSize * 6 : _annotateSize;
@@ -6831,6 +6874,7 @@ function _annotateEnd(e) {
     _annotateCtx.fill();
   }
   _annotatePoints = [];
+  _annotatePreStrokeState = null;
   _annotateCtx.globalCompositeOperation = 'source-over';
 }
 
@@ -6854,11 +6898,13 @@ async function _annotateSave() {
 }
 
 function _annotateClose() {
+  clearTimeout(_annotateStraightenTimer);
+  _annotateStraightenTimer = null;
   document.getElementById('photoAnnotateOverlay').classList.add('hidden');
   _annotateNodeId = null; _annotateIdx = null;
   _annotatePoints = []; _annotateUndoStack = [];
+  _annotatePreStrokeState = null; _annotateStraightened = false;
   _annotateCtx = null;
-  // Reset canvas src to avoid stale image
   document.getElementById('annotateBg').src = '';
 }
 
@@ -9021,7 +9067,7 @@ const toggleMenu = () => document.getElementById('menuDropdown').classList.toggl
 const closeMenu  = () => document.getElementById('menuDropdown').classList.remove('open');
 
 // ─── INIT ───────────────────────────────────────────────────────────────────
-const BUILD_TS = 'build:2026-03-30T14:00'; // bumped each deploy — confirms fresh load
+const BUILD_TS = 'build:2026-03-30T15:00'; // bumped each deploy — confirms fresh load
 
 async function initApp() {
   // Show immediately with localStorage data
