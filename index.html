@@ -1176,6 +1176,94 @@
     .node-ctx-item:active { background: rgba(255,255,255,0.08); }
     .node-ctx-item.danger { color: #ff3b30; }
     .node-ctx-sep { height: 0.5px; background: var(--border); margin: 4px 2px; }
+
+    /* ─── Photo Gallery ──────────────────────────────────────────── */
+    .gallery-overlay {
+      position: fixed; inset: 0; z-index: 800;
+      background: var(--bg); display: flex; flex-direction: column;
+    }
+    .gallery-overlay.hidden { display: none; }
+    .gallery-header {
+      display: flex; align-items: center; padding: 14px 16px; gap: 12px;
+      border-bottom: 0.5px solid var(--border); flex-shrink: 0;
+      padding-top: calc(14px + env(safe-area-inset-top, 0px));
+    }
+    .gallery-close-btn {
+      background: none; border: none; font-size: 20px;
+      color: var(--muted); cursor: pointer; padding: 4px 8px; border-radius: 8px;
+      font-family: var(--font);
+    }
+    .gallery-title { flex: 1; font-size: 17px; font-weight: 600; color: var(--text); }
+    .gallery-add-btn {
+      padding: 8px 16px; border-radius: 10px; background: var(--accent);
+      color: #fff; border: none; font-size: 14px; font-weight: 600;
+      cursor: pointer; font-family: var(--font);
+    }
+    .gallery-grid {
+      flex: 1; overflow-y: auto; padding: 2px;
+      display: grid; grid-template-columns: repeat(3, 1fr); gap: 2px;
+    }
+    .gallery-thumb-wrap { position: relative; aspect-ratio: 1; overflow: hidden; }
+    .gallery-thumb {
+      width: 100%; height: 100%; object-fit: cover; display: block;
+      cursor: pointer; transition: opacity 0.15s;
+    }
+    .gallery-thumb:active { opacity: 0.75; }
+    .gallery-delete-btn {
+      position: absolute; top: 4px; right: 4px;
+      background: rgba(0,0,0,0.55); color: #fff; border: none;
+      border-radius: 50%; width: 24px; height: 24px; font-size: 12px;
+      cursor: pointer; display: flex; align-items: center; justify-content: center;
+      font-family: var(--font);
+    }
+    .gallery-empty {
+      grid-column: 1/-1; display: flex; flex-direction: column;
+      align-items: center; justify-content: center; padding: 60px 20px;
+      color: var(--muted); gap: 12px; font-size: 15px;
+    }
+    /* Lightbox */
+    .lightbox-overlay {
+      position: fixed; inset: 0; z-index: 900;
+      background: #000; display: flex; flex-direction: column;
+    }
+    .lightbox-overlay.hidden { display: none; }
+    .lightbox-toolbar {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 14px 16px; flex-shrink: 0;
+      padding-top: calc(14px + env(safe-area-inset-top, 0px));
+    }
+    .lightbox-btn {
+      background: rgba(255,255,255,0.15); border: none; color: #fff;
+      font-size: 18px; cursor: pointer; padding: 7px 13px;
+      border-radius: 8px; font-family: var(--font);
+    }
+    .lightbox-btn:active { opacity: 0.7; }
+    .lightbox-counter { font-size: 14px; color: rgba(255,255,255,0.65); }
+    .lightbox-body {
+      flex: 1; display: flex; align-items: center; justify-content: center;
+      position: relative; min-height: 0; overflow: hidden;
+    }
+    .lightbox-img {
+      max-width: 100%; max-height: 100%; object-fit: contain;
+      display: block; user-select: none; pointer-events: none;
+    }
+    .lightbox-nav-btn {
+      position: absolute; top: 50%; transform: translateY(-50%);
+      background: rgba(255,255,255,0.12); border: none; color: #fff;
+      font-size: 32px; cursor: pointer; padding: 14px 16px; border-radius: 10px;
+      font-family: var(--font);
+    }
+    #lightboxPrev { left: 8px; }
+    #lightboxNext { right: 8px; }
+    /* Gallery badge on card thumbnail */
+    .card-gallery-wrap { position: relative; flex-shrink: 0; }
+    .card-gallery-badge {
+      position: absolute; bottom: 3px; right: 3px;
+      background: rgba(0,0,0,0.58); color: #fff;
+      font-size: 10px; font-weight: 600; padding: 2px 5px;
+      border-radius: 5px; pointer-events: none;
+    }
+    /* ─────────────────────────────────────────────────────────────── */
     /* ─── Card View Sidebar Panel ────────────────────────────────── */
     #cvPanel {
       width: 0; flex-shrink: 0; overflow: hidden; background: var(--surface);
@@ -1922,6 +2010,7 @@
       <button class="cv-panel-btn" id="cvRefileBtn">↗ Re-file</button>
       <button class="cv-panel-btn" id="cvSimplifyBtn">⚡ Simplify</button>
       <button class="cv-panel-btn" id="cvPinBtn">📌 Pin</button>
+      <button class="cv-panel-btn" id="cvGalleryBtn">📷 Photos</button>
       <button class="cv-panel-btn danger" id="cvDeleteBtn">✕ Delete card</button>
     </div>
   </div>
@@ -2224,6 +2313,8 @@
        style="opacity:0;position:absolute;width:1px;height:1px;pointer-events:none" />
 <input type="file" id="ocrInput"   accept="image/*"
        style="opacity:0;position:absolute;width:1px;height:1px;pointer-events:none" />
+<input type="file" id="galleryInput" accept="image/*" multiple
+       style="opacity:0;position:absolute;width:1px;height:1px;pointer-events:none" />
 
 <script>
 'use strict';
@@ -2387,12 +2478,44 @@ function loadImagesFromDB() {
       const req = db.transaction('images', 'readonly').objectStore('images').openCursor();
       req.onsuccess = e => {
         const cursor = e.target.result;
-        if (cursor) { imageCache[cursor.key] = cursor.value; cursor.continue(); }
-        else resolve();
+        if (cursor) {
+          const key = String(cursor.key);
+          if (key.startsWith('g:')) {
+            // Gallery image key: "g:nodeId:index"
+            const rest  = key.slice(2);
+            const colon = rest.lastIndexOf(':');
+            const nid   = rest.slice(0, colon);
+            const idx   = parseInt(rest.slice(colon + 1), 10);
+            if (!galleryCache[nid]) galleryCache[nid] = [];
+            galleryCache[nid][idx] = cursor.value;
+          } else {
+            imageCache[key] = cursor.value;
+          }
+          cursor.continue();
+        } else resolve();
       };
       req.onerror = () => resolve();
     } catch { resolve(); }
   });
+}
+
+async function saveGalleryImageToDB(nodeId, index, dataUrl) {
+  if (!galleryCache[nodeId]) galleryCache[nodeId] = [];
+  galleryCache[nodeId][index] = dataUrl;
+  if (!db) return;
+  try {
+    db.transaction('images', 'readwrite').objectStore('images').put(dataUrl, `g:${nodeId}:${index}`);
+  } catch {}
+}
+
+function deleteAllGalleryImagesFromDB(nodeId) {
+  const images = galleryCache[nodeId] || [];
+  delete galleryCache[nodeId];
+  if (!db) return;
+  try {
+    const store = db.transaction('images', 'readwrite').objectStore('images');
+    images.forEach((_, i) => { try { store.delete(`g:${nodeId}:${i}`); } catch {} });
+  } catch {}
 }
 
 // ─── PERSISTENCE ─────────────────────────────────────────────────────────────
@@ -2437,7 +2560,10 @@ let session = loadSavedSessionSync() || {
   meta:    { tool: 'VoiceMap', version: '0.3' }
 };
 
-const imageCache = {}; // nodeId → data URL, populated from IndexedDB on init
+const imageCache   = {}; // nodeId → data URL, populated from IndexedDB on init
+const galleryCache = {}; // nodeId → [dataUrl, ...], populated from IndexedDB on init
+let galleryNodeId  = null; // node whose gallery overlay is open
+let lightboxIndex  = 0;    // current photo index in lightbox
 
 let navStack    = [{ id: null, label: 'Home' }];
 let expandedIds = new Set();
@@ -2607,6 +2733,8 @@ function selectCard(nodeId) {
   }
   document.getElementById('cvSimplifyBtn').style.display = children > 0 ? '' : 'none';
   document.getElementById('cvPinBtn').textContent = node.pinned ? '📌 Unpin' : '📌 Pin';
+  const gc = node.gallery_count || 0;
+  document.getElementById('cvGalleryBtn').textContent = gc > 0 ? `📷 Photos (${gc})` : '📷 Add Photos';
   document.getElementById('cvPanel').classList.add('visible');
   // Scroll card into view
   document.getElementById('card-' + nodeId)?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
@@ -2851,7 +2979,10 @@ function deleteNode(nodeId, confirm = false) {
   }
   const toRemove = getDescendants(nodeId);
   toRemove.add(nodeId);
-  toRemove.forEach(id => { if (imageCache[id]) deleteImageFromDB(id); });
+  toRemove.forEach(id => {
+    if (imageCache[id])   deleteImageFromDB(id);
+    if (galleryCache[id]) deleteAllGalleryImagesFromDB(id);
+  });
   session.nodes = session.nodes.filter(n => !toRemove.has(n.id));
   renderCards();
   showToast('Card deleted');
@@ -3362,17 +3493,36 @@ function renderCards(animDir) {
 
   list.innerHTML = cards.map(node => {
     const childCount  = childrenOf(node.id).length;
-    const isImageCard = node.type === 'image';
-    const hasDrawing  = node.hasDrawing && imageCache[node.id] && !isImageCard;
-    const pip         = 'pip-' + (node.status || 'untouched');
-    const summary     = node.summary || node.transcript || '';
-    const expanded    = expandedIds.has(node.id);
-    const thumb       = isImageCard && imageCache[node.id]
-      ? `<img class="card-image-thumb" src="${imageCache[node.id]}" alt="" />`
-      : (isImageCard ? `<div class="pip pip-untouched" style="opacity:0.4"></div>` : '');
-    const meta        = childCount
+    const isImageCard   = node.type === 'image';
+    const hasDrawing    = node.hasDrawing && imageCache[node.id] && !isImageCard;
+    const galleryCount  = node.gallery_count || 0;
+    const pip           = 'pip-' + (node.status || 'untouched');
+    const summary       = node.summary || node.transcript || '';
+    const expanded      = expandedIds.has(node.id);
+
+    let leadEl;
+    if (selectMode) {
+      leadEl = `<div class="select-indicator">${selectedIds.has(node.id) ? '✓' : ''}</div>`;
+    } else if (isImageCard && imageCache[node.id]) {
+      leadEl = `<img class="card-image-thumb" src="${imageCache[node.id]}" alt="" />`;
+    } else if (isImageCard) {
+      leadEl = `<div class="pip pip-untouched" style="opacity:0.4"></div>`;
+    } else if (galleryCount > 0 && galleryCache[node.id]?.[0]) {
+      leadEl = `<div class="card-gallery-wrap">
+        <img class="card-image-thumb" src="${galleryCache[node.id][0]}" alt="">
+        <span class="card-gallery-badge">📷 ${galleryCount}</span>
+      </div>`;
+    } else if (galleryCount > 0) {
+      leadEl = `<div class="pip pip-untouched" style="opacity:0.4"></div>`;
+    } else {
+      leadEl = `<div class="pip ${pip}"></div>`;
+    }
+
+    const meta = childCount
       ? `${childCount} idea${childCount !== 1 ? 's' : ''} inside`
-      : (isImageCard ? 'Photo' : 'No sub-ideas yet');
+      : (isImageCard ? 'Photo'
+        : galleryCount > 0 ? `📷 ${galleryCount} photo${galleryCount !== 1 ? 's' : ''}`
+        : 'No sub-ideas yet');
 
     const isSelected  = selectedIds.has(node.id);
     const isCvSelected = node.id === selectedCardId;
@@ -3398,7 +3548,7 @@ function renderCards(animDir) {
         <div class="card${expanded ? ' expanded' : ''}${isImageCard ? ' image-card' : ''}${selectMode ? ' selectable' : ''}${isSelected ? ' selected' : ''}${isCvSelected ? ' cv-selected' : ''}"
              id="card-${nid}" data-node-id="${nid}" data-node-label="${esc(node.label)}" data-status="${esc(node.status || 'untouched')}">
           <div class="card-front">
-            ${selectMode ? `<div class="select-indicator">${isSelected ? '✓' : ''}</div>` : (isImageCard ? thumb : `<div class="pip ${pip}"></div>`)}
+            ${leadEl}
             <div class="card-body">
               <div class="card-title${node.archived ? ' archived-title' : ''}">${esc(node.label)}</div>
               <div class="card-meta">
@@ -6538,6 +6688,115 @@ function initQuickFind() {
 }
 
 // ─── NODE CONTEXT MENU ───────────────────────────────────────────────────────
+// ─── PHOTO GALLERY ───────────────────────────────────────────────────────────
+function openGallery(nodeId) {
+  galleryNodeId = nodeId;
+  const node = session.nodes.find(n => n.id === nodeId);
+  document.getElementById('galleryTitle').textContent = node?.label || '';
+  renderGalleryGrid();
+  document.getElementById('galleryOverlay').classList.remove('hidden');
+}
+
+function closeGallery() {
+  galleryNodeId = null;
+  document.getElementById('galleryOverlay').classList.add('hidden');
+}
+
+function renderGalleryGrid() {
+  const grid = document.getElementById('galleryGrid');
+  const images = galleryCache[galleryNodeId] || [];
+  if (images.length === 0) {
+    grid.innerHTML = `<div class="gallery-empty">
+      <div style="font-size:40px">📷</div>
+      <div>No photos yet</div>
+      <div style="font-size:13px;opacity:0.7">Tap "+ Add Photos" to add from your library</div>
+    </div>`;
+    return;
+  }
+  grid.innerHTML = images.map((url, i) => `
+    <div class="gallery-thumb-wrap" data-gallery-idx="${i}">
+      <img class="gallery-thumb" src="${url}" alt="Photo ${i+1}" data-gallery-open="${i}">
+      <button class="gallery-delete-btn" data-gallery-delete="${i}" title="Delete">✕</button>
+    </div>`).join('');
+}
+
+function openLightbox(idx) {
+  lightboxIndex = idx;
+  document.getElementById('lightboxOverlay').classList.remove('hidden');
+  _renderLightboxImage();
+}
+
+function closeLightbox() {
+  document.getElementById('lightboxOverlay').classList.add('hidden');
+}
+
+function _renderLightboxImage() {
+  const images = galleryCache[galleryNodeId] || [];
+  if (!images.length) { closeLightbox(); return; }
+  lightboxIndex = Math.max(0, Math.min(lightboxIndex, images.length - 1));
+  document.getElementById('lightboxImg').src = images[lightboxIndex];
+  document.getElementById('lightboxCounter').textContent = `${lightboxIndex + 1} / ${images.length}`;
+  document.getElementById('lightboxPrev').style.display = lightboxIndex > 0 ? '' : 'none';
+  document.getElementById('lightboxNext').style.display = lightboxIndex < images.length - 1 ? '' : 'none';
+}
+
+async function addPhotosToNode(nodeId) {
+  const input = document.getElementById('galleryInput');
+  input.dataset.targetNodeId = nodeId;
+  input.value = '';
+  input.click();
+}
+
+async function deleteGalleryPhoto(nodeId, idx) {
+  const node = session.nodes.find(n => n.id === nodeId);
+  if (!node) return;
+  const images = galleryCache[nodeId] || [];
+  // Remove from cache array
+  images.splice(idx, 1);
+  // Re-save contiguously in DB
+  const count = images.length;
+  if (!db) return;
+  try {
+    const store = db.transaction('images', 'readwrite').objectStore('images');
+    // Delete old slot count +1 to ensure the old last index is removed
+    for (let i = 0; i <= count; i++) store.delete(`g:${nodeId}:${i}`);
+  } catch {}
+  // Re-save
+  for (let i = 0; i < count; i++) {
+    await saveGalleryImageToDB(nodeId, i, images[i]);
+  }
+  node.gallery_count = count;
+  node.last_modified = new Date().toISOString();
+  saveSession();
+  renderCards();
+  renderGalleryGrid();
+  if (count === 0) {
+    closeLightbox();
+  } else {
+    if (lightboxIndex >= count) lightboxIndex = count - 1;
+    _renderLightboxImage();
+  }
+}
+
+async function shareGalleryPhoto(nodeId, idx) {
+  const images = galleryCache[nodeId] || [];
+  const dataUrl = images[idx];
+  if (!dataUrl) return;
+  try {
+    const res  = await fetch(dataUrl);
+    const blob = await res.blob();
+    const file = new File([blob], `photo-${idx + 1}.jpg`, { type: 'image/jpeg' });
+    if (navigator.canShare?.({ files: [file] })) {
+      await navigator.share({ files: [file] });
+    } else {
+      // Fallback: open in new tab for long-press save
+      const url = URL.createObjectURL(blob);
+      window.open(url, '_blank');
+      setTimeout(() => URL.revokeObjectURL(url), 60000);
+    }
+  } catch {}
+}
+
 function showNodeCtxMenu(nodeId, x, y) {
   const node = session.nodes.find(n => n.id === nodeId);
   if (!node) return;
@@ -6573,6 +6832,7 @@ function initNodeCtxMenu() {
   document.getElementById('ctxDefineLog').addEventListener('click',   () => { closeNodeCtxMenu(); openLogModal(getCtxNode()); });
   document.getElementById('ctxEditTitle').addEventListener('click',   () => { closeNodeCtxMenu(); startEditField(getCtxNode(), 'label'); });
   document.getElementById('ctxEditDesc').addEventListener('click',  () => { closeNodeCtxMenu(); startEditField(getCtxNode(), 'summary'); });
+  document.getElementById('ctxGallery').addEventListener('click',     () => { closeNodeCtxMenu(); openGallery(getCtxNode()); });
   document.getElementById('ctxDraw').addEventListener('click',        () => { closeNodeCtxMenu(); openDrawModal(getCtxNode()); });
   document.getElementById('ctxConsolidate').addEventListener('click', () => { closeNodeCtxMenu(); consolidateNode(getCtxNode()); });
   document.getElementById('ctxTaskList').addEventListener('click',   () => { closeNodeCtxMenu(); taskListNode(getCtxNode()); });
@@ -8547,7 +8807,7 @@ const toggleMenu = () => document.getElementById('menuDropdown').classList.toggl
 const closeMenu  = () => document.getElementById('menuDropdown').classList.remove('open');
 
 // ─── INIT ───────────────────────────────────────────────────────────────────
-const BUILD_TS = 'build:2026-03-30T10:00'; // bumped each deploy — confirms fresh load
+const BUILD_TS = 'build:2026-03-30T12:00'; // bumped each deploy — confirms fresh load
 
 async function initApp() {
   // Show immediately with localStorage data
@@ -9233,6 +9493,82 @@ document.addEventListener('DOMContentLoaded', () => {
     deleteNode(id);
   });
   document.getElementById('cvPanelClose').addEventListener('click', dismissCardPanel);
+  document.getElementById('cvGalleryBtn').addEventListener('click', () => {
+    if (!selectedCardId) return;
+    const gc = session.nodes.find(n => n.id === selectedCardId)?.gallery_count || 0;
+    if (gc > 0) { openGallery(selectedCardId); }
+    else        { addPhotosToNode(selectedCardId); }
+  });
+
+  // ─── Gallery overlay ──────────────────────────────────────────────────────
+  document.getElementById('galleryCloseBtn').addEventListener('click', closeGallery);
+  document.getElementById('galleryAddBtn').addEventListener('click', () => {
+    if (galleryNodeId) addPhotosToNode(galleryNodeId);
+  });
+  document.getElementById('galleryGrid').addEventListener('click', e => {
+    const openBtn = e.target.closest('[data-gallery-open]');
+    if (openBtn) { openLightbox(parseInt(openBtn.dataset.galleryOpen)); return; }
+    const delBtn = e.target.closest('[data-gallery-delete]');
+    if (delBtn) {
+      e.stopPropagation();
+      const idx = parseInt(delBtn.dataset.galleryDelete);
+      if (window.confirm('Delete this photo?')) deleteGalleryPhoto(galleryNodeId, idx);
+    }
+  });
+
+  // ─── Lightbox ─────────────────────────────────────────────────────────────
+  document.getElementById('lightboxCloseBtn').addEventListener('click', closeLightbox);
+  document.getElementById('lightboxPrev').addEventListener('click', () => { lightboxIndex--; _renderLightboxImage(); });
+  document.getElementById('lightboxNext').addEventListener('click', () => { lightboxIndex++; _renderLightboxImage(); });
+  document.getElementById('lightboxShareBtn').addEventListener('click', () => shareGalleryPhoto(galleryNodeId, lightboxIndex));
+  document.getElementById('lightboxDeleteBtn').addEventListener('click', () => {
+    if (window.confirm('Delete this photo?')) deleteGalleryPhoto(galleryNodeId, lightboxIndex);
+  });
+  // Swipe support in lightbox
+  let _lbTouchX = null;
+  document.getElementById('lightboxBody').addEventListener('touchstart', e => {
+    _lbTouchX = e.touches[0].clientX;
+  }, { passive: true });
+  document.getElementById('lightboxBody').addEventListener('touchend', e => {
+    if (_lbTouchX === null) return;
+    const dx = e.changedTouches[0].clientX - _lbTouchX;
+    _lbTouchX = null;
+    if (Math.abs(dx) < 40) return;
+    if (dx < 0) { lightboxIndex++; } else { lightboxIndex--; }
+    _renderLightboxImage();
+  }, { passive: true });
+
+  // ─── Gallery file picker ──────────────────────────────────────────────────
+  document.getElementById('galleryInput').addEventListener('change', async e => {
+    const nodeId = e.target.dataset.targetNodeId;
+    const node   = session.nodes.find(n => n.id === nodeId);
+    if (!node || !e.target.files.length) return;
+    const files = Array.from(e.target.files).filter(f => f.type.startsWith('image/'));
+    if (!files.length) return;
+    setStatus(`Processing ${files.length} photo${files.length !== 1 ? 's' : ''}…`, 'processing');
+    const startIdx = (galleryCache[nodeId] || []).length;
+    let added = 0;
+    for (const file of files) {
+      const dataUrl = await compressImage(file, 1600);
+      if (!dataUrl) continue;
+      await saveGalleryImageToDB(nodeId, startIdx + added, dataUrl);
+      added++;
+    }
+    if (added > 0) {
+      node.gallery_count = (node.gallery_count || 0) + added;
+      node.last_modified = new Date().toISOString();
+      saveSession();
+      renderCards();
+      if (galleryNodeId === nodeId) renderGalleryGrid();
+      showToast(`Added ${added} photo${added !== 1 ? 's' : ''}`);
+      if (selectedCardId === nodeId) selectCard(nodeId); // refresh panel badge
+      // Open gallery if not already open
+      if (!document.getElementById('galleryOverlay').classList.contains('hidden') === false) {
+        openGallery(nodeId);
+      }
+    }
+    setStatus('', '');
+  });
 });
 </script>
 
@@ -9364,12 +9700,40 @@ document.addEventListener('DOMContentLoaded', () => {
   <button class="node-ctx-item" id="ctxDefineLog">📋 Define as log</button>
   <button class="node-ctx-item" id="ctxEditTitle">✎ Edit Title</button>
   <button class="node-ctx-item" id="ctxEditDesc">📝 Edit Description</button>
+  <button class="node-ctx-item" id="ctxGallery">📷 Photos</button>
   <button class="node-ctx-item" id="ctxDraw">✏ Sketch / Annotate</button>
   <button class="node-ctx-item" id="ctxConsolidate">⊞ Consolidate to Markdown</button>
   <button class="node-ctx-item" id="ctxTaskList">☑ Convert to Task List</button>
   <button class="node-ctx-item" id="ctxElaborate">✨ Elaborate with AI</button>
   <button class="node-ctx-item" id="ctxExplore">💬 Explore with AI</button>
   <button class="node-ctx-item" id="ctxRefile">↗ Re-file</button>
+</div>
+
+<!-- Photo Gallery overlay -->
+<div class="gallery-overlay hidden" id="galleryOverlay">
+  <div class="gallery-header">
+    <button class="gallery-close-btn" id="galleryCloseBtn">✕</button>
+    <div class="gallery-title" id="galleryTitle"></div>
+    <button class="gallery-add-btn" id="galleryAddBtn">+ Add Photos</button>
+  </div>
+  <div class="gallery-grid" id="galleryGrid"></div>
+</div>
+
+<!-- Lightbox overlay -->
+<div class="lightbox-overlay hidden" id="lightboxOverlay">
+  <div class="lightbox-toolbar">
+    <button class="lightbox-btn" id="lightboxCloseBtn">✕</button>
+    <span class="lightbox-counter" id="lightboxCounter"></span>
+    <div style="display:flex;gap:8px">
+      <button class="lightbox-btn" id="lightboxShareBtn">⬆ Share</button>
+      <button class="lightbox-btn" id="lightboxDeleteBtn">🗑</button>
+    </div>
+  </div>
+  <div class="lightbox-body" id="lightboxBody">
+    <button class="lightbox-nav-btn" id="lightboxPrev">‹</button>
+    <img class="lightbox-img" id="lightboxImg" alt="">
+    <button class="lightbox-nav-btn" id="lightboxNext">›</button>
+  </div>
 </div>
 
 <!-- Tap-to-record overlay (shown when ?record=1 in URL) -->
