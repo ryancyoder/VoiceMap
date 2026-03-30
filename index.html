@@ -740,6 +740,28 @@
     .annotate-img-container { position: relative; flex-shrink: 0; }
     #annotateBg { display: block; pointer-events: none; user-select: none; }
     #annotateCanvas { position: absolute; inset: 0; touch-action: none; cursor: crosshair; }
+    #annotateSticker {
+      position: absolute; touch-action: none; cursor: move;
+      user-select: none; -webkit-user-select: none;
+      border: 2px dashed rgba(255,255,255,0.75);
+      box-shadow: 0 2px 16px rgba(0,0,0,0.45);
+      max-width: none;
+    }
+    #annotateSticker.hidden { display: none; }
+    .annotate-sticker-bar {
+      position: absolute; bottom: 10px; left: 50%; transform: translateX(-50%);
+      display: flex; align-items: center; gap: 12px; white-space: nowrap;
+      background: rgba(0,0,0,0.78); border-radius: 20px; padding: 7px 16px;
+      z-index: 10;
+    }
+    .annotate-sticker-bar.hidden { display: none; }
+    .annotate-sticker-action {
+      background: none; border: none; color: #fff; font-size: 14px;
+      padding: 2px 6px; cursor: pointer; border-radius: 6px;
+    }
+    .annotate-sticker-action:active { background: rgba(255,255,255,0.15); }
+    .annotate-sticker-place { color: #30d158; font-weight: 600; }
+    .annotate-sticker-hint { color: rgba(255,255,255,0.55); font-size: 12px; }
 
     /* ── Chat modal ───────────────────────────────────────────── */
     .chat-overlay {
@@ -6724,6 +6746,61 @@ let _annotateArcP2            = null; // end point saved at smooth snap
 let _annotateArcPerp          = null; // { x, y } unit perpendicular to start→end axis
 let _annotateArcBulge         = 0;    // arch height at t=0.5 (base from stroke + drag)
 
+// ── Sticker state ────────────────────────────────────────────────────────────
+let _annotateStickerActive    = false;
+let _annotateStickerX         = 0;   // center x in CSS px relative to img container
+let _annotateStickerY         = 0;   // center y
+let _annotateStickerW         = 0;   // current display width
+let _annotateStickerH         = 0;   // current display height
+let _annotateStickerDrag      = null; // { ox, oy } pointer offset from sticker center
+let _annotateStickerPinch     = null; // { dist, w, h } at pinch start
+
+function _annotateUpdateStickerDOM() {
+  const img = document.getElementById('annotateSticker');
+  img.style.left   = (_annotateStickerX - _annotateStickerW / 2) + 'px';
+  img.style.top    = (_annotateStickerY - _annotateStickerH / 2) + 'px';
+  img.style.width  = _annotateStickerW + 'px';
+  img.style.height = _annotateStickerH + 'px';
+}
+
+function _annotateStickerLoad(src) {
+  const img = document.getElementById('annotateSticker');
+  img.onload = () => {
+    const container = document.getElementById('annotateImgContainer');
+    const cW = container.clientWidth, cH = container.clientHeight;
+    // Default to 40% of container width, capped at natural size
+    _annotateStickerW = Math.min(cW * 0.4, img.naturalWidth);
+    _annotateStickerH = _annotateStickerW * (img.naturalHeight / img.naturalWidth);
+    _annotateStickerX = cW / 2;
+    _annotateStickerY = cH / 2;
+    _annotateUpdateStickerDOM();
+    img.classList.remove('hidden');
+    document.getElementById('annotateStickerBar').classList.remove('hidden');
+    _annotateStickerActive = true;
+  };
+  img.src = src;
+}
+
+function _annotateStickerPlace() {
+  if (!_annotateStickerActive) return;
+  _annotateSaveUndo();
+  const img = document.getElementById('annotateSticker');
+  // ctx transform is already DPR-scaled so CSS px coords map directly
+  _annotateCtx.drawImage(img,
+    _annotateStickerX - _annotateStickerW / 2,
+    _annotateStickerY - _annotateStickerH / 2,
+    _annotateStickerW, _annotateStickerH);
+  _annotateStickerDismiss();
+}
+
+function _annotateStickerDismiss() {
+  _annotateStickerActive = false;
+  _annotateStickerDrag   = null;
+  _annotateStickerPinch  = null;
+  document.getElementById('annotateSticker').classList.add('hidden');
+  document.getElementById('annotateStickerBar').classList.add('hidden');
+}
+
 function openPhotoAnnotate(nodeId, idx) {
   _annotateNodeId    = nodeId;
   _annotateIdx       = idx;
@@ -6854,6 +6931,7 @@ function _annotateSmoothSnap() {
 }
 
 function _annotateBegin(e) {
+  if (_annotateStickerActive) return; // sticker takes priority — canvas draws blocked
   if (e.pointerType === 'touch' && Date.now() < _annotatePenExpiry) return;
   if (e.pointerType === 'pen') _annotatePenExpiry = Date.now() + _DRAW_PEN_LOCK;
   e.preventDefault();
@@ -6989,6 +7067,7 @@ async function _annotateSave() {
 function _annotateClose() {
   clearTimeout(_annotateStraightenTimer);
   _annotateStraightenTimer = null;
+  _annotateStickerDismiss();
   document.getElementById('photoAnnotateOverlay').classList.add('hidden');
   _annotateNodeId = null; _annotateIdx = null;
   _annotatePoints = []; _annotateUndoStack = [];
@@ -7041,6 +7120,88 @@ function initAnnotateModal() {
       document.querySelectorAll('.annotate-size').forEach(b => b.classList.remove('active'));
       btn.classList.add('active');
     });
+  });
+
+  // ── Sticker / image overlay ──────────────────────────────────────────────
+  const stickerImg  = document.getElementById('annotateSticker');
+  const fileInput   = document.getElementById('annotateFileInput');
+
+  // Toolbar button → file picker (iOS shows camera + photo library + files)
+  document.getElementById('annotateStickerBtn').addEventListener('click', () => {
+    fileInput.value = '';
+    fileInput.click();
+  });
+  fileInput.addEventListener('change', () => {
+    const file = fileInput.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = ev => _annotateStickerLoad(ev.target.result);
+    reader.readAsDataURL(file);
+  });
+
+  // Action bar buttons
+  document.getElementById('annotateStickerPlaceBtn').addEventListener('click', _annotateStickerPlace);
+  document.getElementById('annotateStickerCancelBtn').addEventListener('click', _annotateStickerDismiss);
+
+  // Drag sticker with pointer events
+  stickerImg.addEventListener('pointerdown', e => {
+    if (!_annotateStickerActive) return;
+    e.stopPropagation();
+    stickerImg.setPointerCapture(e.pointerId);
+    const rect = document.getElementById('annotateImgContainer').getBoundingClientRect();
+    _annotateStickerDrag = {
+      ox: _annotateStickerX - (e.clientX - rect.left),
+      oy: _annotateStickerY - (e.clientY - rect.top)
+    };
+  }, { passive: false });
+
+  stickerImg.addEventListener('pointermove', e => {
+    if (!_annotateStickerDrag || !e.buttons) return;
+    e.stopPropagation();
+    const rect = document.getElementById('annotateImgContainer').getBoundingClientRect();
+    _annotateStickerX = (e.clientX - rect.left) + _annotateStickerDrag.ox;
+    _annotateStickerY = (e.clientY - rect.top)  + _annotateStickerDrag.oy;
+    _annotateUpdateStickerDOM();
+  }, { passive: false });
+
+  stickerImg.addEventListener('pointerup',     () => { _annotateStickerDrag = null; });
+  stickerImg.addEventListener('pointercancel', () => { _annotateStickerDrag = null; });
+
+  // Pinch-to-resize with two fingers
+  stickerImg.addEventListener('touchstart', e => {
+    if (e.touches.length === 2) {
+      e.preventDefault();
+      const t1 = e.touches[0], t2 = e.touches[1];
+      _annotateStickerPinch = {
+        dist: Math.hypot(t2.clientX - t1.clientX, t2.clientY - t1.clientY),
+        w: _annotateStickerW, h: _annotateStickerH
+      };
+    }
+  }, { passive: false });
+
+  stickerImg.addEventListener('touchmove', e => {
+    if (e.touches.length === 2 && _annotateStickerPinch) {
+      e.preventDefault();
+      const t1 = e.touches[0], t2 = e.touches[1];
+      const dist  = Math.hypot(t2.clientX - t1.clientX, t2.clientY - t1.clientY);
+      const scale = dist / _annotateStickerPinch.dist;
+      _annotateStickerW = Math.max(20, _annotateStickerPinch.w * scale);
+      _annotateStickerH = Math.max(20, _annotateStickerPinch.h * scale);
+      _annotateUpdateStickerDOM();
+    }
+  }, { passive: false });
+
+  stickerImg.addEventListener('touchend', () => { _annotateStickerPinch = null; });
+
+  // Paste from clipboard (works on desktop + some iOS versions)
+  document.addEventListener('paste', e => {
+    if (document.getElementById('photoAnnotateOverlay').classList.contains('hidden')) return;
+    const imgItem = Array.from(e.clipboardData?.items || []).find(i => i.type.startsWith('image/'));
+    if (!imgItem) return;
+    e.preventDefault();
+    const reader = new FileReader();
+    reader.onload = ev => _annotateStickerLoad(ev.target.result);
+    reader.readAsDataURL(imgItem.getAsFile());
   });
 }
 
@@ -9163,7 +9324,7 @@ const toggleMenu = () => document.getElementById('menuDropdown').classList.toggl
 const closeMenu  = () => document.getElementById('menuDropdown').classList.remove('open');
 
 // ─── INIT ───────────────────────────────────────────────────────────────────
-const BUILD_TS = 'build:2026-03-30T20:00'; // bumped each deploy — confirms fresh load
+const BUILD_TS = 'build:2026-03-30T21:00'; // bumped each deploy — confirms fresh load
 
 async function initApp() {
   // Show immediately with localStorage data
@@ -10015,6 +10176,12 @@ document.addEventListener('DOMContentLoaded', () => {
     <div class="annotate-img-container" id="annotateImgContainer">
       <img id="annotateBg" alt="">
       <canvas id="annotateCanvas"></canvas>
+      <img id="annotateSticker" class="hidden" alt="" draggable="false">
+      <div class="annotate-sticker-bar hidden" id="annotateStickerBar">
+        <button class="annotate-sticker-action" id="annotateStickerCancelBtn">✕ Discard</button>
+        <span class="annotate-sticker-hint">Drag · Pinch to resize</span>
+        <button class="annotate-sticker-action annotate-sticker-place" id="annotateStickerPlaceBtn">✓ Place</button>
+      </div>
     </div>
   </div>
   <div class="draw-toolbar">
@@ -10033,9 +10200,11 @@ document.addEventListener('DOMContentLoaded', () => {
     <button class="draw-size-btn annotate-size"        data-asize="7"  title="Medium" style="font-size:13px">●</button>
     <button class="draw-size-btn annotate-size"        data-asize="15" title="Thick"  style="font-size:20px">●</button>
     <div class="draw-sep"></div>
+    <button class="draw-tool-btn" id="annotateStickerBtn" title="Add image / sticker">⊕</button>
     <button class="draw-tool-btn" id="annotateUndoBtn" title="Undo">↩</button>
   </div>
 </div>
+<input type="file" id="annotateFileInput" accept="image/*" style="display:none">
 
 <!-- Drawing / sketch modal -->
 <div class="draw-overlay hidden" id="drawModal">
