@@ -746,13 +746,28 @@
       box-shadow: 0 2px 12px rgba(0,0,0,0.35);
     }
     .annotate-sticker-wrap img { width: 100%; height: 100%; display: block; pointer-events: none; user-select: none; }
-    .annotate-sticker-del {
+    .annotate-sticker-del, .annotate-text-del {
       position: absolute; top: -11px; right: -11px;
       width: 22px; height: 22px; border-radius: 50%;
       background: #ff3b30; border: 1.5px solid #fff; color: #fff;
       font-size: 11px; font-weight: 700; cursor: pointer; line-height: 1;
       display: flex; align-items: center; justify-content: center;
       touch-action: manipulation; padding: 0;
+    }
+    .annotate-text-wrap {
+      position: absolute; touch-action: none; cursor: move; box-sizing: border-box;
+    }
+    .annotate-text-input {
+      display: block; font-weight: 800; color: #fff;
+      font-family: -apple-system, 'Helvetica Neue', Arial, sans-serif;
+      border: 2px solid rgba(0,0,0,0.38); border-radius: 6px;
+      padding: 4px 10px; outline: none; cursor: inherit;
+      box-shadow: 0 1px 5px rgba(0,0,0,0.35), inset 0 0 0 1px rgba(255,255,255,0.18);
+      text-shadow: 0 1px 2px rgba(0,0,0,0.28);
+      min-width: 60px; white-space: pre; background: transparent;
+    }
+    .annotate-text-input:empty::before {
+      content: attr(data-ph); opacity: 0.55; pointer-events: none;
     }
 
     /* ── Chat modal ───────────────────────────────────────────── */
@@ -6826,6 +6841,100 @@ function _annotateStickerDismiss() {
   _annotateStickers = []; _annotateStickerDrag = null; _annotateStickerPinch = null;
 }
 
+// ── Text annotation state ─────────────────────────────────────────────────────
+const _ANNOTATE_TEXT_SIZES = { 3: 16, 7: 22, 15: 32 }; // size btn → font px
+
+let _annotateTexts = []; // [{id, text, x, y, color, fontSize, el}]
+
+// Rounded rect path helper for canvas save
+function _annotateRoundRect(ctx, x, y, w, h, r) {
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.lineTo(x + w - r, y);   ctx.arcTo(x + w, y,     x + w, y + r,     r);
+  ctx.lineTo(x + w, y + h - r); ctx.arcTo(x + w, y + h, x + w - r, y + h, r);
+  ctx.lineTo(x + r, y + h);   ctx.arcTo(x,     y + h, x,     y + h - r, r);
+  ctx.lineTo(x, y + r);       ctx.arcTo(x,     y,     x + r, y,         r);
+  ctx.closePath();
+}
+
+function _annotateAddTextEl(t) {
+  const wrap  = document.createElement('div');
+  wrap.className = 'annotate-text-wrap';
+  wrap.dataset.tid = t.id;
+  wrap.style.left = t.x + 'px'; wrap.style.top = t.y + 'px';
+
+  // Use a span sizer to auto-width a backing div — then layer a transparent input over it
+  // Simpler: one contenteditable span styled as the Skitch text box
+  const span = document.createElement('span');
+  span.className = 'annotate-text-input';
+  span.contentEditable = 'true';
+  span.spellcheck = false;
+  span.style.fontSize   = t.fontSize + 'px';
+  span.style.background = t.color;
+  span.textContent = t.text;
+  span.dataset.ph = 'Type here…';
+  span.addEventListener('input', () => { t.text = span.textContent; });
+  span.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); span.blur(); } });
+  // stopPropagation so canvas pointerdown doesn't fire while typing
+  span.addEventListener('pointerdown', e => e.stopPropagation());
+
+  const del = document.createElement('button');
+  del.className = 'annotate-text-del'; del.textContent = '✕'; del.title = 'Remove text';
+  del.addEventListener('pointerdown', e => e.stopPropagation());
+  del.addEventListener('click', e => { e.stopPropagation(); _annotateTextRemove(t.id); });
+
+  wrap.appendChild(span); wrap.appendChild(del);
+
+  // Drag the wrap (fires on wrap background, not on span or del)
+  let dragOx = 0, dragOy = 0;
+  wrap.addEventListener('pointerdown', e => {
+    if (e.target !== wrap) return; // only bare wrap (between/around children)
+    e.stopPropagation();
+    wrap.setPointerCapture(e.pointerId);
+    const rect = document.getElementById('annotateImgContainer').getBoundingClientRect();
+    dragOx = t.x - (e.clientX - rect.left);
+    dragOy = t.y - (e.clientY - rect.top);
+  }, { passive: false });
+  wrap.addEventListener('pointermove', e => {
+    if (!e.buttons || e.target !== wrap) return;
+    e.stopPropagation();
+    const rect = document.getElementById('annotateImgContainer').getBoundingClientRect();
+    t.x = (e.clientX - rect.left) + dragOx;
+    t.y = (e.clientY - rect.top)  + dragOy;
+    wrap.style.left = t.x + 'px'; wrap.style.top = t.y + 'px';
+  }, { passive: false });
+  wrap.addEventListener('pointerup', e => { if (e.target === wrap) span.focus(); });
+
+  t.el = wrap;
+  document.getElementById('annotateImgContainer').appendChild(wrap);
+  // Auto-focus for immediate typing
+  requestAnimationFrame(() => { span.focus(); _selectAll(span); });
+}
+
+function _selectAll(el) {
+  const range = document.createRange(); range.selectNodeContents(el);
+  const sel = window.getSelection(); sel.removeAllRanges(); sel.addRange(range);
+}
+
+function _annotateTextCreate(x, y) {
+  const fontSize = _ANNOTATE_TEXT_SIZES[_annotateSize] || 22;
+  const t = { id: makeId(), text: '', x, y, color: _annotateColor, fontSize, el: null };
+  _annotateTexts.push(t);
+  _annotateAddTextEl(t);
+}
+
+function _annotateTextRemove(id) {
+  const idx = _annotateTexts.findIndex(t => t.id === id);
+  if (idx === -1) return;
+  _annotateTexts[idx].el?.remove();
+  _annotateTexts.splice(idx, 1);
+}
+
+function _annotateTextDismiss() {
+  _annotateTexts.forEach(t => t.el?.remove());
+  _annotateTexts = [];
+}
+
 function openPhotoAnnotate(nodeId, idx) {
   _annotateNodeId    = nodeId;
   _annotateIdx       = idx;
@@ -6956,6 +7065,18 @@ function _annotateSmoothSnap() {
 }
 
 function _annotateBegin(e) {
+  // Blur any focused text span so keyboard dismisses when drawing/tapping canvas
+  const focused = document.querySelector('.annotate-text-input:focus');
+  if (focused) { focused.blur(); }
+  // Text tool: tap to create a new text label (don't draw)
+  if (_annotateTool === 'text') {
+    e.preventDefault();
+    if (!focused) { // only create if we didn't just dismiss a text edit
+      const pos = _annotateGetPos(e);
+      _annotateTextCreate(pos.x, pos.y);
+    }
+    return;
+  }
   if (e.pointerType === 'touch' && Date.now() < _annotatePenExpiry) return;
   if (e.pointerType === 'pen') _annotatePenExpiry = Date.now() + _DRAW_PEN_LOCK;
   e.preventDefault();
@@ -7079,14 +7200,35 @@ async function _annotateSave() {
   const ctx  = out.getContext('2d');
   ctx.drawImage(bg, 0, 0);                             // original photo
   ctx.drawImage(canvas, 0, 0, out.width, out.height); // annotations scaled up
-  // Composite any floating stickers at full output resolution
+  // Composite floating stickers and text labels at full output resolution
   const container = document.getElementById('annotateImgContainer');
   const scaleX = out.width  / container.clientWidth;
   const scaleY = out.height / container.clientHeight;
+  const avgScale = (scaleX + scaleY) / 2;
+
   for (const s of _annotateStickers) {
     const si = s.el?.querySelector('img');
     if (si?.complete) ctx.drawImage(si, (s.x-s.w/2)*scaleX, (s.y-s.h/2)*scaleY, s.w*scaleX, s.h*scaleY);
   }
+
+  // Skitch-style text: bold colored background pill, white text
+  ctx.textBaseline = 'top';
+  for (const t of _annotateTexts) {
+    if (!t.text.trim()) continue;
+    const fs = t.fontSize * avgScale;
+    ctx.font = `800 ${fs}px -apple-system,"Helvetica Neue",Arial,sans-serif`;
+    const tw  = ctx.measureText(t.text).width;
+    const px  = 10 * scaleX, py = 5 * scaleY;
+    const bx  = t.x * scaleX, by = t.y * scaleY;
+    const bw  = tw + px * 2,  bh = fs * 1.25 + py * 2;
+    const rad = 6 * avgScale;
+    _annotateRoundRect(ctx, bx, by, bw, bh, rad);
+    ctx.fillStyle = t.color; ctx.fill();
+    ctx.strokeStyle = 'rgba(0,0,0,0.38)'; ctx.lineWidth = 2.5 * avgScale; ctx.stroke();
+    ctx.fillStyle = '#ffffff';
+    ctx.fillText(t.text, bx + px, by + py + fs * 0.05);
+  }
+
   const dataUrl = out.toDataURL('image/jpeg', 0.88);
   await saveGalleryImageToDB(_annotateNodeId, _annotateIdx, dataUrl);
   const savedIdx = _annotateIdx;
@@ -7100,6 +7242,7 @@ function _annotateClose() {
   clearTimeout(_annotateStraightenTimer);
   _annotateStraightenTimer = null;
   _annotateStickerDismiss();
+  _annotateTextDismiss();
   document.getElementById('photoAnnotateOverlay').classList.add('hidden');
   _annotateNodeId = null; _annotateIdx = null;
   _annotatePoints = []; _annotateUndoStack = [];
@@ -7120,7 +7263,7 @@ function initAnnotateModal() {
   document.getElementById('annotateSaveBtn').addEventListener('click',   _annotateSave);
   document.getElementById('annotateUndoBtn').addEventListener('click',   _annotateUndo);
 
-  const _annotateToolBtns = () => ['annotatePenBtn','annotateCurvePenBtn','annotateEraserBtn'].map(id => document.getElementById(id));
+  const _annotateToolBtns = () => ['annotatePenBtn','annotateCurvePenBtn','annotateTextBtn','annotateEraserBtn'].map(id => document.getElementById(id));
   document.getElementById('annotatePenBtn').addEventListener('click', () => {
     _annotateTool = 'pen';
     _annotateToolBtns().forEach(b => b.classList.remove('active'));
@@ -7130,6 +7273,11 @@ function initAnnotateModal() {
     _annotateTool = 'curvepen';
     _annotateToolBtns().forEach(b => b.classList.remove('active'));
     document.getElementById('annotateCurvePenBtn').classList.add('active');
+  });
+  document.getElementById('annotateTextBtn').addEventListener('click', () => {
+    _annotateTool = 'text';
+    _annotateToolBtns().forEach(b => b.classList.remove('active'));
+    document.getElementById('annotateTextBtn').classList.add('active');
   });
   document.getElementById('annotateEraserBtn').addEventListener('click', () => {
     _annotateTool = 'eraser';
@@ -9296,7 +9444,7 @@ const toggleMenu = () => document.getElementById('menuDropdown').classList.toggl
 const closeMenu  = () => document.getElementById('menuDropdown').classList.remove('open');
 
 // ─── INIT ───────────────────────────────────────────────────────────────────
-const BUILD_TS = 'build:2026-03-30T22:00'; // bumped each deploy — confirms fresh load
+const BUILD_TS = 'build:2026-03-30T23:00'; // bumped each deploy — confirms fresh load
 
 async function initApp() {
   // Show immediately with localStorage data
@@ -10154,6 +10302,7 @@ document.addEventListener('DOMContentLoaded', () => {
   <div class="draw-toolbar">
     <button class="draw-tool-btn active" id="annotatePenBtn" title="Pen">✏</button>
     <button class="draw-tool-btn" id="annotateCurvePenBtn" title="Curve pen (hold to smooth)">⌣</button>
+    <button class="draw-tool-btn" id="annotateTextBtn" title="Text label">T</button>
     <button class="draw-tool-btn" id="annotateEraserBtn" title="Eraser">⌫</button>
     <div class="draw-sep"></div>
     <div class="draw-color-swatch annotate-swatch active" data-acolor="#ff3b30" style="background:#ff3b30"></div>
