@@ -6715,9 +6715,10 @@ let _annotateSize         = 3;
 let _annotatePoints       = [];
 let _annotateUndoStack    = [];
 let _annotatePenExpiry    = 0;
-let _annotateStraightenTimer = null;
-let _annotatePreStrokeState  = null; // ImageData before current stroke (for straighten)
-let _annotateStraightened    = false;
+let _annotateStraightenTimer  = null;
+let _annotatePreStrokeState   = null; // ImageData before current stroke (for straighten)
+let _annotateStraightened     = false;
+let _annotateStraightenOrigin = null; // position when timer was last reset (jitter detection)
 
 function openPhotoAnnotate(nodeId, idx) {
   _annotateNodeId    = nodeId;
@@ -6812,13 +6813,17 @@ function _annotateBegin(e) {
   if (e.pointerType === 'pen') _annotatePenExpiry = Date.now() + _DRAW_PEN_LOCK;
   e.preventDefault();
   clearTimeout(_annotateStraightenTimer);
-  _annotateStraightened    = false;
-  _annotatePreStrokeState  = null;
+  _annotateStraightened     = false;
+  _annotatePreStrokeState   = null;
+  _annotateStraightenOrigin = null;
   _annotateSaveUndo();
   // Snapshot state before stroke for potential straightening
   _annotatePreStrokeState  = _annotateUndoStack[_annotateUndoStack.length - 1];
   const pos = _annotateGetPos(e);
   _annotatePoints = [pos];
+  // Start the snap timer immediately — it will be reset on significant movement
+  _annotateStraightenOrigin = pos;
+  _annotateStraightenTimer  = setTimeout(_annotateStraighten, 600);
   _annotateCtx.beginPath();
   _annotateCtx.moveTo(pos.x, pos.y);
   if (_annotateTool === 'eraser') {
@@ -6866,13 +6871,16 @@ function _annotateMove(e) {
   _annotateCtx.stroke();
   _annotateCtx.beginPath();
   _annotateCtx.moveTo(mid.x, mid.y);
-  // Only restart the hold-to-straighten timer if movement exceeds jitter threshold
-  // (prevents Apple Pencil micro-movement events from blocking the timer)
-  const prev = _annotatePoints[len - 2];
-  const dist = Math.hypot(p2.x - prev.x, p2.y - prev.y);
-  if (dist > 4) {
-    clearTimeout(_annotateStraightenTimer);
-    _annotateStraightenTimer = setTimeout(_annotateStraighten, 600);
+  // Reset the snap timer only when displacement from last reset exceeds 4px.
+  // This prevents Apple Pencil sensor jitter (many tiny pointermove events)
+  // from blocking the timer — the timer always starts in _annotateBegin.
+  if (_annotateStraightenOrigin) {
+    const dist = Math.hypot(pos.x - _annotateStraightenOrigin.x, pos.y - _annotateStraightenOrigin.y);
+    if (dist > 4) {
+      _annotateStraightenOrigin = pos;
+      clearTimeout(_annotateStraightenTimer);
+      _annotateStraightenTimer = setTimeout(_annotateStraighten, 600);
+    }
   }
 }
 
@@ -6926,7 +6934,7 @@ function _annotateClose() {
   document.getElementById('photoAnnotateOverlay').classList.add('hidden');
   _annotateNodeId = null; _annotateIdx = null;
   _annotatePoints = []; _annotateUndoStack = [];
-  _annotatePreStrokeState = null; _annotateStraightened = false;
+  _annotatePreStrokeState = null; _annotateStraightened = false; _annotateStraightenOrigin = null;
   _annotateCtx = null;
   document.getElementById('annotateBg').src = '';
 }
@@ -9090,7 +9098,7 @@ const toggleMenu = () => document.getElementById('menuDropdown').classList.toggl
 const closeMenu  = () => document.getElementById('menuDropdown').classList.remove('open');
 
 // ─── INIT ───────────────────────────────────────────────────────────────────
-const BUILD_TS = 'build:2026-03-30T16:00'; // bumped each deploy — confirms fresh load
+const BUILD_TS = 'build:2026-03-30T17:00'; // bumped each deploy — confirms fresh load
 
 async function initApp() {
   // Show immediately with localStorage data
