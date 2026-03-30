@@ -769,6 +769,8 @@
     .annotate-text-input:empty::before {
       content: attr(data-ph); opacity: 0.55; pointer-events: none;
     }
+    /* T button in move mode — blue tint indicates "position" rather than "type" */
+    #annotateTextBtn.text-move { border-color: #007aff; color: #007aff; }
 
     /* ── Chat modal ───────────────────────────────────────────── */
     .chat-overlay {
@@ -6844,7 +6846,15 @@ function _annotateStickerDismiss() {
 // ── Text annotation state ─────────────────────────────────────────────────────
 const _ANNOTATE_TEXT_SIZES = { 3: 16, 7: 22, 15: 32 }; // size btn → font px
 
-let _annotateTexts = []; // [{id, text, x, y, color, fontSize, el}]
+let _annotateTexts    = []; // [{id, text, x, y, color, fontSize, el}]
+let _annotateTextMode = 'edit'; // 'edit' | 'move' — toggled by re-tapping T button
+
+// Enable or disable pointer interaction on all text wraps
+function _annotateTextSetInteractive(on) {
+  document.querySelectorAll('.annotate-text-wrap').forEach(el => {
+    el.style.pointerEvents = on ? '' : 'none';
+  });
+}
 
 // Rounded rect path helper for canvas save
 function _annotateRoundRect(ctx, x, y, w, h, r) {
@@ -6881,25 +6891,32 @@ function _annotateAddTextEl(t) {
 
   wrap.appendChild(span); wrap.appendChild(del);
 
-  // Drag logic — the wrap receives ALL pointer events (span is inside it, not a sibling of canvas,
-  // so no stopPropagation is needed to isolate from canvas drawing).
-  // • span NOT focused → wrap intercepts, prevents focus, drags. Tap (no movement) → focus.
-  // • span IS focused  → wrap returns early so text cursor/selection works normally.
-  let dragOx = 0, dragOy = 0, dragMoved = false;
+  // Drag logic:
+  // - Apple Pencil (pointerType==='pen') ALWAYS drags — never opens keyboard.
+  // - Move mode: always drag regardless of pointer type.
+  // - Edit mode + finger/mouse + span not focused: drag; tap without movement → focus span.
+  // - Edit mode + finger/mouse + span focused: let browser handle text cursor normally.
+  // Set initial interactivity based on current tool
+  wrap.style.pointerEvents = _annotateTool === 'text' ? '' : 'none';
+
+  let dragOx = 0, dragOy = 0, dragMoved = false, dragPtrType = '';
 
   wrap.addEventListener('pointerdown', e => {
     if (e.target === del) return;
-    if (document.activeElement === span) return; // editing — hands off
-    e.preventDefault(); // block automatic focus on this touch
+    const forcesDrag = e.pointerType === 'pen' || _annotateTextMode === 'move';
+    if (!forcesDrag && document.activeElement === span) return; // editing — hands off
+    e.preventDefault(); // prevent focus
     wrap.setPointerCapture(e.pointerId);
-    dragMoved = false;
+    dragMoved = false; dragPtrType = e.pointerType;
     const rect = document.getElementById('annotateImgContainer').getBoundingClientRect();
     dragOx = t.x - (e.clientX - rect.left);
     dragOy = t.y - (e.clientY - rect.top);
   }, { passive: false });
 
   wrap.addEventListener('pointermove', e => {
-    if (!e.buttons || document.activeElement === span) return;
+    if (!e.buttons) return;
+    const forcesDrag = e.pointerType === 'pen' || _annotateTextMode === 'move';
+    if (!forcesDrag && document.activeElement === span) return;
     dragMoved = true;
     const rect = document.getElementById('annotateImgContainer').getBoundingClientRect();
     t.x = (e.clientX - rect.left) + dragOx;
@@ -6908,8 +6925,11 @@ function _annotateAddTextEl(t) {
   }, { passive: false });
 
   wrap.addEventListener('pointerup', () => {
-    if (!dragMoved) { span.focus(); _selectAll(span); } // tap without drag → edit
-    dragMoved = false;
+    // Tap (no drag) with finger in edit mode → focus for typing
+    if (!dragMoved && dragPtrType !== 'pen' && _annotateTextMode === 'edit') {
+      span.focus(); _selectAll(span);
+    }
+    dragMoved = false; dragPtrType = '';
   });
 
   t.el = wrap;
@@ -7078,7 +7098,7 @@ function _annotateBegin(e) {
   // Text tool: tap to create a new text label (don't draw)
   if (_annotateTool === 'text') {
     e.preventDefault();
-    if (!focused) { // only create if we didn't just dismiss a text edit
+    if (_annotateTextMode === 'edit' && !focused) {
       const pos = _annotateGetPos(e);
       _annotateTextCreate(pos.x, pos.y);
     }
@@ -7271,32 +7291,38 @@ function initAnnotateModal() {
   document.getElementById('annotateUndoBtn').addEventListener('click',   _annotateUndo);
 
   const _annotateToolBtns = () => ['annotatePenBtn','annotateCurvePenBtn','annotateTextBtn','annotateEraserBtn'].map(id => document.getElementById(id));
-  document.getElementById('annotatePenBtn').addEventListener('click', () => {
-    _annotateTool = 'pen';
-    _annotateToolBtns().forEach(b => b.classList.remove('active'));
-    document.getElementById('annotatePenBtn').classList.add('active');
-  });
-  document.getElementById('annotateCurvePenBtn').addEventListener('click', () => {
-    _annotateTool = 'curvepen';
-    _annotateToolBtns().forEach(b => b.classList.remove('active'));
-    document.getElementById('annotateCurvePenBtn').classList.add('active');
-  });
+
+  const _annotateToolBtnId = { pen:'annotatePenBtn', curvepen:'annotateCurvePenBtn', text:'annotateTextBtn', eraser:'annotateEraserBtn' };
+  const _annotateSelectTool = (tool) => {
+    _annotateTool = tool;
+    _annotateToolBtns().forEach(b => { b.classList.remove('active'); b.classList.remove('text-move'); });
+    document.getElementById(_annotateToolBtnId[tool])?.classList.add('active');
+    _annotateTextSetInteractive(tool === 'text');
+    if (tool !== 'text') document.querySelector('.annotate-text-input:focus')?.blur();
+  };
+
+  document.getElementById('annotatePenBtn').addEventListener('click',       () => _annotateSelectTool('pen'));
+  document.getElementById('annotateCurvePenBtn').addEventListener('click',  () => _annotateSelectTool('curvepen'));
+  document.getElementById('annotateEraserBtn').addEventListener('click',    () => _annotateSelectTool('eraser'));
+
+  // T button: first tap → edit mode; second tap → move mode; third tap → edit mode (toggle)
   document.getElementById('annotateTextBtn').addEventListener('click', () => {
-    _annotateTool = 'text';
-    _annotateToolBtns().forEach(b => b.classList.remove('active'));
-    document.getElementById('annotateTextBtn').classList.add('active');
+    const btn = document.getElementById('annotateTextBtn');
+    if (_annotateTool === 'text') {
+      // Toggle between edit ↔ move
+      _annotateTextMode = _annotateTextMode === 'edit' ? 'move' : 'edit';
+      btn.classList.toggle('text-move', _annotateTextMode === 'move');
+      if (_annotateTextMode === 'move') document.querySelector('.annotate-text-input:focus')?.blur();
+    } else {
+      _annotateTextMode = 'edit';
+      _annotateSelectTool('text');
+    }
   });
-  document.getElementById('annotateEraserBtn').addEventListener('click', () => {
-    _annotateTool = 'eraser';
-    _annotateToolBtns().forEach(b => b.classList.remove('active'));
-    document.getElementById('annotateEraserBtn').classList.add('active');
-  });
+
   document.querySelectorAll('.annotate-swatch').forEach(s => {
     s.addEventListener('click', () => {
       _annotateColor = s.dataset.acolor;
-      _annotateTool  = 'pen';
-      _annotateToolBtns().forEach(b => b.classList.remove('active'));
-      document.getElementById('annotatePenBtn').classList.add('active');
+      _annotateSelectTool('pen');
       document.querySelectorAll('.annotate-swatch').forEach(x => x.classList.remove('active'));
       s.classList.add('active');
     });
@@ -9451,7 +9477,7 @@ const toggleMenu = () => document.getElementById('menuDropdown').classList.toggl
 const closeMenu  = () => document.getElementById('menuDropdown').classList.remove('open');
 
 // ─── INIT ───────────────────────────────────────────────────────────────────
-const BUILD_TS = 'build:2026-03-31T10:00'; // bumped each deploy — confirms fresh load
+const BUILD_TS = 'build:2026-03-31T11:00'; // bumped each deploy — confirms fresh load
 
 async function initApp() {
   // Show immediately with localStorage data
