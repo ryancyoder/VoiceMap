@@ -6719,6 +6719,7 @@ let _annotateStraightenTimer  = null;
 let _annotatePreStrokeState   = null; // ImageData before current stroke (for straighten)
 let _annotateStraightened     = false;
 let _annotateStraightenOrigin = null; // position when timer was last reset (jitter detection)
+let _annotateSmoothedPoints   = null; // reduced control points after curve-smooth snap
 
 function openPhotoAnnotate(nodeId, idx) {
   _annotateNodeId    = nodeId;
@@ -6729,6 +6730,7 @@ function openPhotoAnnotate(nodeId, idx) {
   _annotateColor     = '#ff3b30';
   _annotateSize      = 3;
   document.getElementById('annotatePenBtn').classList.add('active');
+  document.getElementById('annotateCurvePenBtn').classList.remove('active');
   document.getElementById('annotateEraserBtn').classList.remove('active');
   document.querySelectorAll('.annotate-swatch').forEach((s,i) => s.classList.toggle('active', i===0));
   document.querySelectorAll('.annotate-size').forEach((b,i)  => b.classList.toggle('active', i===0));
@@ -6786,24 +6788,68 @@ function _annotateGetPos(e) {
            pressure: e.pressure > 0 ? e.pressure : 0.5 };
 }
 
+// Reduce an array of points to ~count evenly-spaced samples (keeps first & last)
+function _annotateReducePoints(pts, count) {
+  if (pts.length <= count) return pts.slice();
+  const result = [pts[0]];
+  const step = (pts.length - 1) / (count - 1);
+  for (let i = 1; i < count - 1; i++) result.push(pts[Math.round(i * step)]);
+  result.push(pts[pts.length - 1]);
+  return result;
+}
+
+// Draw a Catmull-Rom spline through pts using the canvas ctx
+function _drawAnnotateCatmullRom(ctx, pts) {
+  if (pts.length < 2) return;
+  ctx.beginPath();
+  ctx.moveTo(pts[0].x, pts[0].y);
+  if (pts.length === 2) { ctx.lineTo(pts[1].x, pts[1].y); ctx.stroke(); return; }
+  for (let i = 0; i < pts.length - 1; i++) {
+    const p0 = pts[Math.max(0, i - 1)];
+    const p1 = pts[i];
+    const p2 = pts[i + 1];
+    const p3 = pts[Math.min(pts.length - 1, i + 2)];
+    const cp1x = p1.x + (p2.x - p0.x) / 6;
+    const cp1y = p1.y + (p2.y - p0.y) / 6;
+    const cp2x = p2.x - (p3.x - p1.x) / 6;
+    const cp2y = p2.y - (p3.y - p1.y) / 6;
+    ctx.bezierCurveTo(cp1x, cp1y, cp2x, cp2y, p2.x, p2.y);
+  }
+  ctx.stroke();
+}
+
+// Dispatches to straight-line or smooth-curve snap based on current tool
 function _annotateStraighten() {
   if (_annotatePoints.length < 2 || !_annotatePreStrokeState) return;
-  const canvas = document.getElementById('annotateCanvas');
-  // Restore canvas to the state just before this stroke
+  if (_annotateTool === 'curvepen') { _annotateSmoothSnap(); return; }
+  // --- straight-line snap (pen / eraser) ---
   _annotateCtx.putImageData(_annotatePreStrokeState, 0, 0);
-  // Draw a clean straight line from start to current end point
   const p1   = _annotatePoints[0];
   const p2   = _annotatePoints[_annotatePoints.length - 1];
   const base = _annotateTool === 'eraser' ? _annotateSize * 6 : _annotateSize;
   _annotateCtx.globalCompositeOperation = _annotateTool === 'eraser' ? 'destination-out' : 'source-over';
   _annotateCtx.strokeStyle = _annotateColor;
   _annotateCtx.fillStyle   = _annotateColor;
-  _annotateCtx.lineWidth   = base * 1.5; // slightly thicker — visually distinct as "snapped"
+  _annotateCtx.lineWidth   = base * 1.5;
   _annotateCtx.beginPath();
   _annotateCtx.moveTo(p1.x, p1.y);
   _annotateCtx.lineTo(p2.x, p2.y);
   _annotateCtx.stroke();
   _annotateCtx.globalCompositeOperation = 'source-over';
+  _annotateStraightened = true;
+  navigator.vibrate?.(12);
+}
+
+// Smooth-curve snap: reduces points and redraws as Catmull-Rom spline
+function _annotateSmoothSnap() {
+  _annotateCtx.putImageData(_annotatePreStrokeState, 0, 0);
+  // Sample down to at most 12 control points to remove jitter while keeping shape
+  const reduced = _annotateReducePoints(_annotatePoints, 12);
+  _annotateSmoothedPoints = reduced;
+  _annotateCtx.globalCompositeOperation = 'source-over';
+  _annotateCtx.strokeStyle = _annotateColor;
+  _annotateCtx.lineWidth   = _annotateSize * 1.5;
+  _drawAnnotateCatmullRom(_annotateCtx, reduced);
   _annotateStraightened = true;
   navigator.vibrate?.(12);
 }
@@ -6816,6 +6862,7 @@ function _annotateBegin(e) {
   _annotateStraightened     = false;
   _annotatePreStrokeState   = null;
   _annotateStraightenOrigin = null;
+  _annotateSmoothedPoints   = null;
   _annotateSaveUndo();
   // Snapshot state before stroke for potential straightening
   _annotatePreStrokeState  = _annotateUndoStack[_annotateUndoStack.length - 1];
@@ -6843,18 +6890,25 @@ function _annotateMove(e) {
   e.preventDefault();
   const pos = _annotateGetPos(e);
 
-  // Procreate-style: after snap, drag updates the line endpoint live
+  // Procreate-style: after snap, drag repositions the endpoint live
   if (_annotateStraightened) {
     _annotateCtx.putImageData(_annotatePreStrokeState, 0, 0);
-    const p1 = _annotatePoints[0];
     const base = _annotateTool === 'eraser' ? _annotateSize * 6 : _annotateSize;
     _annotateCtx.globalCompositeOperation = _annotateTool === 'eraser' ? 'destination-out' : 'source-over';
     _annotateCtx.strokeStyle = _annotateColor;
     _annotateCtx.lineWidth   = base * 1.5;
-    _annotateCtx.beginPath();
-    _annotateCtx.moveTo(p1.x, p1.y);
-    _annotateCtx.lineTo(pos.x, pos.y);
-    _annotateCtx.stroke();
+    if (_annotateTool === 'curvepen' && _annotateSmoothedPoints) {
+      // Update endpoint of the reduced control points and redraw smooth curve
+      _annotateSmoothedPoints[_annotateSmoothedPoints.length - 1] = pos;
+      _drawAnnotateCatmullRom(_annotateCtx, _annotateSmoothedPoints);
+    } else {
+      // Straight line: drag endpoint
+      const p1 = _annotatePoints[0];
+      _annotateCtx.beginPath();
+      _annotateCtx.moveTo(p1.x, p1.y);
+      _annotateCtx.lineTo(pos.x, pos.y);
+      _annotateCtx.stroke();
+    }
     _annotateCtx.globalCompositeOperation = 'source-over';
     _annotatePoints[_annotatePoints.length - 1] = pos;
     return;
@@ -6934,7 +6988,7 @@ function _annotateClose() {
   document.getElementById('photoAnnotateOverlay').classList.add('hidden');
   _annotateNodeId = null; _annotateIdx = null;
   _annotatePoints = []; _annotateUndoStack = [];
-  _annotatePreStrokeState = null; _annotateStraightened = false; _annotateStraightenOrigin = null;
+  _annotatePreStrokeState = null; _annotateStraightened = false; _annotateStraightenOrigin = null; _annotateSmoothedPoints = null;
   _annotateCtx = null;
   document.getElementById('annotateBg').src = '';
 }
@@ -6950,22 +7004,28 @@ function initAnnotateModal() {
   document.getElementById('annotateSaveBtn').addEventListener('click',   _annotateSave);
   document.getElementById('annotateUndoBtn').addEventListener('click',   _annotateUndo);
 
+  const _annotateToolBtns = () => ['annotatePenBtn','annotateCurvePenBtn','annotateEraserBtn'].map(id => document.getElementById(id));
   document.getElementById('annotatePenBtn').addEventListener('click', () => {
     _annotateTool = 'pen';
+    _annotateToolBtns().forEach(b => b.classList.remove('active'));
     document.getElementById('annotatePenBtn').classList.add('active');
-    document.getElementById('annotateEraserBtn').classList.remove('active');
+  });
+  document.getElementById('annotateCurvePenBtn').addEventListener('click', () => {
+    _annotateTool = 'curvepen';
+    _annotateToolBtns().forEach(b => b.classList.remove('active'));
+    document.getElementById('annotateCurvePenBtn').classList.add('active');
   });
   document.getElementById('annotateEraserBtn').addEventListener('click', () => {
     _annotateTool = 'eraser';
+    _annotateToolBtns().forEach(b => b.classList.remove('active'));
     document.getElementById('annotateEraserBtn').classList.add('active');
-    document.getElementById('annotatePenBtn').classList.remove('active');
   });
   document.querySelectorAll('.annotate-swatch').forEach(s => {
     s.addEventListener('click', () => {
       _annotateColor = s.dataset.acolor;
       _annotateTool  = 'pen';
+      _annotateToolBtns().forEach(b => b.classList.remove('active'));
       document.getElementById('annotatePenBtn').classList.add('active');
-      document.getElementById('annotateEraserBtn').classList.remove('active');
       document.querySelectorAll('.annotate-swatch').forEach(x => x.classList.remove('active'));
       s.classList.add('active');
     });
@@ -9098,7 +9158,7 @@ const toggleMenu = () => document.getElementById('menuDropdown').classList.toggl
 const closeMenu  = () => document.getElementById('menuDropdown').classList.remove('open');
 
 // ─── INIT ───────────────────────────────────────────────────────────────────
-const BUILD_TS = 'build:2026-03-30T17:00'; // bumped each deploy — confirms fresh load
+const BUILD_TS = 'build:2026-03-30T18:00'; // bumped each deploy — confirms fresh load
 
 async function initApp() {
   // Show immediately with localStorage data
@@ -9954,6 +10014,7 @@ document.addEventListener('DOMContentLoaded', () => {
   </div>
   <div class="draw-toolbar">
     <button class="draw-tool-btn active" id="annotatePenBtn" title="Pen">✏</button>
+    <button class="draw-tool-btn" id="annotateCurvePenBtn" title="Curve pen (hold to smooth)">⌣</button>
     <button class="draw-tool-btn" id="annotateEraserBtn" title="Eraser">⌫</button>
     <div class="draw-sep"></div>
     <div class="draw-color-swatch annotate-swatch active" data-acolor="#ff3b30" style="background:#ff3b30"></div>
