@@ -6887,6 +6887,7 @@ function _annotateAddTextEl(t) {
   const del = document.createElement('button');
   del.className = 'annotate-text-del'; del.textContent = '✕'; del.title = 'Remove text';
   del.addEventListener('pointerdown', e => e.stopPropagation());
+  del.addEventListener('pointerup',   e => e.stopPropagation()); // prevent wrap's pointerup from focusing span
   del.addEventListener('click', e => { e.stopPropagation(); _annotateTextRemove(t.id); });
 
   wrap.appendChild(span); wrap.appendChild(del);
@@ -6902,7 +6903,7 @@ function _annotateAddTextEl(t) {
   let dragOx = 0, dragOy = 0, dragMoved = false, dragPtrType = '';
 
   wrap.addEventListener('pointerdown', e => {
-    if (e.target === del) return;
+    if (del.contains(e.target)) return;
     const forcesDrag = e.pointerType === 'pen' || _annotateTextMode === 'move';
     if (!forcesDrag && document.activeElement === span) return; // editing — hands off
     e.preventDefault(); // prevent focus
@@ -9477,7 +9478,7 @@ const toggleMenu = () => document.getElementById('menuDropdown').classList.toggl
 const closeMenu  = () => document.getElementById('menuDropdown').classList.remove('open');
 
 // ─── INIT ───────────────────────────────────────────────────────────────────
-const BUILD_TS = 'build:2026-03-31T11:00'; // bumped each deploy — confirms fresh load
+const BUILD_TS = 'build:2026-03-31T12:00'; // bumped each deploy — confirms fresh load
 
 async function initApp() {
   // Show immediately with localStorage data
