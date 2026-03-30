@@ -6863,8 +6863,6 @@ function _annotateAddTextEl(t) {
   wrap.dataset.tid = t.id;
   wrap.style.left = t.x + 'px'; wrap.style.top = t.y + 'px';
 
-  // Use a span sizer to auto-width a backing div — then layer a transparent input over it
-  // Simpler: one contenteditable span styled as the Skitch text box
   const span = document.createElement('span');
   span.className = 'annotate-text-input';
   span.contentEditable = 'true';
@@ -6873,10 +6871,8 @@ function _annotateAddTextEl(t) {
   span.style.background = t.color;
   span.textContent = t.text;
   span.dataset.ph = 'Type here…';
-  span.addEventListener('input', () => { t.text = span.textContent; });
-  span.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); span.blur(); } });
-  // stopPropagation so canvas pointerdown doesn't fire while typing
-  span.addEventListener('pointerdown', e => e.stopPropagation());
+  span.addEventListener('input',   () => { t.text = span.textContent; });
+  span.addEventListener('keydown', e  => { if (e.key === 'Enter') { e.preventDefault(); span.blur(); } });
 
   const del = document.createElement('button');
   del.className = 'annotate-text-del'; del.textContent = '✕'; del.title = 'Remove text';
@@ -6885,25 +6881,36 @@ function _annotateAddTextEl(t) {
 
   wrap.appendChild(span); wrap.appendChild(del);
 
-  // Drag the wrap (fires on wrap background, not on span or del)
-  let dragOx = 0, dragOy = 0;
+  // Drag logic — the wrap receives ALL pointer events (span is inside it, not a sibling of canvas,
+  // so no stopPropagation is needed to isolate from canvas drawing).
+  // • span NOT focused → wrap intercepts, prevents focus, drags. Tap (no movement) → focus.
+  // • span IS focused  → wrap returns early so text cursor/selection works normally.
+  let dragOx = 0, dragOy = 0, dragMoved = false;
+
   wrap.addEventListener('pointerdown', e => {
-    if (e.target !== wrap) return; // only bare wrap (between/around children)
-    e.stopPropagation();
+    if (e.target === del) return;
+    if (document.activeElement === span) return; // editing — hands off
+    e.preventDefault(); // block automatic focus on this touch
     wrap.setPointerCapture(e.pointerId);
+    dragMoved = false;
     const rect = document.getElementById('annotateImgContainer').getBoundingClientRect();
     dragOx = t.x - (e.clientX - rect.left);
     dragOy = t.y - (e.clientY - rect.top);
   }, { passive: false });
+
   wrap.addEventListener('pointermove', e => {
-    if (!e.buttons || e.target !== wrap) return;
-    e.stopPropagation();
+    if (!e.buttons || document.activeElement === span) return;
+    dragMoved = true;
     const rect = document.getElementById('annotateImgContainer').getBoundingClientRect();
     t.x = (e.clientX - rect.left) + dragOx;
     t.y = (e.clientY - rect.top)  + dragOy;
     wrap.style.left = t.x + 'px'; wrap.style.top = t.y + 'px';
   }, { passive: false });
-  wrap.addEventListener('pointerup', e => { if (e.target === wrap) span.focus(); });
+
+  wrap.addEventListener('pointerup', () => {
+    if (!dragMoved) { span.focus(); _selectAll(span); } // tap without drag → edit
+    dragMoved = false;
+  });
 
   t.el = wrap;
   document.getElementById('annotateImgContainer').appendChild(wrap);
@@ -9444,7 +9451,7 @@ const toggleMenu = () => document.getElementById('menuDropdown').classList.toggl
 const closeMenu  = () => document.getElementById('menuDropdown').classList.remove('open');
 
 // ─── INIT ───────────────────────────────────────────────────────────────────
-const BUILD_TS = 'build:2026-03-30T23:00'; // bumped each deploy — confirms fresh load
+const BUILD_TS = 'build:2026-03-31T10:00'; // bumped each deploy — confirms fresh load
 
 async function initApp() {
   // Show immediately with localStorage data
