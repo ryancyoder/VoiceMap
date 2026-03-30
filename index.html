@@ -6837,6 +6837,24 @@ function _annotateMove(e) {
   if (e.pointerType === 'pen') _annotatePenExpiry = Date.now() + _DRAW_PEN_LOCK;
   e.preventDefault();
   const pos = _annotateGetPos(e);
+
+  // Procreate-style: after snap, drag updates the line endpoint live
+  if (_annotateStraightened) {
+    _annotateCtx.putImageData(_annotatePreStrokeState, 0, 0);
+    const p1 = _annotatePoints[0];
+    const base = _annotateTool === 'eraser' ? _annotateSize * 6 : _annotateSize;
+    _annotateCtx.globalCompositeOperation = _annotateTool === 'eraser' ? 'destination-out' : 'source-over';
+    _annotateCtx.strokeStyle = _annotateColor;
+    _annotateCtx.lineWidth   = base * 1.5;
+    _annotateCtx.beginPath();
+    _annotateCtx.moveTo(p1.x, p1.y);
+    _annotateCtx.lineTo(pos.x, pos.y);
+    _annotateCtx.stroke();
+    _annotateCtx.globalCompositeOperation = 'source-over';
+    _annotatePoints[_annotatePoints.length - 1] = pos;
+    return;
+  }
+
   _annotatePoints.push(pos);
   const len = _annotatePoints.length;
   if (len < 2) return;
@@ -6848,9 +6866,14 @@ function _annotateMove(e) {
   _annotateCtx.stroke();
   _annotateCtx.beginPath();
   _annotateCtx.moveTo(mid.x, mid.y);
-  // Restart the hold-to-straighten timer on every movement
-  clearTimeout(_annotateStraightenTimer);
-  _annotateStraightenTimer = setTimeout(_annotateStraighten, 600);
+  // Only restart the hold-to-straighten timer if movement exceeds jitter threshold
+  // (prevents Apple Pencil micro-movement events from blocking the timer)
+  const prev = _annotatePoints[len - 2];
+  const dist = Math.hypot(p2.x - prev.x, p2.y - prev.y);
+  if (dist > 4) {
+    clearTimeout(_annotateStraightenTimer);
+    _annotateStraightenTimer = setTimeout(_annotateStraighten, 600);
+  }
 }
 
 function _annotateEnd(e) {
@@ -9067,7 +9090,7 @@ const toggleMenu = () => document.getElementById('menuDropdown').classList.toggl
 const closeMenu  = () => document.getElementById('menuDropdown').classList.remove('open');
 
 // ─── INIT ───────────────────────────────────────────────────────────────────
-const BUILD_TS = 'build:2026-03-30T15:00'; // bumped each deploy — confirms fresh load
+const BUILD_TS = 'build:2026-03-30T16:00'; // bumped each deploy — confirms fresh load
 
 async function initApp() {
   // Show immediately with localStorage data
