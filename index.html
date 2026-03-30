@@ -731,6 +731,15 @@
       -webkit-tap-highlight-color: transparent;
     }
     .draw-size-btn.active { border-color: var(--accent); background: rgba(226,75,74,0.09); }
+    /* Photo annotation overlay */
+    #photoAnnotateOverlay { z-index: 950; background: #000; }
+    .annotate-body {
+      flex: 1; display: flex; align-items: center; justify-content: center;
+      overflow: hidden; min-height: 0; position: relative;
+    }
+    .annotate-img-container { position: relative; flex-shrink: 0; }
+    #annotateBg { display: block; pointer-events: none; user-select: none; }
+    #annotateCanvas { position: absolute; inset: 0; touch-action: none; cursor: crosshair; }
 
     /* ── Chat modal ───────────────────────────────────────────── */
     .chat-overlay {
@@ -6696,6 +6705,203 @@ function initQuickFind() {
 }
 
 // ─── NODE CONTEXT MENU ───────────────────────────────────────────────────────
+// ─── PHOTO ANNOTATION ────────────────────────────────────────────────────────
+let _annotateNodeId    = null;
+let _annotateIdx       = null;
+let _annotateCtx       = null;
+let _annotateTool      = 'pen';
+let _annotateColor     = '#ff3b30';
+let _annotateSize      = 3;
+let _annotatePoints    = [];
+let _annotateUndoStack = [];
+let _annotatePenExpiry = 0;
+
+function openPhotoAnnotate(nodeId, idx) {
+  _annotateNodeId    = nodeId;
+  _annotateIdx       = idx;
+  _annotatePoints    = [];
+  _annotateUndoStack = [];
+  _annotateTool      = 'pen';
+  _annotateColor     = '#ff3b30';
+  _annotateSize      = 3;
+  document.getElementById('annotatePenBtn').classList.add('active');
+  document.getElementById('annotateEraserBtn').classList.remove('active');
+  document.querySelectorAll('.annotate-swatch').forEach((s,i) => s.classList.toggle('active', i===0));
+  document.querySelectorAll('.annotate-size').forEach((b,i)  => b.classList.toggle('active', i===0));
+  document.getElementById('photoAnnotateOverlay').classList.remove('hidden');
+  requestAnimationFrame(_annotateInitCanvas);
+}
+
+function _annotateInitCanvas() {
+  const bg   = document.getElementById('annotateBg');
+  const body = document.getElementById('annotateBody');
+  const images = galleryCache[_annotateNodeId] || [];
+  const src    = images[_annotateIdx];
+  if (!src) return;
+  bg.onload = () => {
+    const wW = body.clientWidth;
+    const wH = body.clientHeight;
+    const scale = Math.min(wW / bg.naturalWidth, wH / bg.naturalHeight, 1);
+    const dW = Math.round(bg.naturalWidth  * scale);
+    const dH = Math.round(bg.naturalHeight * scale);
+    const container = document.getElementById('annotateImgContainer');
+    container.style.width  = dW + 'px';
+    container.style.height = dH + 'px';
+    bg.style.width  = dW + 'px';
+    bg.style.height = dH + 'px';
+    const canvas = document.getElementById('annotateCanvas');
+    const dpr    = window.devicePixelRatio || 1;
+    canvas.width  = dW * dpr;
+    canvas.height = dH * dpr;
+    canvas.style.width  = dW + 'px';
+    canvas.style.height = dH + 'px';
+    _annotateCtx = canvas.getContext('2d');
+    _annotateCtx.scale(dpr, dpr);
+    _annotateCtx.lineCap  = 'round';
+    _annotateCtx.lineJoin = 'round';
+  };
+  bg.src = src;
+  if (bg.complete && bg.naturalWidth) bg.onload();
+}
+
+function _annotateSaveUndo() {
+  const canvas = document.getElementById('annotateCanvas');
+  if (_annotateUndoStack.length >= _DRAW_MAX_UNDO) _annotateUndoStack.shift();
+  _annotateUndoStack.push(_annotateCtx.getImageData(0, 0, canvas.width, canvas.height));
+}
+
+function _annotateUndo() {
+  if (!_annotateUndoStack.length) return;
+  const canvas = document.getElementById('annotateCanvas');
+  _annotateCtx.putImageData(_annotateUndoStack.pop(), 0, 0);
+}
+
+function _annotateGetPos(e) {
+  const rect = document.getElementById('annotateCanvas').getBoundingClientRect();
+  return { x: e.clientX - rect.left, y: e.clientY - rect.top,
+           pressure: e.pressure > 0 ? e.pressure : 0.5 };
+}
+
+function _annotateBegin(e) {
+  if (e.pointerType === 'touch' && Date.now() < _annotatePenExpiry) return;
+  if (e.pointerType === 'pen') _annotatePenExpiry = Date.now() + _DRAW_PEN_LOCK;
+  e.preventDefault();
+  _annotateSaveUndo();
+  const pos = _annotateGetPos(e);
+  _annotatePoints = [pos];
+  _annotateCtx.beginPath();
+  _annotateCtx.moveTo(pos.x, pos.y);
+  if (_annotateTool === 'eraser') {
+    _annotateCtx.globalCompositeOperation = 'destination-out';
+    _annotateCtx.lineWidth = _annotateSize * 6;
+  } else {
+    _annotateCtx.globalCompositeOperation = 'source-over';
+    _annotateCtx.strokeStyle = _annotateColor;
+    _annotateCtx.fillStyle   = _annotateColor;
+  }
+}
+
+function _annotateMove(e) {
+  if (e.pointerType === 'touch' && Date.now() < _annotatePenExpiry) return;
+  if (!_annotatePoints.length) return;
+  if (e.pointerType === 'pen') _annotatePenExpiry = Date.now() + _DRAW_PEN_LOCK;
+  e.preventDefault();
+  const pos = _annotateGetPos(e);
+  _annotatePoints.push(pos);
+  const len = _annotatePoints.length;
+  if (len < 2) return;
+  const p1  = _annotatePoints[len - 2], p2 = _annotatePoints[len - 1];
+  const mid = { x: (p1.x + p2.x) / 2, y: (p1.y + p2.y) / 2 };
+  const base = _annotateTool === 'eraser' ? _annotateSize * 6 : _annotateSize;
+  _annotateCtx.lineWidth = base * (0.4 + p2.pressure * 1.2);
+  _annotateCtx.quadraticCurveTo(p1.x, p1.y, mid.x, mid.y);
+  _annotateCtx.stroke();
+  _annotateCtx.beginPath();
+  _annotateCtx.moveTo(mid.x, mid.y);
+}
+
+function _annotateEnd(e) {
+  if (e.pointerType === 'pen') _annotatePenExpiry = Date.now() + _DRAW_PEN_LOCK;
+  if (_annotatePoints.length === 1) {
+    const pos  = _annotatePoints[0];
+    const base = _annotateTool === 'eraser' ? _annotateSize * 6 : _annotateSize;
+    _annotateCtx.lineWidth = base;
+    _annotateCtx.beginPath();
+    _annotateCtx.arc(pos.x, pos.y, Math.max(base / 2, 1), 0, Math.PI * 2);
+    _annotateCtx.fill();
+  }
+  _annotatePoints = [];
+  _annotateCtx.globalCompositeOperation = 'source-over';
+}
+
+async function _annotateSave() {
+  const bg     = document.getElementById('annotateBg');
+  const canvas = document.getElementById('annotateCanvas');
+  // Composite at full photo resolution
+  const out = document.createElement('canvas');
+  out.width  = bg.naturalWidth;
+  out.height = bg.naturalHeight;
+  const ctx  = out.getContext('2d');
+  ctx.drawImage(bg, 0, 0);                                      // original photo
+  ctx.drawImage(canvas, 0, 0, out.width, out.height);           // annotations scaled up
+  const dataUrl = out.toDataURL('image/jpeg', 0.88);
+  await saveGalleryImageToDB(_annotateNodeId, _annotateIdx, dataUrl);
+  const savedIdx = _annotateIdx;
+  _annotateClose();
+  if (galleryNodeId === _annotateNodeId) renderGalleryGrid();
+  openLightbox(savedIdx);
+  showToast('Annotation saved');
+}
+
+function _annotateClose() {
+  document.getElementById('photoAnnotateOverlay').classList.add('hidden');
+  _annotateNodeId = null; _annotateIdx = null;
+  _annotatePoints = []; _annotateUndoStack = [];
+  _annotateCtx = null;
+  // Reset canvas src to avoid stale image
+  document.getElementById('annotateBg').src = '';
+}
+
+function initAnnotateModal() {
+  const canvas = document.getElementById('annotateCanvas');
+  canvas.addEventListener('pointerdown', e => { canvas.setPointerCapture(e.pointerId); _annotateBegin(e); }, { passive: false });
+  canvas.addEventListener('pointermove', e => { if (e.buttons) _annotateMove(e); }, { passive: false });
+  canvas.addEventListener('pointerup',     _annotateEnd);
+  canvas.addEventListener('pointercancel', _annotateEnd);
+
+  document.getElementById('annotateCancelBtn').addEventListener('click', _annotateClose);
+  document.getElementById('annotateSaveBtn').addEventListener('click',   _annotateSave);
+  document.getElementById('annotateUndoBtn').addEventListener('click',   _annotateUndo);
+
+  document.getElementById('annotatePenBtn').addEventListener('click', () => {
+    _annotateTool = 'pen';
+    document.getElementById('annotatePenBtn').classList.add('active');
+    document.getElementById('annotateEraserBtn').classList.remove('active');
+  });
+  document.getElementById('annotateEraserBtn').addEventListener('click', () => {
+    _annotateTool = 'eraser';
+    document.getElementById('annotateEraserBtn').classList.add('active');
+    document.getElementById('annotatePenBtn').classList.remove('active');
+  });
+  document.querySelectorAll('.annotate-swatch').forEach(s => {
+    s.addEventListener('click', () => {
+      _annotateColor = s.dataset.acolor;
+      _annotateTool  = 'pen';
+      document.getElementById('annotatePenBtn').classList.add('active');
+      document.getElementById('annotateEraserBtn').classList.remove('active');
+      document.querySelectorAll('.annotate-swatch').forEach(x => x.classList.remove('active'));
+      s.classList.add('active');
+    });
+  });
+  document.querySelectorAll('.annotate-size').forEach(btn => {
+    btn.addEventListener('click', () => {
+      _annotateSize = parseInt(btn.dataset.asize);
+      document.querySelectorAll('.annotate-size').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+    });
+  });
+}
+
 // ─── PHOTO GALLERY ───────────────────────────────────────────────────────────
 function openGallery(nodeId) {
   galleryNodeId = nodeId;
@@ -8815,7 +9021,7 @@ const toggleMenu = () => document.getElementById('menuDropdown').classList.toggl
 const closeMenu  = () => document.getElementById('menuDropdown').classList.remove('open');
 
 // ─── INIT ───────────────────────────────────────────────────────────────────
-const BUILD_TS = 'build:2026-03-30T12:30'; // bumped each deploy — confirms fresh load
+const BUILD_TS = 'build:2026-03-30T14:00'; // bumped each deploy — confirms fresh load
 
 async function initApp() {
   // Show immediately with localStorage data
@@ -9001,6 +9207,7 @@ document.addEventListener('DOMContentLoaded', () => {
   initNodeCtxMenu();
   initConsolidateModal();
   initDrawModal();
+  initAnnotateModal();
 
   // Persist markdown checkbox toggles (- [ ] / - [x]) when clicked
   document.addEventListener('change', e => {
@@ -9528,6 +9735,12 @@ document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('lightboxCloseBtn').addEventListener('click', closeLightbox);
   document.getElementById('lightboxPrev').addEventListener('click', () => { lightboxIndex--; _renderLightboxImage(); });
   document.getElementById('lightboxNext').addEventListener('click', () => { lightboxIndex++; _renderLightboxImage(); });
+  document.getElementById('lightboxAnnotateBtn').addEventListener('click', () => {
+    if (galleryNodeId === null) return;
+    const idx = lightboxIndex;
+    closeLightbox();
+    openPhotoAnnotate(galleryNodeId, idx);
+  });
   document.getElementById('lightboxShareBtn').addEventListener('click', () => shareGalleryPhoto(galleryNodeId, lightboxIndex));
   document.getElementById('lightboxDeleteBtn').addEventListener('click', () => {
     if (window.confirm('Delete this photo?')) deleteGalleryPhoto(galleryNodeId, lightboxIndex);
@@ -9649,6 +9862,38 @@ document.addEventListener('DOMContentLoaded', () => {
   </div>
 </div>
 
+<!-- Photo annotation overlay -->
+<div class="draw-overlay hidden" id="photoAnnotateOverlay">
+  <div class="draw-header">
+    <button class="draw-header-btn" id="annotateCancelBtn">Cancel</button>
+    <span class="draw-header-title">Annotate Photo</span>
+    <button class="draw-header-btn draw-save-btn" id="annotateSaveBtn">Save</button>
+  </div>
+  <div class="annotate-body" id="annotateBody">
+    <div class="annotate-img-container" id="annotateImgContainer">
+      <img id="annotateBg" alt="">
+      <canvas id="annotateCanvas"></canvas>
+    </div>
+  </div>
+  <div class="draw-toolbar">
+    <button class="draw-tool-btn active" id="annotatePenBtn" title="Pen">✏</button>
+    <button class="draw-tool-btn" id="annotateEraserBtn" title="Eraser">⌫</button>
+    <div class="draw-sep"></div>
+    <div class="draw-color-swatch annotate-swatch active" data-acolor="#ff3b30" style="background:#ff3b30"></div>
+    <div class="draw-color-swatch annotate-swatch" data-acolor="#ffcc00" style="background:#ffcc00"></div>
+    <div class="draw-color-swatch annotate-swatch" data-acolor="#30d158" style="background:#30d158"></div>
+    <div class="draw-color-swatch annotate-swatch" data-acolor="#007aff" style="background:#007aff"></div>
+    <div class="draw-color-swatch annotate-swatch" data-acolor="#ffffff" style="background:#fff;border:1.5px solid #aaa"></div>
+    <div class="draw-color-swatch annotate-swatch" data-acolor="#1a1a1a" style="background:#1a1a1a"></div>
+    <div class="draw-sep"></div>
+    <button class="draw-size-btn annotate-size active" data-asize="3"  title="Fine"   style="font-size:8px">●</button>
+    <button class="draw-size-btn annotate-size"        data-asize="7"  title="Medium" style="font-size:13px">●</button>
+    <button class="draw-size-btn annotate-size"        data-asize="15" title="Thick"  style="font-size:20px">●</button>
+    <div class="draw-sep"></div>
+    <button class="draw-tool-btn" id="annotateUndoBtn" title="Undo">↩</button>
+  </div>
+</div>
+
 <!-- Drawing / sketch modal -->
 <div class="draw-overlay hidden" id="drawModal">
   <div class="draw-header">
@@ -9733,6 +9978,7 @@ document.addEventListener('DOMContentLoaded', () => {
     <button class="lightbox-btn" id="lightboxCloseBtn">✕</button>
     <span class="lightbox-counter" id="lightboxCounter"></span>
     <div style="display:flex;gap:8px">
+      <button class="lightbox-btn" id="lightboxAnnotateBtn">✏</button>
       <button class="lightbox-btn" id="lightboxShareBtn">⬆ Share</button>
       <button class="lightbox-btn" id="lightboxDeleteBtn">🗑</button>
     </div>
