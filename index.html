@@ -2451,6 +2451,7 @@ let selectedCardId  = null;
 let cvLastTapId     = null;
 let cvLastTapTime   = 0;
 let cvScrollLastTap = 0;
+let cvSingleTapTimer = null;
 
 const promptLog    = []; // Array of logged Claude API calls
 const PROMPT_LOG_MAX = 100;
@@ -2614,6 +2615,7 @@ function selectCard(nodeId) {
 function dismissCardPanel() {
   selectedCardId = null;
   cvLastTapId    = null;
+  clearTimeout(cvSingleTapTimer); cvSingleTapTimer = null;
   document.getElementById('cvPanel').classList.remove('visible');
   document.querySelectorAll('.card.cv-selected').forEach(el => el.classList.remove('cv-selected'));
 }
@@ -8545,7 +8547,7 @@ const toggleMenu = () => document.getElementById('menuDropdown').classList.toggl
 const closeMenu  = () => document.getElementById('menuDropdown').classList.remove('open');
 
 // ─── INIT ───────────────────────────────────────────────────────────────────
-const BUILD_TS = 'build:2026-03-29T14:30'; // bumped each deploy — confirms fresh load
+const BUILD_TS = 'build:2026-03-30T10:00'; // bumped each deploy — confirms fresh load
 
 async function initApp() {
   // Show immediately with localStorage data
@@ -9166,16 +9168,22 @@ document.addEventListener('DOMContentLoaded', () => {
         return;
       }
       const nodeId = card.dataset.nodeId;
+      const label  = card.dataset.nodeLabel;
       const now    = Date.now();
-      if (nodeId === cvLastTapId && now - cvLastTapTime < 400) {
-        // Double-tap: drill in
+      if (nodeId === cvLastTapId && now - cvLastTapTime < 300) {
+        // Double-tap: cancel pending single-tap, drill in
+        clearTimeout(cvSingleTapTimer); cvSingleTapTimer = null;
         cvLastTapId = null; cvLastTapTime = 0;
         dismissCardPanel();
-        navigateInto(nodeId, card.dataset.nodeLabel);
+        navigateInto(nodeId, label);
       } else {
-        // Single tap: select + show panel
+        // Single tap: wait 300ms before showing panel (mirrors map view)
         cvLastTapId = nodeId; cvLastTapTime = now;
-        selectCard(nodeId);
+        clearTimeout(cvSingleTapTimer);
+        cvSingleTapTimer = setTimeout(() => {
+          cvSingleTapTimer = null;
+          selectCard(nodeId);
+        }, 300);
       }
       return;
     }
