@@ -9624,16 +9624,30 @@ function _icalGetUrl() { return localStorage.getItem(_ICAL_URL_KEY) || ''; }
 
 // Parse an ICS date/datetime string → ISO string or 'YYYY-MM-DD'
 function _icalParseDate(val) {
-  // Strip any surrounding whitespace
   val = val.trim();
-  if (val.length === 8) {
-    // All-day: YYYYMMDD
-    return val.slice(0, 4) + '-' + val.slice(4, 6) + '-' + val.slice(6, 8);
+  // Strip any trailing parameters after a second colon (e.g. TZID values with colons)
+  // The raw value here is already after the first colon split, but some TZID strings
+  // like "UTC+5:30" can sneak in if the line had multiple colons
+  // Extract the pure date/datetime token — always the last segment after colons
+  const parts = val.split(':');
+  const token = parts[parts.length - 1].trim();
+
+  // All-day: YYYYMMDD (exactly 8 digits)
+  if (/^\d{8}$/.test(token)) {
+    return token.slice(0,4) + '-' + token.slice(4,6) + '-' + token.slice(6,8);
   }
-  const y = val.slice(0, 4), mo = val.slice(4, 6), d = val.slice(6, 8);
-  const h = val.slice(9, 11), m = val.slice(11, 13), s = val.slice(13, 15) || '00';
-  const utc = val.endsWith('Z') ? 'Z' : '';
-  return new Date(`${y}-${mo}-${d}T${h}:${m}:${s}${utc}`).toISOString();
+  // Datetime: YYYYMMDDTHHmmss[Z]
+  if (/^\d{8}T\d{6}Z?$/.test(token)) {
+    const y = token.slice(0,4), mo = token.slice(4,6), d = token.slice(6,8);
+    const h = token.slice(9,11), m = token.slice(11,13), s = token.slice(13,15);
+    const utc = token.endsWith('Z') ? 'Z' : '';
+    const dt = new Date(`${y}-${mo}-${d}T${h}:${m}:${s}${utc}`);
+    if (!isNaN(dt)) return dt.toISOString();
+  }
+  // Fallback: try native Date parse
+  const dt = new Date(val);
+  if (!isNaN(dt)) return dt.toISOString();
+  return null; // signal to caller that parse failed
 }
 
 // Parse raw ICS text into an array of event objects
@@ -9650,6 +9664,7 @@ function _icalParse(text) {
     // Property name may have parameters: DTSTART;TZID=America/New_York
     const propFull = raw.slice(0, col).toUpperCase();
     const prop     = propFull.split(';')[0];
+    // Value is everything after the FIRST colon — _icalParseDate handles any extra colons
     const val      = raw.slice(col + 1);
 
     if (prop === 'BEGIN' && val.trim() === 'VEVENT') { cur = {}; continue; }
@@ -9659,16 +9674,20 @@ function _icalParse(text) {
     }
     if (!cur) continue;
 
-    if (prop === 'SUMMARY') {
-      cur.subject = val.replace(/\\n/g, ' ').replace(/\\,/g, ',').trim() || '(No title)';
+    try {
+      if (prop === 'SUMMARY') {
+        cur.subject = val.replace(/\\n/g, ' ').replace(/\\,/g, ',').trim() || '(No title)';
 
-    } else if (prop === 'DTSTART') {
-      const v = val.trim();
-      cur.allDay   = v.length === 8;
-      cur.start    = _icalParseDate(v);
-      cur.startTime = cur.allDay ? '' :
-        new Date(cur.start).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
-    }
+      } else if (prop === 'DTSTART') {
+        // Check for VALUE=DATE parameter (all-day)
+        const isDate = propFull.includes('VALUE=DATE');
+        const v = val.trim();
+        cur.allDay    = isDate || v.length === 8;
+        cur.start     = _icalParseDate(v);
+        cur.startTime = (cur.allDay || !cur.start) ? '' :
+          new Date(cur.start).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
+      }
+    } catch { /* skip malformed property */ }
   }
   return events;
 }
@@ -10441,7 +10460,7 @@ function initVoiceMode() {
 }
 
 // ─── INIT ───────────────────────────────────────────────────────────────────
-const BUILD_TS = 'build:2026-03-31T19:00'; // bumped each deploy — confirms fresh load
+const BUILD_TS = 'build:2026-03-31T19:30'; // bumped each deploy — confirms fresh load
 
 async function initApp() {
   // Show immediately with localStorage data
