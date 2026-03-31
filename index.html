@@ -1833,6 +1833,25 @@
       font-size: 11px; font-weight: 600; cursor: pointer; white-space: nowrap;
     }
     .outlook-toggle-btn.active { background: rgba(0,120,212,0.12); }
+    .ical-event {
+      background: rgba(52,199,89,0.10); border: 1px solid rgba(52,199,89,0.28);
+      border-left: 3px solid #34c759; border-radius: 5px;
+      padding: 2px 6px; font-size: 10px; font-weight: 500; color: #248a3d;
+      line-height: 1.35; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+      pointer-events: none;
+    }
+    .ical-ev-time { font-size: 9px; opacity: 0.75; display: block; }
+    .cal-ical-section {
+      display: flex; flex-direction: column; gap: 2px;
+      margin-bottom: 5px; padding-bottom: 5px;
+      border-bottom: 1px dashed rgba(52,199,89,0.22);
+    }
+    .ical-toggle-btn {
+      background: none; border: 1.5px solid rgba(52,199,89,0.5);
+      color: #34c759; border-radius: 7px; padding: 3px 9px;
+      font-size: 11px; font-weight: 600; cursor: pointer; white-space: nowrap;
+    }
+    .ical-toggle-btn.active { background: rgba(52,199,89,0.12); }
     /* ── Voice Mode ──────────────────────────────────────────────────────────── */
     .vm-overlay {
       position: fixed; inset: 0; z-index: 10200;
@@ -2084,6 +2103,7 @@
         <button class="menu-item" id="miApiKey">API Key</button>
         <button class="menu-item" id="miGithubSync">☁️ GitHub Sync</button>
         <button class="menu-item" id="miOutlook">📅 Outlook Calendar</button>
+        <button class="menu-item" id="miIcal">📆 Calendar Feed (ICS)</button>
         <button class="menu-item" id="miVoiceMode">🎙 Voice Mode</button>
         <button class="menu-item" id="miPrompts">⚙ System Prompts</button>
         <button class="menu-item" id="miArchive">📁 View Archive</button>
@@ -2155,6 +2175,7 @@
       <button class="cal-nav-btn" id="calNextBtn">›</button>
       <button class="cal-today-btn" id="calTodayBtn">Today</button>
       <button class="outlook-toggle-btn" id="olToggleBtn" style="display:none" title="Toggle Outlook events">📅 Outlook</button>
+      <button class="ical-toggle-btn" id="icalToggleBtn" style="display:none" title="Toggle calendar feed">📆 Feed</button>
     </div>
     <div class="cal-body" id="calBody">
       <div class="cal-sidebar" id="calSidebar">
@@ -7738,6 +7759,24 @@ function renderCalendarWeek() {
     cards.className = 'cal-day-cards';
     cards.dataset.calDate = iso;
 
+    // ICS calendar feed overlay
+    if (_icalVisible && _icalEvents[iso]?.length) {
+      const icalSec = document.createElement('div');
+      icalSec.className = 'cal-ical-section';
+      for (const ev of _icalEvents[iso]) {
+        const chip = document.createElement('div');
+        chip.className = 'ical-event';
+        chip.title = ev.subject;
+        if (ev.allDay) {
+          chip.textContent = ev.subject;
+        } else {
+          chip.innerHTML = `<span class="ical-ev-time">${ev.startTime}</span>${ev.subject}`;
+        }
+        icalSec.appendChild(chip);
+      }
+      cards.appendChild(icalSec);
+    }
+
     // Outlook Calendar overlay — events fetched from Microsoft Graph
     if (_outlookVisible && _outlookEvents[iso]?.length) {
       const olSec = document.createElement('div');
@@ -9574,6 +9613,169 @@ function onKbTouchCancel() {
 const toggleMenu = () => document.getElementById('menuDropdown').classList.toggle('open');
 const closeMenu  = () => document.getElementById('menuDropdown').classList.remove('open');
 
+// ─── ICS CALENDAR FEED ───────────────────────────────────────────────────────
+const _ICAL_URL_KEY  = 'voicemap_ical_url';
+const _ICAL_CORS     = 'https://api.allorigins.win/raw?url=';
+
+let _icalEvents  = {}; // { 'YYYY-MM-DD': [{subject, startTime, allDay}] }
+let _icalVisible = localStorage.getItem('voicemap_ical_visible') === '1';
+
+function _icalGetUrl() { return localStorage.getItem(_ICAL_URL_KEY) || ''; }
+
+// Parse an ICS date/datetime string → ISO string or 'YYYY-MM-DD'
+function _icalParseDate(val) {
+  // Strip any surrounding whitespace
+  val = val.trim();
+  if (val.length === 8) {
+    // All-day: YYYYMMDD
+    return val.slice(0, 4) + '-' + val.slice(4, 6) + '-' + val.slice(6, 8);
+  }
+  const y = val.slice(0, 4), mo = val.slice(4, 6), d = val.slice(6, 8);
+  const h = val.slice(9, 11), m = val.slice(11, 13), s = val.slice(13, 15) || '00';
+  const utc = val.endsWith('Z') ? 'Z' : '';
+  return new Date(`${y}-${mo}-${d}T${h}:${m}:${s}${utc}`).toISOString();
+}
+
+// Parse raw ICS text into an array of event objects
+function _icalParse(text) {
+  // Unfold continuation lines (RFC 5545: CRLF + whitespace = continuation)
+  text = text.replace(/\r\n[ \t]/g, '').replace(/\n[ \t]/g, '');
+  const lines  = text.split(/\r\n|\n|\r/);
+  const events = [];
+  let cur = null;
+
+  for (const raw of lines) {
+    const col = raw.indexOf(':');
+    if (col < 0) continue;
+    // Property name may have parameters: DTSTART;TZID=America/New_York
+    const propFull = raw.slice(0, col).toUpperCase();
+    const prop     = propFull.split(';')[0];
+    const val      = raw.slice(col + 1);
+
+    if (prop === 'BEGIN' && val.trim() === 'VEVENT') { cur = {}; continue; }
+    if (prop === 'END'   && val.trim() === 'VEVENT') {
+      if (cur?.start) events.push(cur);
+      cur = null; continue;
+    }
+    if (!cur) continue;
+
+    if (prop === 'SUMMARY') {
+      cur.subject = val.replace(/\\n/g, ' ').replace(/\\,/g, ',').trim() || '(No title)';
+
+    } else if (prop === 'DTSTART') {
+      const v = val.trim();
+      cur.allDay   = v.length === 8;
+      cur.start    = _icalParseDate(v);
+      cur.startTime = cur.allDay ? '' :
+        new Date(cur.start).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
+    }
+  }
+  return events;
+}
+
+// Bucket events by YYYY-MM-DD for the current ±8 day window
+function _icalBucket(events) {
+  const out = {};
+  const weekStart = calWeekStart ? new Date(calWeekStart) : getWeekMonday(new Date());
+  const winStart  = new Date(weekStart); winStart.setDate(winStart.getDate() - 1);
+  const winEnd    = new Date(weekStart); winEnd.setDate(winEnd.getDate() + 8);
+
+  for (const ev of events) {
+    const iso = ev.start.slice(0, 10);
+    const d   = new Date(iso + 'T00:00:00');
+    if (d < winStart || d > winEnd) continue;
+    (out[iso] = out[iso] || []).push(ev);
+  }
+  // Sort each day by time
+  for (const iso of Object.keys(out)) {
+    out[iso].sort((a, b) => (a.start > b.start ? 1 : -1));
+  }
+  return out;
+}
+
+// Fetch + parse the ICS feed, update overlay
+async function _icalFetch() {
+  const url = _icalGetUrl();
+  if (!url) return;
+  try {
+    // Try direct fetch first; fall back to CORS proxy if blocked
+    let text;
+    try {
+      const r = await fetch(url, { cache: 'no-cache' });
+      if (!r.ok) throw new Error('direct fetch failed');
+      text = await r.text();
+    } catch {
+      const r = await fetch(_ICAL_CORS + encodeURIComponent(url), { cache: 'no-cache' });
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      text = await r.text();
+    }
+    if (!text.includes('BEGIN:VCALENDAR')) throw new Error('Not a valid ICS file');
+    const events = _icalParse(text);
+    _icalEvents  = _icalBucket(events);
+    if (calVisible) renderCalendarWeek();
+  } catch (err) {
+    showToast('Calendar feed error: ' + err.message);
+    console.warn('[ICS]', err);
+  }
+}
+
+function _icalUpdateToggleBtn() {
+  const btn = document.getElementById('icalToggleBtn');
+  if (!btn) return;
+  btn.style.display = _icalGetUrl() ? '' : 'none';
+  btn.classList.toggle('active', _icalVisible);
+}
+
+function showIcalModal() {
+  closeMenu();
+  document.getElementById('icalUrlInput').value = _icalGetUrl();
+  document.getElementById('icalModal').classList.remove('hidden');
+}
+
+function initIcalModal() {
+  document.getElementById('miIcal').addEventListener('click', showIcalModal);
+
+  document.getElementById('icalSaveBtn').addEventListener('click', async () => {
+    const url = document.getElementById('icalUrlInput').value.trim();
+    if (!url) { showToast('Paste an ICS URL first'); return; }
+    localStorage.setItem(_ICAL_URL_KEY, url);
+    _icalVisible = true;
+    localStorage.setItem('voicemap_ical_visible', '1');
+    document.getElementById('icalModal').classList.add('hidden');
+    _icalUpdateToggleBtn();
+    showToast('Loading calendar…');
+    await _icalFetch();
+  });
+
+  document.getElementById('icalClearBtn').addEventListener('click', () => {
+    localStorage.removeItem(_ICAL_URL_KEY);
+    localStorage.setItem('voicemap_ical_visible', '0');
+    _icalEvents  = {};
+    _icalVisible = false;
+    _icalUpdateToggleBtn();
+    document.getElementById('icalModal').classList.add('hidden');
+    showToast('Calendar feed cleared');
+    if (calVisible) renderCalendarWeek();
+  });
+
+  document.getElementById('icalCloseBtn').addEventListener('click', () => {
+    document.getElementById('icalModal').classList.add('hidden');
+  });
+
+  document.getElementById('icalModal').addEventListener('click', e => {
+    if (e.target === document.getElementById('icalModal'))
+      document.getElementById('icalModal').classList.add('hidden');
+  });
+
+  document.getElementById('icalToggleBtn').addEventListener('click', () => {
+    _icalVisible = !_icalVisible;
+    localStorage.setItem('voicemap_ical_visible', _icalVisible ? '1' : '0');
+    _icalUpdateToggleBtn();
+    if (_icalVisible && Object.keys(_icalEvents).length === 0) _icalFetch();
+    else if (calVisible) renderCalendarWeek();
+  });
+}
+
 // ─── OUTLOOK CALENDAR ────────────────────────────────────────────────────────
 const _OL_TOKEN_KEY    = 'voicemap_outlook_token';
 const _OL_EXPIRY_KEY   = 'voicemap_outlook_expiry';
@@ -10196,7 +10398,7 @@ function initVoiceMode() {
 }
 
 // ─── INIT ───────────────────────────────────────────────────────────────────
-const BUILD_TS = 'build:2026-03-31T17:00'; // bumped each deploy — confirms fresh load
+const BUILD_TS = 'build:2026-03-31T18:00'; // bumped each deploy — confirms fresh load
 
 async function initApp() {
   // Show immediately with localStorage data
@@ -10249,6 +10451,9 @@ async function initApp() {
   if (_outlookVisible && (_olIsConnected() || localStorage.getItem(_OL_REFRESH_KEY))) {
     _olFetchEvents();
   }
+  // ICS feed — show toggle and auto-fetch if a URL is saved
+  _icalUpdateToggleBtn();
+  if (_icalVisible && _icalGetUrl()) _icalFetch();
 }
 
 // Prevent double-tap zoom on iOS (fallback for when maximum-scale=1.0 is ignored)
@@ -10391,6 +10596,7 @@ document.addEventListener('DOMContentLoaded', () => {
   initConsolidateModal();
   initDrawModal();
   initAnnotateModal();
+  initIcalModal();
   initOutlookModal();
   initVoiceMode();
 
@@ -10465,13 +10671,16 @@ document.addEventListener('DOMContentLoaded', () => {
   });
   // Calendar navigation
   document.getElementById('calPrevBtn').addEventListener('click', () => {
-    calWeekStart = new Date(calWeekStart); calWeekStart.setDate(calWeekStart.getDate() - 7); renderCalendar();
+    calWeekStart = new Date(calWeekStart); calWeekStart.setDate(calWeekStart.getDate() - 7);
+    renderCalendar(); if (_icalVisible && _icalGetUrl()) _icalFetch();
   });
   document.getElementById('calNextBtn').addEventListener('click', () => {
-    calWeekStart = new Date(calWeekStart); calWeekStart.setDate(calWeekStart.getDate() + 7); renderCalendar();
+    calWeekStart = new Date(calWeekStart); calWeekStart.setDate(calWeekStart.getDate() + 7);
+    renderCalendar(); if (_icalVisible && _icalGetUrl()) _icalFetch();
   });
   document.getElementById('calTodayBtn').addEventListener('click', () => {
     calWeekStart = getWeekMonday(new Date()); renderCalendar();
+    if (_icalVisible && _icalGetUrl()) _icalFetch();
   });
   // Schedule modal
   document.getElementById('scheduleConfirmBtn').addEventListener('click', () => {
@@ -11185,6 +11394,24 @@ document.addEventListener('DOMContentLoaded', () => {
   <div class="tap-record-pulse">⏺</div>
   <div class="tap-record-label">Tap anywhere to record</div>
   <div class="tap-record-sub">Back Tap shortcut activated</div>
+</div>
+
+<!-- ICS Calendar Feed modal -->
+<div class="modal-overlay hidden" id="icalModal">
+  <div class="modal-sheet" style="max-width:440px">
+    <div class="modal-title">📆 Calendar Feed (ICS)</div>
+    <p style="font-size:12px;color:var(--muted);line-height:1.6;margin:0 0 12px">
+      Paste a public ICS calendar URL. Works with Outlook, Google Calendar, Apple iCloud, and any app that publishes ICS feeds.<br><br>
+      <strong>Outlook:</strong> Settings → View all Outlook settings → Calendar → Shared calendars → Publish a calendar → copy ICS link<br>
+      <strong>Google:</strong> Calendar settings → your calendar → Integrate calendar → Secret address in iCal format
+    </p>
+    <label style="font-size:11px;color:var(--muted);font-weight:700;text-transform:uppercase;letter-spacing:0.4px">ICS Feed URL</label>
+    <input id="icalUrlInput" type="url" placeholder="https://…/calendar.ics"
+      style="width:100%;box-sizing:border-box;margin:6px 0 14px;padding:9px 11px;border-radius:8px;border:1.5px solid var(--border);font-size:13px;background:var(--surface);color:var(--text)">
+    <button class="modal-save" id="icalSaveBtn">Load Calendar</button>
+    <button class="modal-save" id="icalClearBtn" style="background:#6b7280;margin-top:8px">Clear Feed</button>
+    <button class="modal-save" id="icalCloseBtn" style="background:#444;margin-top:8px">Cancel</button>
+  </div>
 </div>
 
 <!-- Outlook Calendar setup modal -->
