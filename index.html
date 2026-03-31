@@ -9695,6 +9695,9 @@ function _icalBucket(events) {
 
 // Fetch + parse the ICS feed, update overlay
 async function _icalFetch() {
+  // If user pasted raw ICS content instead of a URL, re-bucket from stored text
+  const raw = localStorage.getItem('voicemap_ical_raw');
+  if (raw) { _icalEvents = _icalBucket(_icalParse(raw)); if (calVisible) renderCalendarWeek(); return; }
   const url = _icalGetUrl();
   if (!url) return;
   showToast('Loading calendar feed…');
@@ -9733,9 +9736,35 @@ function _icalUpdateToggleBtn() {
   btn.classList.toggle('active', _icalVisible);
 }
 
+function icalShowTab(tab) {
+  document.getElementById('icalPanelUrl').style.display   = tab === 'url'   ? '' : 'none';
+  document.getElementById('icalPanelPaste').style.display = tab === 'paste' ? '' : 'none';
+  document.getElementById('icalTabUrl').style.background   = tab === 'url'   ? 'var(--accent)' : 'var(--surface)';
+  document.getElementById('icalTabUrl').style.color        = tab === 'url'   ? '#fff' : 'var(--muted)';
+  document.getElementById('icalTabPaste').style.background = tab === 'paste' ? 'var(--accent)' : 'var(--surface)';
+  document.getElementById('icalTabPaste').style.color      = tab === 'paste' ? '#fff' : 'var(--muted)';
+}
+
+function _icalLoadText(text) {
+  if (!text.includes('BEGIN:VCALENDAR')) { showToast('Not a valid ICS file'); return false; }
+  const events = _icalParse(text);
+  // Store the raw text so we can re-bucket when navigating weeks
+  localStorage.setItem('voicemap_ical_raw', text);
+  localStorage.removeItem(_ICAL_URL_KEY); // pasted content replaces URL
+  _icalEvents  = _icalBucket(events);
+  _icalVisible = true;
+  localStorage.setItem('voicemap_ical_visible', '1');
+  _icalUpdateToggleBtn();
+  if (calVisible) renderCalendarWeek();
+  showToast(`Calendar loaded — ${events.length} events`);
+  return true;
+}
+
 function showIcalModal() {
   closeMenu();
   document.getElementById('icalUrlInput').value = _icalGetUrl();
+  document.getElementById('icalPasteInput').value = '';
+  icalShowTab('url');
   document.getElementById('icalModal').classList.remove('hidden');
 }
 
@@ -9746,16 +9775,23 @@ function initIcalModal() {
     const url = document.getElementById('icalUrlInput').value.trim();
     if (!url) { showToast('Paste an ICS URL first'); return; }
     localStorage.setItem(_ICAL_URL_KEY, url);
+    localStorage.removeItem('voicemap_ical_raw');
     _icalVisible = true;
     localStorage.setItem('voicemap_ical_visible', '1');
     document.getElementById('icalModal').classList.add('hidden');
     _icalUpdateToggleBtn();
-    showToast('Loading calendar…');
     await _icalFetch();
+  });
+
+  document.getElementById('icalPasteBtn').addEventListener('click', () => {
+    const text = document.getElementById('icalPasteInput').value.trim();
+    if (!text) { showToast('Paste ICS content first'); return; }
+    if (_icalLoadText(text)) document.getElementById('icalModal').classList.add('hidden');
   });
 
   document.getElementById('icalClearBtn').addEventListener('click', () => {
     localStorage.removeItem(_ICAL_URL_KEY);
+    localStorage.removeItem('voicemap_ical_raw');
     localStorage.setItem('voicemap_ical_visible', '0');
     _icalEvents  = {};
     _icalVisible = false;
@@ -10405,7 +10441,7 @@ function initVoiceMode() {
 }
 
 // ─── INIT ───────────────────────────────────────────────────────────────────
-const BUILD_TS = 'build:2026-03-31T18:30'; // bumped each deploy — confirms fresh load
+const BUILD_TS = 'build:2026-03-31T19:00'; // bumped each deploy — confirms fresh load
 
 async function initApp() {
   // Show immediately with localStorage data
@@ -11405,17 +11441,41 @@ document.addEventListener('DOMContentLoaded', () => {
 
 <!-- ICS Calendar Feed modal -->
 <div class="modal-overlay hidden" id="icalModal">
-  <div class="modal-sheet" style="max-width:440px">
+  <div class="modal-sheet" style="max-width:440px;max-height:88vh;overflow-y:auto">
     <div class="modal-title">📆 Calendar Feed (ICS)</div>
-    <p style="font-size:12px;color:var(--muted);line-height:1.6;margin:0 0 12px">
-      Paste a public ICS calendar URL. Works with Outlook, Google Calendar, Apple iCloud, and any app that publishes ICS feeds.<br><br>
-      <strong>Outlook:</strong> Settings → View all Outlook settings → Calendar → Shared calendars → Publish a calendar → copy ICS link<br>
-      <strong>Google:</strong> Calendar settings → your calendar → Integrate calendar → Secret address in iCal format
-    </p>
-    <label style="font-size:11px;color:var(--muted);font-weight:700;text-transform:uppercase;letter-spacing:0.4px">ICS Feed URL</label>
-    <input id="icalUrlInput" type="url" placeholder="https://…/calendar.ics"
-      style="width:100%;box-sizing:border-box;margin:6px 0 14px;padding:9px 11px;border-radius:8px;border:1.5px solid var(--border);font-size:13px;background:var(--surface);color:var(--text)">
-    <button class="modal-save" id="icalSaveBtn">Load Calendar</button>
+
+    <!-- Tab bar -->
+    <div style="display:flex;gap:0;margin-bottom:14px;border-radius:8px;overflow:hidden;border:1.5px solid var(--border)">
+      <button id="icalTabUrl" onclick="icalShowTab('url')"
+        style="flex:1;padding:8px;font-size:12px;font-weight:700;background:var(--accent);color:#fff;border:none;cursor:pointer">URL</button>
+      <button id="icalTabPaste" onclick="icalShowTab('paste')"
+        style="flex:1;padding:8px;font-size:12px;font-weight:700;background:var(--surface);color:var(--muted);border:none;cursor:pointer">Paste ICS</button>
+    </div>
+
+    <!-- URL tab -->
+    <div id="icalPanelUrl">
+      <p style="font-size:12px;color:var(--muted);line-height:1.6;margin:0 0 10px">
+        Paste a <strong>public</strong> ICS URL. If your org blocks external access, use the Paste tab instead.<br><br>
+        <strong>Outlook:</strong> Settings → View all Outlook settings → Calendar → Shared calendars → Publish a calendar → copy ICS link<br>
+        <strong>Google:</strong> Calendar settings → your calendar → Integrate calendar → Secret address in iCal format
+      </p>
+      <label style="font-size:11px;color:var(--muted);font-weight:700;text-transform:uppercase;letter-spacing:0.4px">ICS Feed URL</label>
+      <input id="icalUrlInput" type="url" placeholder="https://…/calendar.ics"
+        style="width:100%;box-sizing:border-box;margin:6px 0 14px;padding:9px 11px;border-radius:8px;border:1.5px solid var(--border);font-size:13px;background:var(--surface);color:var(--text)">
+      <button class="modal-save" id="icalSaveBtn">Load from URL</button>
+    </div>
+
+    <!-- Paste tab -->
+    <div id="icalPanelPaste" style="display:none">
+      <p style="font-size:12px;color:var(--muted);line-height:1.6;margin:0 0 10px">
+        Open your ICS URL directly in a browser — it will download a <code>.ics</code> file. Open that file in a text editor, select all, and paste below.
+      </p>
+      <label style="font-size:11px;color:var(--muted);font-weight:700;text-transform:uppercase;letter-spacing:0.4px">ICS Content</label>
+      <textarea id="icalPasteInput" placeholder="BEGIN:VCALENDAR&#10;…"
+        style="width:100%;box-sizing:border-box;margin:6px 0 14px;padding:9px 11px;border-radius:8px;border:1.5px solid var(--border);font-size:12px;background:var(--surface);color:var(--text);height:140px;resize:vertical;font-family:monospace"></textarea>
+      <button class="modal-save" id="icalPasteBtn">Load Pasted ICS</button>
+    </div>
+
     <button class="modal-save" id="icalClearBtn" style="background:#6b7280;margin-top:8px">Clear Feed</button>
     <button class="modal-save" id="icalCloseBtn" style="background:#444;margin-top:8px">Cancel</button>
   </div>
