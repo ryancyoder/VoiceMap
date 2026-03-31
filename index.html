@@ -9697,26 +9697,33 @@ function _icalBucket(events) {
 async function _icalFetch() {
   const url = _icalGetUrl();
   if (!url) return;
-  try {
-    // Try direct fetch first; fall back to CORS proxy if blocked
-    let text;
+  showToast('Loading calendar feed…');
+  const proxies = [
+    u => u,                                                          // direct
+    u => `https://api.allorigins.win/raw?url=${encodeURIComponent(u)}`,
+    u => `https://corsproxy.io/?${encodeURIComponent(u)}`,
+    u => `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(u)}`,
+  ];
+  let lastErr = 'all proxies failed';
+  for (const proxy of proxies) {
     try {
-      const r = await fetch(url, { cache: 'no-cache' });
-      if (!r.ok) throw new Error('direct fetch failed');
-      text = await r.text();
-    } catch {
-      const r = await fetch(_ICAL_CORS + encodeURIComponent(url), { cache: 'no-cache' });
-      if (!r.ok) throw new Error(`HTTP ${r.status}`);
-      text = await r.text();
-    }
-    if (!text.includes('BEGIN:VCALENDAR')) throw new Error('Not a valid ICS file');
-    const events = _icalParse(text);
-    _icalEvents  = _icalBucket(events);
-    if (calVisible) renderCalendarWeek();
-  } catch (err) {
-    showToast('Calendar feed error: ' + err.message);
-    console.warn('[ICS]', err);
+      const r = await fetch(proxy(url), { cache: 'no-cache' });
+      if (r.status === 401 || r.status === 403) {
+        showToast('Calendar feed: URL requires login — use a public/published ICS link');
+        return;
+      }
+      if (!r.ok) { lastErr = `HTTP ${r.status}`; continue; }
+      const text = await r.text();
+      if (!text.includes('BEGIN:VCALENDAR')) { lastErr = 'URL did not return a valid ICS file'; continue; }
+      const events = _icalParse(text);
+      _icalEvents  = _icalBucket(events);
+      if (calVisible) renderCalendarWeek();
+      showToast(`Calendar loaded — ${events.length} events`);
+      return;
+    } catch (e) { lastErr = e.message; }
   }
+  showToast('Calendar feed error: ' + lastErr);
+  console.warn('[ICS] all fetch attempts failed:', lastErr);
 }
 
 function _icalUpdateToggleBtn() {
@@ -10398,7 +10405,7 @@ function initVoiceMode() {
 }
 
 // ─── INIT ───────────────────────────────────────────────────────────────────
-const BUILD_TS = 'build:2026-03-31T18:00'; // bumped each deploy — confirms fresh load
+const BUILD_TS = 'build:2026-03-31T18:30'; // bumped each deploy — confirms fresh load
 
 async function initApp() {
   // Show immediately with localStorage data
