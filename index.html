@@ -9616,7 +9616,7 @@ async function _olConnect() {
     scope: _OL_SCOPE, code_challenge: challenge,
     code_challenge_method: 'S256', state: 'outlook_auth'
   });
-  location.href = `https://login.microsoftonline.com/common/oauth2/v2.0/authorize?${params}`;
+  location.href = `https://login.microsoftonline.com/consumers/oauth2/v2.0/authorize?${params}`;
 }
 
 async function _olHandleRedirect() {
@@ -9640,7 +9640,7 @@ async function _olHandleRedirect() {
   const clientId = _olGetClientId();
   if (!clientId) { showToast('Outlook Client ID missing — please reconnect'); return; }
   try {
-    const res = await fetch('https://login.microsoftonline.com/common/oauth2/v2.0/token', {
+    const res = await fetch('https://login.microsoftonline.com/consumers/oauth2/v2.0/token', {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
       body: new URLSearchParams({
@@ -9673,7 +9673,7 @@ async function _olRefreshToken() {
   const clientId = _olGetClientId();
   if (!refresh || !clientId) return false;
   try {
-    const res = await fetch('https://login.microsoftonline.com/common/oauth2/v2.0/token', {
+    const res = await fetch('https://login.microsoftonline.com/consumers/oauth2/v2.0/token', {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
       body: new URLSearchParams({
@@ -10189,7 +10189,7 @@ function initVoiceMode() {
 }
 
 // ─── INIT ───────────────────────────────────────────────────────────────────
-const BUILD_TS = 'build:2026-03-31T15:30'; // bumped each deploy — confirms fresh load
+const BUILD_TS = 'build:2026-03-31T16:00'; // bumped each deploy — confirms fresh load
 
 async function initApp() {
   // Show immediately with localStorage data
