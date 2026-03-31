@@ -9578,6 +9578,7 @@ const closeMenu  = () => document.getElementById('menuDropdown').classList.remov
 const _OL_TOKEN_KEY    = 'voicemap_outlook_token';
 const _OL_EXPIRY_KEY   = 'voicemap_outlook_expiry';
 const _OL_CLIENT_KEY   = 'voicemap_outlook_clientid';
+const _OL_TENANT_KEY   = 'voicemap_outlook_tenantid';
 const _OL_REFRESH_KEY  = 'voicemap_outlook_refresh';
 const _OL_VERIFIER_KEY = 'voicemap_outlook_verifier';
 const _OL_SCOPE        = 'Calendars.Read offline_access';
@@ -9588,7 +9589,9 @@ let _outlookVisible = localStorage.getItem('voicemap_outlook_visible') === '1';
 function _olGetToken()    { return localStorage.getItem(_OL_TOKEN_KEY) || ''; }
 function _olGetExpiry()   { return parseInt(localStorage.getItem(_OL_EXPIRY_KEY) || '0', 10); }
 function _olGetClientId() { return localStorage.getItem(_OL_CLIENT_KEY) || ''; }
+function _olGetTenantId() { return localStorage.getItem(_OL_TENANT_KEY) || 'common'; }
 function _olIsConnected() { return !!_olGetToken() && Date.now() < _olGetExpiry(); }
+function _olTenantBase()  { return `https://login.microsoftonline.com/${_olGetTenantId()}/oauth2/v2.0`; }
 
 function _olRandBase64(len) {
   const arr = new Uint8Array(len);
@@ -9616,7 +9619,7 @@ async function _olConnect() {
     scope: _OL_SCOPE, code_challenge: challenge,
     code_challenge_method: 'S256', state: 'outlook_auth'
   });
-  location.href = `https://login.microsoftonline.com/common/oauth2/v2.0/authorize?${params}`;
+  location.href = `${_olTenantBase()}/authorize?${params}`;
 }
 
 async function _olHandleRedirect() {
@@ -9640,7 +9643,7 @@ async function _olHandleRedirect() {
   const clientId = _olGetClientId();
   if (!clientId) { showToast('Outlook Client ID missing — please reconnect'); return; }
   try {
-    const res = await fetch('https://login.microsoftonline.com/common/oauth2/v2.0/token', {
+    const res = await fetch(`${_olTenantBase()}/token`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
       body: new URLSearchParams({
@@ -9673,7 +9676,7 @@ async function _olRefreshToken() {
   const clientId = _olGetClientId();
   if (!refresh || !clientId) return false;
   try {
-    const res = await fetch('https://login.microsoftonline.com/common/oauth2/v2.0/token', {
+    const res = await fetch(`${_olTenantBase()}/token`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
       body: new URLSearchParams({
@@ -9751,6 +9754,8 @@ function showOutlookModal() {
   document.getElementById('olSetupForm').style.display     = connected ? 'none' : '';
   document.getElementById('olConnectedForm').style.display = connected ? ''     : 'none';
   document.getElementById('olClientIdInput').value = _olGetClientId();
+  const storedTenant = localStorage.getItem(_OL_TENANT_KEY) || '';
+  document.getElementById('olTenantIdInput').value = storedTenant === 'common' ? '' : storedTenant;
   document.getElementById('olRedirectUri').textContent = location.origin + location.pathname;
   document.getElementById('outlookModal').classList.remove('hidden');
 }
@@ -9758,9 +9763,11 @@ function showOutlookModal() {
 function initOutlookModal() {
   document.getElementById('miOutlook').addEventListener('click', showOutlookModal);
   document.getElementById('olConnectBtn').addEventListener('click', async () => {
-    const id = document.getElementById('olClientIdInput').value.trim();
+    const id     = document.getElementById('olClientIdInput').value.trim();
+    const tenant = document.getElementById('olTenantIdInput').value.trim();
     if (!id) { showToast('Paste your Azure App Client ID'); return; }
     localStorage.setItem(_OL_CLIENT_KEY, id);
+    localStorage.setItem(_OL_TENANT_KEY, tenant || 'common');
     await _olConnect();
   });
   document.getElementById('olRefreshBtn').addEventListener('click', async () => {
@@ -10189,7 +10196,7 @@ function initVoiceMode() {
 }
 
 // ─── INIT ───────────────────────────────────────────────────────────────────
-const BUILD_TS = 'build:2026-03-31T16:30'; // bumped each deploy — confirms fresh load
+const BUILD_TS = 'build:2026-03-31T17:00'; // bumped each deploy — confirms fresh load
 
 async function initApp() {
   // Show immediately with localStorage data
@@ -11193,6 +11200,9 @@ document.addEventListener('DOMContentLoaded', () => {
       </p>
       <label style="font-size:11px;color:var(--muted);font-weight:700;text-transform:uppercase;letter-spacing:0.4px">Azure App Client ID</label>
       <input id="olClientIdInput" type="text" placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
+        style="width:100%;box-sizing:border-box;margin:6px 0 10px;padding:9px 11px;border-radius:8px;border:1.5px solid var(--border);font-size:14px;background:var(--surface);color:var(--text)">
+      <label style="font-size:11px;color:var(--muted);font-weight:700;text-transform:uppercase;letter-spacing:0.4px">Tenant ID <span style="font-weight:400;text-transform:none">(work accounts — found on app Overview page)</span></label>
+      <input id="olTenantIdInput" type="text" placeholder="Leave blank for personal accounts"
         style="width:100%;box-sizing:border-box;margin:6px 0 14px;padding:9px 11px;border-radius:8px;border:1.5px solid var(--border);font-size:14px;background:var(--surface);color:var(--text)">
       <button class="modal-save" id="olConnectBtn">Connect to Outlook</button>
     </div>
