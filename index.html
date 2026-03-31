@@ -1813,6 +1813,26 @@
       font-size: 11px; font-weight: 500; color: var(--text);
       box-shadow: 0 8px 24px rgba(0,0,0,0.5); pointer-events: none; opacity: 0.95;
     }
+    /* Outlook Calendar overlay */
+    .outlook-event {
+      background: rgba(0,120,212,0.10); border: 1px solid rgba(0,120,212,0.28);
+      border-left: 3px solid #0078d4; border-radius: 5px;
+      padding: 2px 6px; font-size: 10px; font-weight: 500; color: #0078d4;
+      line-height: 1.35; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+      pointer-events: none;
+    }
+    .ol-ev-time { font-size: 9px; opacity: 0.75; display: block; }
+    .cal-ol-section {
+      display: flex; flex-direction: column; gap: 2px;
+      margin-bottom: 5px; padding-bottom: 5px;
+      border-bottom: 1px dashed rgba(0,120,212,0.22);
+    }
+    .outlook-toggle-btn {
+      background: none; border: 1.5px solid rgba(0,120,212,0.4);
+      color: #0078d4; border-radius: 7px; padding: 3px 9px;
+      font-size: 11px; font-weight: 600; cursor: pointer; white-space: nowrap;
+    }
+    .outlook-toggle-btn.active { background: rgba(0,120,212,0.12); }
     /* Month strip */
     .cal-month-strip {
       height: 140px; flex-shrink: 0; display: flex; gap: 8px;
@@ -2007,6 +2027,7 @@
         <button class="menu-item" id="miRename">Rename session</button>
         <button class="menu-item" id="miApiKey">API Key</button>
         <button class="menu-item" id="miGithubSync">☁️ GitHub Sync</button>
+        <button class="menu-item" id="miOutlook">📅 Outlook Calendar</button>
         <button class="menu-item" id="miPrompts">⚙ System Prompts</button>
         <button class="menu-item" id="miArchive">📁 View Archive</button>
         <button class="menu-item" id="miForceRefresh">🔄 Force Refresh</button>
@@ -2076,6 +2097,7 @@
       <span class="cal-week-label" id="calWeekLabel"></span>
       <button class="cal-nav-btn" id="calNextBtn">›</button>
       <button class="cal-today-btn" id="calTodayBtn">Today</button>
+      <button class="outlook-toggle-btn" id="olToggleBtn" style="display:none" title="Toggle Outlook events">📅 Outlook</button>
     </div>
     <div class="cal-body" id="calBody">
       <div class="cal-sidebar" id="calSidebar">
@@ -7659,6 +7681,24 @@ function renderCalendarWeek() {
     cards.className = 'cal-day-cards';
     cards.dataset.calDate = iso;
 
+    // Outlook Calendar overlay — events fetched from Microsoft Graph
+    if (_outlookVisible && _outlookEvents[iso]?.length) {
+      const olSec = document.createElement('div');
+      olSec.className = 'cal-ol-section';
+      for (const ev of _outlookEvents[iso]) {
+        const chip = document.createElement('div');
+        chip.className = 'outlook-event';
+        chip.title = ev.subject;
+        if (ev.allDay) {
+          chip.textContent = ev.subject;
+        } else {
+          chip.innerHTML = `<span class="ol-ev-time">${ev.startTime}</span>${ev.subject}`;
+        }
+        olSec.appendChild(chip);
+      }
+      cards.appendChild(olSec);
+    }
+
     // Build a Set of nodeIds already placed into a swim lane
     const placed = new Set();
 
@@ -9477,8 +9517,211 @@ function onKbTouchCancel() {
 const toggleMenu = () => document.getElementById('menuDropdown').classList.toggle('open');
 const closeMenu  = () => document.getElementById('menuDropdown').classList.remove('open');
 
+// ─── OUTLOOK CALENDAR ────────────────────────────────────────────────────────
+const _OL_TOKEN_KEY    = 'voicemap_outlook_token';
+const _OL_EXPIRY_KEY   = 'voicemap_outlook_expiry';
+const _OL_CLIENT_KEY   = 'voicemap_outlook_clientid';
+const _OL_REFRESH_KEY  = 'voicemap_outlook_refresh';
+const _OL_VERIFIER_KEY = 'voicemap_outlook_verifier';
+const _OL_SCOPE        = 'Calendars.Read offline_access';
+
+let _outlookEvents  = {}; // { 'YYYY-MM-DD': [{subject, startTime, allDay}] }
+let _outlookVisible = localStorage.getItem('voicemap_outlook_visible') === '1';
+
+function _olGetToken()    { return localStorage.getItem(_OL_TOKEN_KEY) || ''; }
+function _olGetExpiry()   { return parseInt(localStorage.getItem(_OL_EXPIRY_KEY) || '0', 10); }
+function _olGetClientId() { return localStorage.getItem(_OL_CLIENT_KEY) || ''; }
+function _olIsConnected() { return !!_olGetToken() && Date.now() < _olGetExpiry(); }
+
+function _olRandBase64(len) {
+  const arr = new Uint8Array(len);
+  crypto.getRandomValues(arr);
+  return btoa(String.fromCharCode(...arr)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '');
+}
+
+async function _olCodeChallenge(verifier) {
+  const enc  = new TextEncoder().encode(verifier);
+  const hash = await crypto.subtle.digest('SHA-256', enc);
+  return btoa(String.fromCharCode(...new Uint8Array(hash)))
+    .replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '');
+}
+
+async function _olConnect() {
+  const clientId = _olGetClientId();
+  if (!clientId) { showToast('Paste your Azure App Client ID first'); return; }
+  const verifier  = _olRandBase64(43);
+  const challenge = await _olCodeChallenge(verifier);
+  localStorage.setItem(_OL_VERIFIER_KEY, verifier);
+  const redirect = location.origin + location.pathname;
+  const params = new URLSearchParams({
+    client_id: clientId, response_type: 'code',
+    redirect_uri: redirect, response_mode: 'query',
+    scope: _OL_SCOPE, code_challenge: challenge,
+    code_challenge_method: 'S256', state: 'outlook_auth'
+  });
+  location.href = `https://login.microsoftonline.com/common/oauth2/v2.0/authorize?${params}`;
+}
+
+async function _olHandleRedirect() {
+  const params = new URLSearchParams(location.search);
+  if (params.get('state') !== 'outlook_auth') return;
+  const code = params.get('code');
+  history.replaceState({}, '', location.pathname);
+  if (!code) { showToast('Outlook auth failed: no code returned'); return; }
+  const verifier = localStorage.getItem(_OL_VERIFIER_KEY) || '';
+  const clientId = _olGetClientId();
+  if (!clientId) { showToast('Outlook Client ID missing — please reconnect'); return; }
+  try {
+    const res = await fetch('https://login.microsoftonline.com/common/oauth2/v2.0/token', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({
+        client_id: clientId, grant_type: 'authorization_code',
+        code, redirect_uri: location.origin + location.pathname,
+        code_verifier: verifier, scope: _OL_SCOPE
+      })
+    });
+    const data = await res.json();
+    if (data.access_token) {
+      localStorage.setItem(_OL_TOKEN_KEY, data.access_token);
+      localStorage.setItem(_OL_EXPIRY_KEY, String(Date.now() + (data.expires_in || 3600) * 1000));
+      if (data.refresh_token) localStorage.setItem(_OL_REFRESH_KEY, data.refresh_token);
+      localStorage.removeItem(_OL_VERIFIER_KEY);
+      _outlookVisible = true;
+      localStorage.setItem('voicemap_outlook_visible', '1');
+      showToast('Outlook connected!');
+      _olUpdateToggleBtn();
+      await _olFetchEvents();
+    } else {
+      showToast('Outlook auth failed: ' + (data.error_description || data.error || 'unknown error'));
+    }
+  } catch (err) {
+    showToast('Outlook error: ' + err.message);
+  }
+}
+
+async function _olRefreshToken() {
+  const refresh  = localStorage.getItem(_OL_REFRESH_KEY) || '';
+  const clientId = _olGetClientId();
+  if (!refresh || !clientId) return false;
+  try {
+    const res = await fetch('https://login.microsoftonline.com/common/oauth2/v2.0/token', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({
+        client_id: clientId, grant_type: 'refresh_token',
+        refresh_token: refresh, scope: _OL_SCOPE
+      })
+    });
+    const data = await res.json();
+    if (data.access_token) {
+      localStorage.setItem(_OL_TOKEN_KEY, data.access_token);
+      localStorage.setItem(_OL_EXPIRY_KEY, String(Date.now() + (data.expires_in || 3600) * 1000));
+      if (data.refresh_token) localStorage.setItem(_OL_REFRESH_KEY, data.refresh_token);
+      return true;
+    }
+  } catch {}
+  return false;
+}
+
+async function _olFetchEvents() {
+  if (!_olIsConnected()) {
+    if (!(await _olRefreshToken())) return;
+  }
+  const token = _olGetToken();
+  if (!token) return;
+  const weekStart = calWeekStart ? new Date(calWeekStart) : getWeekMonday(new Date());
+  const start = new Date(weekStart); start.setDate(start.getDate() - 1);
+  const end   = new Date(weekStart); end.setDate(end.getDate() + 8);
+  const url = 'https://graph.microsoft.com/v1.0/me/calendarView' +
+    `?startDateTime=${start.toISOString()}&endDateTime=${end.toISOString()}` +
+    '&$select=subject,start,end&$top=100&$orderby=start/dateTime';
+  try {
+    const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
+    if (res.status === 401) {
+      if (await _olRefreshToken()) return _olFetchEvents();
+      return;
+    }
+    const data = await res.json();
+    _outlookEvents = {};
+    const fmtTime = iso => new Date(iso).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
+    for (const ev of (data.value || [])) {
+      const iso = (ev.start.dateTime || ev.start.date).slice(0, 10);
+      (_outlookEvents[iso] = _outlookEvents[iso] || []).push({
+        subject:   ev.subject || '(No title)',
+        startTime: ev.start.dateTime ? fmtTime(ev.start.dateTime) : '',
+        allDay:    !ev.start.dateTime
+      });
+    }
+    if (calVisible) renderCalendarWeek();
+  } catch (err) {
+    console.warn('[VoiceMap] Outlook fetch error', err);
+  }
+}
+
+function _olDisconnect() {
+  [_OL_TOKEN_KEY, _OL_EXPIRY_KEY, _OL_REFRESH_KEY, _OL_VERIFIER_KEY].forEach(k => localStorage.removeItem(k));
+  _outlookEvents = {};
+  _outlookVisible = false;
+  localStorage.setItem('voicemap_outlook_visible', '0');
+  _olUpdateToggleBtn();
+  showToast('Outlook disconnected');
+  if (calVisible) renderCalendarWeek();
+}
+
+function _olUpdateToggleBtn() {
+  const btn = document.getElementById('olToggleBtn');
+  if (!btn) return;
+  const connected = !!_olGetToken() && Date.now() < _olGetExpiry();
+  btn.style.display = connected ? '' : 'none';
+  btn.classList.toggle('active', _outlookVisible);
+}
+
+function showOutlookModal() {
+  closeMenu();
+  const connected = !!_olGetToken();
+  document.getElementById('olSetupForm').style.display     = connected ? 'none' : '';
+  document.getElementById('olConnectedForm').style.display = connected ? ''     : 'none';
+  document.getElementById('olClientIdInput').value = _olGetClientId();
+  document.getElementById('olRedirectUri').textContent = location.origin + location.pathname;
+  document.getElementById('outlookModal').classList.remove('hidden');
+}
+
+function initOutlookModal() {
+  document.getElementById('miOutlook').addEventListener('click', showOutlookModal);
+  document.getElementById('olConnectBtn').addEventListener('click', async () => {
+    const id = document.getElementById('olClientIdInput').value.trim();
+    if (!id) { showToast('Paste your Azure App Client ID'); return; }
+    localStorage.setItem(_OL_CLIENT_KEY, id);
+    await _olConnect();
+  });
+  document.getElementById('olRefreshBtn').addEventListener('click', async () => {
+    document.getElementById('outlookModal').classList.add('hidden');
+    await _olFetchEvents();
+    showToast('Outlook events refreshed');
+  });
+  document.getElementById('olDisconnectBtn').addEventListener('click', () => {
+    _olDisconnect();
+    document.getElementById('outlookModal').classList.add('hidden');
+  });
+  document.getElementById('olCloseBtn').addEventListener('click', () => {
+    document.getElementById('outlookModal').classList.add('hidden');
+  });
+  document.getElementById('outlookModal').addEventListener('click', e => {
+    if (e.target === document.getElementById('outlookModal'))
+      document.getElementById('outlookModal').classList.add('hidden');
+  });
+  document.getElementById('olToggleBtn').addEventListener('click', () => {
+    _outlookVisible = !_outlookVisible;
+    localStorage.setItem('voicemap_outlook_visible', _outlookVisible ? '1' : '0');
+    _olUpdateToggleBtn();
+    if (_outlookVisible && Object.keys(_outlookEvents).length === 0) _olFetchEvents();
+    else if (calVisible) renderCalendarWeek();
+  });
+}
+
 // ─── INIT ───────────────────────────────────────────────────────────────────
-const BUILD_TS = 'build:2026-03-31T12:00'; // bumped each deploy — confirms fresh load
+const BUILD_TS = 'build:2026-03-31T13:30'; // bumped each deploy — confirms fresh load
 
 async function initApp() {
   // Show immediately with localStorage data
@@ -9523,6 +9766,14 @@ async function initApp() {
   // Pull latest data from GitHub Gist if configured, then start periodic polling
   await pullFromGist();
   if (getGithubToken()) startGistPolling();
+  // Handle OAuth redirect back from Microsoft login
+  await _olHandleRedirect();
+  // Show Outlook toggle button if already connected
+  _olUpdateToggleBtn();
+  // Auto-fetch if visible and token exists (or refresh token available)
+  if (_outlookVisible && (_olIsConnected() || localStorage.getItem(_OL_REFRESH_KEY))) {
+    _olFetchEvents();
+  }
 }
 
 // Prevent double-tap zoom on iOS (fallback for when maximum-scale=1.0 is ignored)
@@ -9665,6 +9916,7 @@ document.addEventListener('DOMContentLoaded', () => {
   initConsolidateModal();
   initDrawModal();
   initAnnotateModal();
+  initOutlookModal();
 
   // Persist markdown checkbox toggles (- [ ] / - [x]) when clicked
   document.addEventListener('change', e => {
@@ -10457,6 +10709,31 @@ document.addEventListener('DOMContentLoaded', () => {
   <div class="tap-record-pulse">⏺</div>
   <div class="tap-record-label">Tap anywhere to record</div>
   <div class="tap-record-sub">Back Tap shortcut activated</div>
+</div>
+
+<!-- Outlook Calendar setup modal -->
+<div class="modal-overlay hidden" id="outlookModal">
+  <div class="modal-sheet" style="max-width:440px">
+    <div class="modal-title">📅 Outlook Calendar</div>
+    <div id="olSetupForm">
+      <p style="font-size:12px;color:var(--muted);line-height:1.6;margin:0 0 12px">
+        Requires a free Azure App registration.
+        <a href="https://portal.azure.com/#view/Microsoft_AAD_RegisteredApps/CreateApplicationBlade" target="_blank" style="color:#0078d4">Register app ↗</a><br>
+        Set Redirect URI → <strong>Single-page application (SPA)</strong> →<br>
+        <code id="olRedirectUri" style="word-break:break-all;font-size:11px;background:var(--surface);padding:2px 5px;border-radius:4px;user-select:all"></code>
+      </p>
+      <label style="font-size:11px;color:var(--muted);font-weight:700;text-transform:uppercase;letter-spacing:0.4px">Azure App Client ID</label>
+      <input id="olClientIdInput" type="text" placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
+        style="width:100%;box-sizing:border-box;margin:6px 0 14px;padding:9px 11px;border-radius:8px;border:1.5px solid var(--border);font-size:14px;background:var(--surface);color:var(--text)">
+      <button class="modal-save" id="olConnectBtn">Connect to Outlook</button>
+    </div>
+    <div id="olConnectedForm" style="display:none">
+      <p style="font-size:13px;color:#30d158;font-weight:700;margin:0 0 12px">✓ Connected to Outlook</p>
+      <button class="modal-save" id="olRefreshBtn" style="background:#0078d4;margin-bottom:8px">Refresh Events</button>
+      <button class="modal-save" id="olDisconnectBtn" style="background:#6b7280">Disconnect</button>
+    </div>
+    <button class="modal-save" id="olCloseBtn" style="background:#6b7280;margin-top:8px">Close</button>
+  </div>
 </div>
 
 <!-- External drag-drop overlay -->
