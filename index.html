@@ -9622,8 +9622,19 @@ async function _olConnect() {
 async function _olHandleRedirect() {
   const params = new URLSearchParams(location.search);
   if (params.get('state') !== 'outlook_auth') return;
-  const code = params.get('code');
+  // Always clean the URL first
   history.replaceState({}, '', location.pathname);
+  // Microsoft returns error params when something goes wrong
+  const error = params.get('error');
+  const errorDesc = params.get('error_description');
+  if (error) {
+    const msg = errorDesc ? decodeURIComponent(errorDesc.replace(/\+/g, ' ')) : error;
+    showToast('Outlook: ' + msg.slice(0, 120));
+    // Show the setup modal again so user can fix the issue
+    setTimeout(showOutlookModal, 600);
+    return;
+  }
+  const code = params.get('code');
   if (!code) { showToast('Outlook auth failed: no code returned'); return; }
   const verifier = localStorage.getItem(_OL_VERIFIER_KEY) || '';
   const clientId = _olGetClientId();
@@ -10178,7 +10189,7 @@ function initVoiceMode() {
 }
 
 // ─── INIT ───────────────────────────────────────────────────────────────────
-const BUILD_TS = 'build:2026-03-31T15:00'; // bumped each deploy — confirms fresh load
+const BUILD_TS = 'build:2026-03-31T15:30'; // bumped each deploy — confirms fresh load
 
 async function initApp() {
   // Show immediately with localStorage data
