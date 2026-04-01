@@ -510,6 +510,12 @@
       border-top: 0.5px solid var(--border);
     }
 
+    /* ── Markdown tables ──────────────────────────────────────────── */
+    .md-table { border-collapse: collapse; width: 100%; margin: 6px 0; font-size: 12px; }
+    .md-table th, .md-table td { border: 0.5px solid var(--border); padding: 4px 8px; text-align: left; }
+    .md-table th { background: rgba(0,0,0,0.05); font-weight: 700; }
+    .md-table tr:nth-child(even) td { background: rgba(0,0,0,0.02); }
+
     /* ── Markdown task list checkboxes ───────────────────────────── */
     .md-task-list { list-style: none; padding-left: 0; margin: 4px 0; }
     .md-task-item { display: flex; align-items: flex-start; gap: 7px; padding: 2px 0; }
@@ -4966,13 +4972,44 @@ function mdToHtml(text) {
   const lines = safe.split('\n');
   const out = [];
   let inUl = false, inOl = false, cbIdx = 0;
+  let tableBuf = [];
 
   const closeLists = () => {
     if (inUl) { out.push('</ul>'); inUl = false; }
     if (inOl) { out.push('</ol>'); inOl = false; }
   };
 
+  const flushTable = () => {
+    if (!tableBuf.length) return;
+    let html = '<table class="md-table"><thead>';
+    let inBody = false;
+    for (const raw of tableBuf) {
+      const cells = raw.split('|').slice(1, -1).map(c => c.trim());
+      if (!cells.length) continue;
+      // Separator row: |---|---|
+      if (cells.every(c => /^[\-: ]+$/.test(c))) {
+        html += '</thead><tbody>';
+        inBody = true;
+        continue;
+      }
+      const tag = inBody ? 'td' : 'th';
+      html += '<tr>' + cells.map(c => `<${tag}>${inlineMd(c)}</${tag}>`).join('') + '</tr>';
+    }
+    if (!inBody) html += '</thead><tbody>'; // table with no separator
+    html += '</tbody></table>';
+    out.push(html);
+    tableBuf = [];
+  };
+
   for (const raw of lines) {
+    // Table row: starts and ends with |
+    if (/^\|.+\|$/.test(raw.trim())) {
+      closeLists();
+      tableBuf.push(raw.trim());
+      continue;
+    }
+    if (tableBuf.length) flushTable();
+
     if (/^### /.test(raw))       { closeLists(); out.push(`<h3>${inlineMd(raw.slice(4))}</h3>`); continue; }
     if (/^## /.test(raw))        { closeLists(); out.push(`<h2>${inlineMd(raw.slice(3))}</h2>`); continue; }
     if (/^# /.test(raw))         { closeLists(); out.push(`<h1>${inlineMd(raw.slice(2))}</h1>`); continue; }
@@ -4982,12 +5019,10 @@ function mdToHtml(text) {
       const content = listM[2];
       const cbM = content.match(/^\[([ xX])\] (.*)/);
       if (cbM) {
-        // Checkbox item
         const checked = cbM[1] !== ' ';
         if (!inUl) { closeLists(); out.push('<ul class="md-task-list">'); inUl = true; }
         out.push(`<li class="md-task-item" style="padding-left:${indent * 20}px"><label><input type="checkbox" class="md-checkbox" data-cb-idx="${cbIdx++}"${checked ? ' checked' : ''}><span>${inlineMd(cbM[2])}</span></label></li>`);
       } else {
-        // Regular bullet
         if (!inUl) { closeLists(); out.push('<ul>'); inUl = true; }
         out.push(`<li style="padding-left:${indent * 20}px">${inlineMd(content)}</li>`);
       }
@@ -5000,6 +5035,7 @@ function mdToHtml(text) {
     closeLists();
     out.push(raw.trim() === '' ? '<br>' : `<p>${inlineMd(raw)}</p>`);
   }
+  if (tableBuf.length) flushTable();
   closeLists();
   return out.join('');
 }
@@ -10808,7 +10844,7 @@ function initVoiceMode() {
 }
 
 // ─── INIT ───────────────────────────────────────────────────────────────────
-const BUILD_TS = 'build:2026-04-01T15:15'; // bumped each deploy — confirms fresh load
+const BUILD_TS = 'build:2026-04-01T16:00'; // bumped each deploy — confirms fresh load
 
 async function initApp() {
   // Show immediately with localStorage data
