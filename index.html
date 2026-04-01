@@ -1793,6 +1793,14 @@
       font-size: 11px; font-weight: 500; color: var(--text);
       box-shadow: 0 8px 24px rgba(0,0,0,0.5); pointer-events: none; opacity: 0.95;
     }
+    /* Time-block envelopes in hourly grid */
+    .cal-tb-envelope { position: absolute; left: 2px; right: 2px; border-radius: 6px; overflow: hidden; box-sizing: border-box; z-index: 2; }
+    .cal-tb-env-hdr  { font-size: 9px; font-weight: 800; color: #fff; padding: 2px 5px; display: flex; justify-content: space-between; align-items: center; gap: 4px; flex-shrink: 0; }
+    .cal-tb-env-hdr span:last-child { opacity: 0.8; font-weight: 400; }
+    .cal-tb-env-body { background: rgba(255,255,255,0.72); padding: 2px 3px; display: flex; flex-direction: column; gap: 2px; overflow: hidden; }
+    .cal-tb-env-card { border-radius: 4px; padding: 2px 5px; font-size: 9px; line-height: 1.3; background: rgba(255,255,255,0.9); border-left: 2px solid; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; touch-action: none; cursor: grab; user-select: none; -webkit-user-select: none; }
+    .cal-tb-env-card.status-done { text-decoration: line-through; opacity: 0.55; }
+    .cal-tb-env-slot-open { border-radius: 4px; padding: 2px 5px; font-size: 8px; font-style: italic; opacity: 0.5; border: 1px dashed; }
     /* Outlook Calendar overlay */
     .outlook-event {
       background: rgba(0,120,212,0.10); border: 1px solid rgba(0,120,212,0.28);
@@ -7735,6 +7743,22 @@ function renderCalendarWeek() {
     return (minutes / 60 - CAL_START) * CAL_HOUR_PX;
   }
 
+  // Pre-compute which node IDs belong to a time-block on each day
+  // so the all-day strip can exclude them
+  const tbChildIdsByDate = {};
+  dayIndices.forEach(i => {
+    const day   = weekDays[i];
+    const iso   = toISODate(day);
+    const jsDay = day.getDay();
+    const blocks = session.nodes.filter(
+      n => n.type === 'time_block' && !n.archived && (n.tb_days || []).includes(jsDay));
+    tbChildIdsByDate[iso] = new Set(
+      blocks.flatMap(block =>
+        (nodeBucket[iso] || []).filter(({ node }) => node.parent_id === block.id).map(({ node }) => node.id)
+      )
+    );
+  });
+
   const grid = document.getElementById('calGrid');
   grid.innerHTML = '';
 
@@ -7793,8 +7817,8 @@ function renderCalendarWeek() {
         cell.appendChild(chip);
       });
     }
-    // VoiceMap cards without a scheduled_time → all-day strip
-    (nodeBucket[iso] || []).filter(({ node }) => !node.scheduled_time).forEach(({ node, kind }) => {
+    // VoiceMap cards without a scheduled_time and not inside a time-block → all-day strip
+    (nodeBucket[iso] || []).filter(({ node }) => !node.scheduled_time && !tbChildIdsByDate[iso]?.has(node.id)).forEach(({ node, kind }) => {
       const card = document.createElement('div');
       card.className = 'cal-allday-card cal-card' +
         (node.status === 'done' ? ' status-done' : '') +
@@ -7865,27 +7889,81 @@ function renderCalendarWeek() {
       }
     }
 
-    // Time-block background bands
+    // ── Time-block envelopes ────────────────────────────────────────────────
     const dayBlocks = session.nodes
       .filter(n => n.type === 'time_block' && !n.archived && (n.tb_days || []).includes(jsDay))
       .sort((a, b) => tbParseTime(a.tb_start_time) - tbParseTime(b.tb_start_time));
+    const tbChildIds = tbChildIdsByDate[iso];
 
     dayBlocks.forEach(block => {
-      const sMin = tbParseTime(block.tb_start_time);
-      const eMin = tbParseTime(block.tb_end_time);
+      const color = tbColor(block.id);
+      const sMin  = tbParseTime(block.tb_start_time);
+      const eMin  = tbParseTime(block.tb_end_time);
       if (eMin <= CAL_START * 60 || sMin >= CAL_END * 60) return;
       const cS = Math.max(sMin, CAL_START * 60);
       const cE = Math.min(eMin, CAL_END * 60);
-      const band = document.createElement('div');
-      band.className = 'cal-time-block-band';
-      band.style.top        = minToPx(cS) + 'px';
-      band.style.height     = ((cE - cS) / 60 * CAL_HOUR_PX) + 'px';
-      band.style.background = tbColor(block.id);
-      band.style.opacity    = '0.12';
-      col.appendChild(band);
+      const envH = (cE - cS) / 60 * CAL_HOUR_PX;
+
+      const env = document.createElement('div');
+      env.className = 'cal-tb-envelope';
+      env.style.top        = minToPx(cS) + 'px';
+      env.style.height     = envH + 'px';
+      env.style.background = color + '22'; // 13% opacity background
+      env.style.border     = `1.5px solid ${color}55`;
+      env.dataset.calDate  = iso;
+
+      const hdr = document.createElement('div');
+      hdr.className = 'cal-tb-env-hdr';
+      hdr.style.background = color;
+      hdr.innerHTML = `<span>${block.label}</span><span>${block.tb_start_time||''}–${block.tb_end_time||''}</span>`;
+      env.appendChild(hdr);
+
+      const body = document.createElement('div');
+      body.className = 'cal-tb-env-body';
+      body.dataset.calDate = iso;
+
+      const blockMins = eMin - sMin;
+      const avgMins   = block.tb_avg_task_minutes || 60;
+      const capacity  = Math.max(1, Math.floor(blockMins / avgMins));
+      const laneNodes = (nodeBucket[iso] || []).filter(({ node }) => node.parent_id === block.id);
+
+      for (let s = 0; s < capacity; s++) {
+        const entry = laneNodes[s];
+        if (entry) {
+          const card = document.createElement('div');
+          card.className = 'cal-tb-env-card cal-card' +
+            (entry.node.status === 'done' ? ' status-done' : '') +
+            (entry.kind === 'deferred'    ? ' cal-card-deferred' : '');
+          card.style.borderLeftColor = color;
+          card.dataset.calCardId     = entry.node.id;
+          card.dataset.calKind       = entry.kind;
+          card.textContent = (entry.kind === 'deferred' ? '⏳ ' : '') + entry.node.label;
+          body.appendChild(card);
+        } else {
+          const slot = document.createElement('div');
+          slot.className = 'cal-tb-env-slot-open';
+          slot.style.borderColor = color;
+          slot.style.color       = color;
+          slot.textContent = 'open';
+          body.appendChild(slot);
+        }
+      }
+      // Overflow cards beyond capacity
+      laneNodes.slice(capacity).forEach(({ node, kind }) => {
+        const card = document.createElement('div');
+        card.className = 'cal-tb-env-card cal-card' + (node.status === 'done' ? ' status-done' : '');
+        card.style.borderLeftColor = color;
+        card.dataset.calCardId     = node.id;
+        card.dataset.calKind       = kind;
+        card.textContent = node.label;
+        body.appendChild(card);
+      });
+
+      env.appendChild(body);
+      col.appendChild(env);
     });
 
-    // ICS timed events
+    // ── ICS timed events ────────────────────────────────────────────────────
     if (_icalVisible) {
       (_icalEvents[iso] || []).filter(ev => !ev.allDay && ev.startMinutes !== undefined).forEach(ev => {
         const top = minToPx(ev.startMinutes);
@@ -7901,7 +7979,7 @@ function renderCalendarWeek() {
       });
     }
 
-    // Outlook timed events
+    // ── Outlook timed events ────────────────────────────────────────────────
     if (_outlookVisible) {
       (_outlookEvents[iso] || []).filter(ev => !ev.allDay && ev.startMinutes !== undefined).forEach(ev => {
         const top = minToPx(ev.startMinutes);
@@ -7917,8 +7995,10 @@ function renderCalendarWeek() {
       });
     }
 
-    // VoiceMap timed cards (have scheduled_time)
-    (nodeBucket[iso] || []).filter(({ node }) => !!node.scheduled_time).forEach(({ node, kind }) => {
+    // ── VoiceMap timed cards (scheduled_time, not inside a time block) ──────
+    (nodeBucket[iso] || [])
+      .filter(({ node }) => !!node.scheduled_time && !tbChildIds.has(node.id))
+      .forEach(({ node, kind }) => {
       const [hh, mm] = node.scheduled_time.split(':').map(Number);
       const startMin = hh * 60 + mm;
       const dur      = node.task_minutes || 60;
@@ -8353,7 +8433,6 @@ function computeTimeBlockSchedule(blockId) {
       const mins = tasks[ti].task_minutes || avgMins;
       if (placed > 0 && used + mins > blockMins) break;
       tasks[ti].scheduled_date    = slot;
-      tasks[ti].scheduled_time    = block.tb_start_time || null;
       tasks[ti].needs_scheduling  = false;
       tasks[ti].last_modified     = new Date().toISOString();
       used += mins; placed++; ti++;
@@ -10562,7 +10641,7 @@ function initVoiceMode() {
 }
 
 // ─── INIT ───────────────────────────────────────────────────────────────────
-const BUILD_TS = 'build:2026-04-01T12:00'; // bumped each deploy — confirms fresh load
+const BUILD_TS = 'build:2026-04-01T12:30'; // bumped each deploy — confirms fresh load
 
 async function initApp() {
   // Show immediately with localStorage data
