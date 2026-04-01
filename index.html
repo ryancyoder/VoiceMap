@@ -1740,72 +1740,52 @@
     .cal-sidebar.cal-drop-active {
       background: rgba(226,75,74,0.16);
     }
-    .cal-grid {
-      flex: 1; display: flex; min-height: 0; overflow-x: auto;
-    }
-    .cal-day-col {
-      flex: 1; min-width: 46px; display: flex; flex-direction: column;
-      border-right: 0.5px solid var(--border); position: relative;
-    }
-    .cal-day-col:last-child { border-right: none; }
-    .cal-day-header {
-      padding: 6px 4px; text-align: center;
-      border-bottom: 0.5px solid var(--border);
-      flex-shrink: 0; background: var(--surface);
-      position: sticky; top: 0;
-    }
+    /* ── Hourly calendar grid ──────────────────────────────────────────────── */
+    .cal-grid { flex: 1; display: flex; flex-direction: column; min-height: 0; overflow: hidden; }
+    /* Sticky day-header row */
+    .cal-hdr-row { display: flex; flex-shrink: 0; border-bottom: 0.5px solid var(--border); background: var(--surface); position: sticky; top: 0; z-index: 5; }
+    .cal-hdr-corner { width: 42px; flex-shrink: 0; }
+    .cal-hdr-day-cell { flex: 1; min-width: 42px; text-align: center; padding: 5px 2px; border-left: 0.5px solid var(--border); cursor: pointer; }
+    .cal-hdr-day-cell.today .cal-day-num { background: var(--accent); color: #fff; border-radius: 50%; width: 22px; height: 22px; display: flex; align-items: center; justify-content: center; margin: 0 auto; }
     .cal-day-name { font-size: 9px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.5px; }
-    .cal-day-num  { font-size: 17px; font-weight: 700; color: var(--text); line-height: 1.2; }
-    .cal-day-col.today .cal-day-num    { color: var(--accent); }
-    .cal-day-col.today .cal-day-header { background: rgba(226,75,74,0.06); }
-    .cal-day-add {
-      font-size: 16px; line-height: 1; margin-top: 3px;
-      color: var(--muted); opacity: 0.5; cursor: pointer;
-      -webkit-tap-highlight-color: transparent;
-    }
+    .cal-day-num  { font-size: 15px; font-weight: 700; color: var(--text); line-height: 1.3; }
+    .cal-day-add  { font-size: 13px; color: var(--muted); opacity: 0.5; cursor: pointer; -webkit-tap-highlight-color: transparent; }
     .cal-day-add:active { opacity: 1; color: var(--accent); }
-    .cal-day-cards {
-      flex: 1; overflow-y: auto; padding: 4px;
-      display: flex; flex-direction: column; gap: 4px;
-    }
-    .cal-day-col.cal-drop-active .cal-day-cards { background: rgba(226,75,74,0.09); }
-    .cal-card {
-      background: var(--surface); border: 1px solid var(--border);
-      border-radius: 7px; padding: 5px 6px; font-size: 11px;
-      font-weight: 500; color: var(--text); line-height: 1.3;
-      word-break: break-word; touch-action: none;
-      user-select: none; -webkit-user-select: none; cursor: grab;
-    }
+    /* All-day row */
+    .cal-allday-row { display: flex; flex-shrink: 0; border-bottom: 1.5px solid var(--border); min-height: 22px; }
+    .cal-allday-label { width: 42px; flex-shrink: 0; font-size: 8px; color: var(--muted); padding: 3px 4px 3px 0; text-align: right; border-right: 0.5px solid var(--border); display: flex; align-items: center; justify-content: flex-end; }
+    .cal-allday-cell  { flex: 1; min-width: 42px; padding: 2px 1px; border-left: 0.5px solid var(--border); display: flex; flex-direction: column; gap: 2px; }
+    .cal-allday-cell.cal-drop-active { background: rgba(226,75,74,0.09); }
+    .cal-allday-event { border-radius: 3px; padding: 1px 4px; font-size: 9px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .cal-allday-event.ical-allday    { background: rgba(52,199,89,0.15); color: #248a3d; }
+    .cal-allday-event.outlook-allday { background: rgba(0,120,212,0.12); color: #0078d4; }
+    .cal-allday-card { background: var(--surface); border: 1px solid var(--border); border-left: 3px solid var(--accent); border-radius: 3px; padding: 1px 4px; font-size: 9px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; touch-action: none; user-select: none; -webkit-user-select: none; cursor: grab; }
+    .cal-allday-card.status-done     { text-decoration: line-through; color: var(--muted); }
+    .cal-allday-card.cal-card-deferred { border-left-color: var(--muted); color: var(--muted); }
+    /* Scrollable hourly body */
+    .cal-hour-scroll { flex: 1; overflow-y: auto; -webkit-overflow-scrolling: touch; min-height: 0; }
+    .cal-hour-body   { display: flex; }
+    .cal-time-col    { width: 42px; flex-shrink: 0; position: relative; border-right: 0.5px solid var(--border); }
+    .cal-time-label  { position: absolute; left: 0; right: 0; text-align: right; padding-right: 5px; font-size: 9px; color: var(--muted); transform: translateY(-50%); pointer-events: none; user-select: none; }
+    .cal-hour-col { flex: 1; min-width: 42px; position: relative; border-left: 0.5px solid var(--border); }
+    .cal-hour-col.today-col      { background: rgba(226,75,74,0.025); }
+    .cal-hour-col.cal-drop-active { background: rgba(226,75,74,0.09); }
+    .cal-hour-line { position: absolute; left: 0; right: 0; height: 0.5px; background: var(--border); pointer-events: none; }
+    .cal-now-line { position: absolute; left: 0; right: 0; height: 2px; background: var(--accent); z-index: 5; pointer-events: none; }
+    .cal-now-dot  { position: absolute; left: -4px; top: -3px; width: 8px; height: 8px; border-radius: 50%; background: var(--accent); }
+    /* Event blocks (absolute-positioned inside .cal-hour-col) */
+    .cal-event-block { position: absolute; left: 2px; right: 2px; border-radius: 5px; padding: 2px 4px; font-size: 9px; line-height: 1.3; overflow: hidden; box-sizing: border-box; min-height: 18px; }
+    .cal-event-block.cal-card-event { background: var(--surface); border: 1px solid var(--border); border-left: 3px solid var(--accent); color: var(--text); font-weight: 500; cursor: grab; touch-action: none; user-select: none; -webkit-user-select: none; }
+    .cal-event-block.cal-card-event.status-done      { text-decoration: line-through; color: var(--muted); }
+    .cal-event-block.cal-card-event.cal-card-deferred { border-left-color: var(--muted); color: var(--muted); }
+    .cal-event-block.ical-block    { background: rgba(52,199,89,0.12); border: 1px solid rgba(52,199,89,0.30); border-left: 3px solid #34c759; color: #248a3d; pointer-events: none; }
+    .cal-event-block.outlook-block { background: rgba(0,120,212,0.10); border: 1px solid rgba(0,120,212,0.28); border-left: 3px solid #0078d4; color: #0078d4; pointer-events: none; }
+    .cal-time-block-band { position: absolute; left: 0; right: 0; border-radius: 4px; pointer-events: none; }
+    /* Sidebar cards (queue) */
+    .cal-card { background: var(--surface); border: 1px solid var(--border); border-radius: 7px; padding: 5px 6px; font-size: 11px; font-weight: 500; color: var(--text); line-height: 1.3; word-break: break-word; touch-action: none; user-select: none; -webkit-user-select: none; cursor: grab; }
     .cal-card.status-done       { text-decoration: line-through; color: var(--muted); }
     .cal-card.cal-card-deferred { border-left: 3px solid var(--muted); color: var(--muted); }
     .cal-card.dragging          { opacity: 0.3; }
-    /* Swim lanes */
-    .cal-swim-lane  {
-      flex-shrink: 0; border-radius: 7px; overflow: hidden;
-      border: 1.5px solid transparent; margin-bottom: 4px;
-    }
-    .cal-swim-lane.cal-drop-active { outline: 2px solid var(--accent); }
-    .cal-swim-hdr   {
-      font-size: 9px; font-weight: 800; color: #fff;
-      padding: 3px 6px; letter-spacing: 0.3px;
-      display: flex; justify-content: space-between; align-items: center;
-    }
-    .cal-swim-body  {
-      background: rgba(255,255,255,0.55);
-      padding: 3px 4px; display: flex; flex-direction: column; gap: 3px;
-    }
-    .cal-swim-slot  {
-      border-radius: 7px; padding: 5px 6px; font-size: 11px;
-      line-height: 1.3; min-height: 24px; box-sizing: border-box;
-    }
-    .cal-swim-slot.open {
-      border: 1px dashed; opacity: 0.45;
-      display: flex; align-items: center; justify-content: center;
-      font-size: 9px; font-style: italic; color: inherit;
-    }
-    .cal-day-unassigned {
-      display: flex; flex-direction: column; gap: 4px;
-    }
     .cal-card-ghost {
       position: fixed; z-index: 9100;
       background: var(--surface); border: 1.5px solid var(--accent);
@@ -2237,6 +2217,7 @@
     <div class="defer-sheet">
       <div class="defer-title">Schedule this idea</div>
       <input type="date" class="sched-date-input" id="scheduleDateInput">
+      <input type="time" class="sched-date-input" id="scheduleTimeInput" placeholder="Time (optional)" style="margin-top:8px">
       <button class="defer-option" id="scheduleConfirmBtn">📅 Schedule</button>
       <button class="defer-option" id="scheduleRemoveBtn" style="background:rgba(255,69,58,0.12);color:var(--accent)">Remove from calendar</button>
       <button class="defer-cancel" id="scheduleCancel">Cancel</button>
@@ -4928,6 +4909,7 @@ let kbVisible        = false;
 let calVisible       = false;
 let cardSortOrder    = 'manual'; // 'manual' | 'alpha' | 'count' — shared by cards + board views
 let calWeekStart     = null; // Date: Monday of displayed week
+let calDayOffset     = 0;    // 0=Mon…6=Sun — single-day mode for narrow screens
 let calDragState     = null;
 let mmHideDeferred   = false;
 let mmHideArchived   = false;
@@ -7709,8 +7691,16 @@ function renderCalendarSidebar() {
 }
 
 function renderCalendarWeek() {
-  const DAY_NAMES = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
-  const todayISO = toISODate(new Date());
+  const CAL_HOUR_PX  = 60;
+  const CAL_START    = 6;   // 6 am
+  const CAL_END      = 22;  // 10 pm
+  const GRID_H       = (CAL_END - CAL_START) * CAL_HOUR_PX; // 960 px
+
+  const DAY_NAMES  = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
+  const todayISO   = toISODate(new Date());
+  const isMobile   = window.innerWidth < 768;
+
+  // Build all 7 day dates for this week
   const weekDays = [];
   for (let i = 0; i < 7; i++) {
     const d = new Date(calWeekStart);
@@ -7718,179 +7708,257 @@ function renderCalendarWeek() {
     weekDays.push(d);
   }
 
-  // Week label
-  const fmt = d => d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-  const fmtY = d => d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
-  document.getElementById('calWeekLabel').textContent =
-    fmt(weekDays[0]) + ' – ' + fmtY(weekDays[6]);
+  // On narrow screens show only the active day; on wide screens show all 7
+  const dayIndices = isMobile ? [calDayOffset] : [0,1,2,3,4,5,6];
 
-  // Bucket all nodes that have a scheduled_date (deferred items included —
-  // deferNode now writes scheduled_date in YYYY-MM-DD format at deferral time)
-  const bucket = {};
+  // Week / day label in nav bar
+  const fmt  = d => d.toLocaleDateString('en-US', { month:'short', day:'numeric' });
+  const fmtY = d => d.toLocaleDateString('en-US', { month:'short', day:'numeric', year:'numeric' });
+  if (isMobile) {
+    const d = weekDays[calDayOffset];
+    document.getElementById('calWeekLabel').textContent =
+      d.toLocaleDateString('en-US', { weekday:'short', month:'short', day:'numeric', year:'numeric' });
+  } else {
+    document.getElementById('calWeekLabel').textContent = fmt(weekDays[0]) + ' – ' + fmtY(weekDays[6]);
+  }
+
+  // Bucket VoiceMap nodes by date
+  const nodeBucket = {};
   for (const node of session.nodes) {
     if (node.archived || !node.scheduled_date) continue;
     const kind = node.deferred ? 'deferred' : 'scheduled';
-    (bucket[node.scheduled_date] = bucket[node.scheduled_date] || []).push({ node, kind });
+    (nodeBucket[node.scheduled_date] = nodeBucket[node.scheduled_date] || []).push({ node, kind });
+  }
+
+  // Helper: absolute minutes → px offset from grid top
+  function minToPx(minutes) {
+    return (minutes / 60 - CAL_START) * CAL_HOUR_PX;
   }
 
   const grid = document.getElementById('calGrid');
   grid.innerHTML = '';
 
-  weekDays.forEach((day, i) => {
+  // ── 1. Header row ──────────────────────────────────────────────────────────
+  const hdrRow = document.createElement('div');
+  hdrRow.className = 'cal-hdr-row';
+  const corner = document.createElement('div');
+  corner.className = 'cal-hdr-corner';
+  hdrRow.appendChild(corner);
+
+  dayIndices.forEach(i => {
+    const day = weekDays[i];
     const iso = toISODate(day);
-    const nodes = bucket[iso] || [];
+    const cell = document.createElement('div');
+    cell.className = 'cal-hdr-day-cell' + (iso === todayISO ? ' today' : '');
+    cell.dataset.calDate = iso;
+    cell.innerHTML = `<div class="cal-day-name">${DAY_NAMES[i]}</div>
+      <div class="cal-day-num">${day.getDate()}</div>
+      <div class="cal-day-add" data-cal-add="${iso}">+</div>`;
+    hdrRow.appendChild(cell);
+  });
+  grid.appendChild(hdrRow);
+
+  // ── 2. All-day row ─────────────────────────────────────────────────────────
+  const alldayRow = document.createElement('div');
+  alldayRow.className = 'cal-allday-row';
+  const alldayLabel = document.createElement('div');
+  alldayLabel.className = 'cal-allday-label';
+  alldayLabel.textContent = 'all-day';
+  alldayRow.appendChild(alldayLabel);
+
+  dayIndices.forEach(i => {
+    const day  = weekDays[i];
+    const iso  = toISODate(day);
+    const cell = document.createElement('div');
+    cell.className = 'cal-allday-cell';
+    cell.dataset.calDate = iso;
+
+    // ICS all-day events
+    if (_icalVisible) {
+      (_icalEvents[iso] || []).filter(ev => ev.allDay).forEach(ev => {
+        const chip = document.createElement('div');
+        chip.className = 'cal-allday-event ical-allday';
+        chip.textContent = ev.subject;
+        chip.title = ev.subject;
+        cell.appendChild(chip);
+      });
+    }
+    // Outlook all-day events
+    if (_outlookVisible) {
+      (_outlookEvents[iso] || []).filter(ev => ev.allDay).forEach(ev => {
+        const chip = document.createElement('div');
+        chip.className = 'cal-allday-event outlook-allday';
+        chip.textContent = ev.subject;
+        chip.title = ev.subject;
+        cell.appendChild(chip);
+      });
+    }
+    // VoiceMap cards without a scheduled_time → all-day strip
+    (nodeBucket[iso] || []).filter(({ node }) => !node.scheduled_time).forEach(({ node, kind }) => {
+      const card = document.createElement('div');
+      card.className = 'cal-allday-card cal-card' +
+        (node.status === 'done' ? ' status-done' : '') +
+        (kind === 'deferred' ? ' cal-card-deferred' : '');
+      card.dataset.calCardId = node.id;
+      card.dataset.calKind   = kind;
+      card.textContent = (kind === 'deferred' ? '⏳ ' : '') + node.label;
+      cell.appendChild(card);
+    });
+
+    alldayRow.appendChild(cell);
+  });
+  grid.appendChild(alldayRow);
+
+  // ── 3. Scrollable hourly area ──────────────────────────────────────────────
+  const hourScroll = document.createElement('div');
+  hourScroll.className = 'cal-hour-scroll';
+
+  const hourBody = document.createElement('div');
+  hourBody.className = 'cal-hour-body';
+
+  // Time-label column
+  const timeCol = document.createElement('div');
+  timeCol.className = 'cal-time-col';
+  timeCol.style.height = GRID_H + 'px';
+  for (let h = CAL_START; h <= CAL_END; h++) {
+    const lbl = document.createElement('div');
+    lbl.className = 'cal-time-label';
+    lbl.style.top = ((h - CAL_START) * CAL_HOUR_PX) + 'px';
+    if (h > CAL_START) { // skip 6 am label at very top (gets clipped)
+      lbl.textContent = h === 12 ? '12pm' : h < 12 ? `${h}am` : `${h-12}pm`;
+    }
+    timeCol.appendChild(lbl);
+  }
+  hourBody.appendChild(timeCol);
+
+  // One column per visible day
+  dayIndices.forEach(i => {
+    const day    = weekDays[i];
+    const iso    = toISODate(day);
+    const jsDay  = day.getDay();
 
     const col = document.createElement('div');
-    col.className = 'cal-day-col' + (iso === todayISO ? ' today' : '');
+    col.className = 'cal-hour-col' + (iso === todayISO ? ' today-col' : '');
     col.dataset.calDate = iso;
+    col.style.height = GRID_H + 'px';
 
-    col.innerHTML = `<div class="cal-day-header">
-      <div class="cal-day-name">${DAY_NAMES[i]}</div>
-      <div class="cal-day-num">${day.getDate()}</div>
-      <div class="cal-day-add" data-cal-add="${iso}">+</div>
-    </div>`;
+    // Hour grid lines
+    for (let h = CAL_START; h <= CAL_END; h++) {
+      const line = document.createElement('div');
+      line.className = 'cal-hour-line';
+      line.style.top = ((h - CAL_START) * CAL_HOUR_PX) + 'px';
+      col.appendChild(line);
+    }
 
-    const jsDay     = day.getDay();
+    // "Now" line — only on today
+    if (iso === todayISO) {
+      const now    = new Date();
+      const nowMin = now.getHours() * 60 + now.getMinutes();
+      if (nowMin >= CAL_START * 60 && nowMin <= CAL_END * 60) {
+        const nowLine = document.createElement('div');
+        nowLine.className = 'cal-now-line';
+        nowLine.style.top = minToPx(nowMin) + 'px';
+        const dot = document.createElement('div');
+        dot.className = 'cal-now-dot';
+        nowLine.appendChild(dot);
+        col.appendChild(nowLine);
+      }
+    }
+
+    // Time-block background bands
     const dayBlocks = session.nodes
       .filter(n => n.type === 'time_block' && !n.archived && (n.tb_days || []).includes(jsDay))
       .sort((a, b) => tbParseTime(a.tb_start_time) - tbParseTime(b.tb_start_time));
 
-    const cards = document.createElement('div');
-    cards.className = 'cal-day-cards';
-    cards.dataset.calDate = iso;
-
-    // ICS calendar feed overlay
-    if (_icalVisible && _icalEvents[iso]?.length) {
-      const icalSec = document.createElement('div');
-      icalSec.className = 'cal-ical-section';
-      for (const ev of _icalEvents[iso]) {
-        const chip = document.createElement('div');
-        chip.className = 'ical-event';
-        chip.title = ev.subject;
-        if (ev.allDay) {
-          chip.textContent = ev.subject;
-        } else {
-          chip.innerHTML = `<span class="ical-ev-time">${ev.startTime}</span>${ev.subject}`;
-        }
-        icalSec.appendChild(chip);
-      }
-      cards.appendChild(icalSec);
-    }
-
-    // Outlook Calendar overlay — events fetched from Microsoft Graph
-    if (_outlookVisible && _outlookEvents[iso]?.length) {
-      const olSec = document.createElement('div');
-      olSec.className = 'cal-ol-section';
-      for (const ev of _outlookEvents[iso]) {
-        const chip = document.createElement('div');
-        chip.className = 'outlook-event';
-        chip.title = ev.subject;
-        if (ev.allDay) {
-          chip.textContent = ev.subject;
-        } else {
-          chip.innerHTML = `<span class="ol-ev-time">${ev.startTime}</span>${ev.subject}`;
-        }
-        olSec.appendChild(chip);
-      }
-      cards.appendChild(olSec);
-    }
-
-    // Build a Set of nodeIds already placed into a swim lane
-    const placed = new Set();
-
-    // Swim lane for each time block active on this day
     dayBlocks.forEach(block => {
-      const color = tbColor(block.id);
-      const lane  = document.createElement('div');
-      lane.className = 'cal-swim-lane';
-      lane.style.borderColor = color + '55';
-      lane.dataset.calDate   = iso;  // makes it a valid drop target for existing drag logic
-
-      const hdr = document.createElement('div');
-      hdr.className = 'cal-swim-hdr';
-      hdr.style.background = color;
-      const timeStr = (block.tb_start_time || '') + '–' + (block.tb_end_time || '');
-      hdr.innerHTML = `<span>${block.label}</span><span style="opacity:0.8;font-weight:400">${timeStr}</span>`;
-      lane.appendChild(hdr);
-
-      const body = document.createElement('div');
-      body.className = 'cal-swim-body';
-      body.dataset.calDate = iso;
-
-      // Capacity = how many tasks fit per slot
-      const blockMins = tbParseTime(block.tb_end_time) - tbParseTime(block.tb_start_time);
-      const avgMins   = block.tb_avg_task_minutes || 60;
-      const capacity  = Math.max(1, Math.floor(blockMins / avgMins));
-
-      const laneNodes = nodes.filter(({ node }) => node.parent_id === block.id);
-
-      // Always render exactly `capacity` rows so all days have the same lane height
-      for (let s = 0; s < capacity; s++) {
-        const entry = laneNodes[s];
-        if (entry) {
-          placed.add(entry.node.id);
-          const card = document.createElement('div');
-          card.className = 'cal-swim-slot cal-card' +
-                           (entry.node.status === 'done' ? ' status-done' : '') +
-                           (entry.kind === 'deferred' ? ' cal-card-deferred' : '');
-          card.style.borderLeftColor = color;
-          card.style.borderLeftWidth = '3px';
-          card.dataset.calCardId = entry.node.id;
-          card.dataset.calKind   = entry.kind;
-          card.textContent = (entry.kind === 'deferred' ? '⏳ ' : '') + entry.node.label;
-          body.appendChild(card);
-        } else {
-          const slot = document.createElement('div');
-          slot.className = 'cal-swim-slot open';
-          slot.style.borderColor = color;
-          slot.style.color       = color;
-          slot.textContent = 'open';
-          body.appendChild(slot);
-        }
-      }
-      // Any overflow cards beyond capacity (edge case) still shown
-      laneNodes.slice(capacity).forEach(({ node, kind }) => {
-        placed.add(node.id);
-        const card = document.createElement('div');
-        card.className = 'cal-swim-slot cal-card' +
-                         (node.status === 'done' ? ' status-done' : '');
-        card.style.borderLeftColor = color;
-        card.style.borderLeftWidth = '3px';
-        card.dataset.calCardId = node.id;
-        card.dataset.calKind   = kind;
-        card.textContent = node.label;
-        body.appendChild(card);
-      });
-
-      lane.appendChild(body);
-      cards.appendChild(lane);
+      const sMin = tbParseTime(block.tb_start_time);
+      const eMin = tbParseTime(block.tb_end_time);
+      if (eMin <= CAL_START * 60 || sMin >= CAL_END * 60) return;
+      const cS = Math.max(sMin, CAL_START * 60);
+      const cE = Math.min(eMin, CAL_END * 60);
+      const band = document.createElement('div');
+      band.className = 'cal-time-block-band';
+      band.style.top        = minToPx(cS) + 'px';
+      band.style.height     = ((cE - cS) / 60 * CAL_HOUR_PX) + 'px';
+      band.style.background = tbColor(block.id);
+      band.style.opacity    = '0.12';
+      col.appendChild(band);
     });
 
-    // Unassigned cards (not in any swim lane)
-    const unassigned = nodes.filter(({ node }) => !placed.has(node.id));
-    if (unassigned.length) {
-      const bucket = document.createElement('div');
-      bucket.className = 'cal-day-unassigned';
-      unassigned.forEach(({ node, kind }) => {
-        const card = document.createElement('div');
-        card.className = 'cal-card' + (node.status === 'done' ? ' status-done' : '') +
-                         (kind === 'deferred' ? ' cal-card-deferred' : '');
-        card.dataset.calCardId = node.id;
-        card.dataset.calKind   = kind;
-        card.textContent = (kind === 'deferred' ? '⏳ ' : '') + node.label;
-        bucket.appendChild(card);
+    // ICS timed events
+    if (_icalVisible) {
+      (_icalEvents[iso] || []).filter(ev => !ev.allDay && ev.startMinutes !== undefined).forEach(ev => {
+        const top = minToPx(ev.startMinutes);
+        const h   = Math.max(18, (ev.durationMinutes || 60) / 60 * CAL_HOUR_PX);
+        if (top >= GRID_H || top + h <= 0) return;
+        const blk = document.createElement('div');
+        blk.className = 'cal-event-block ical-block';
+        blk.style.top    = Math.max(0, top) + 'px';
+        blk.style.height = h + 'px';
+        blk.innerHTML    = `<strong>${ev.startTime}</strong> ${ev.subject}`;
+        blk.title        = ev.subject;
+        col.appendChild(blk);
       });
-      cards.appendChild(bucket);
     }
 
-    col.appendChild(cards);
-    grid.appendChild(col);
+    // Outlook timed events
+    if (_outlookVisible) {
+      (_outlookEvents[iso] || []).filter(ev => !ev.allDay && ev.startMinutes !== undefined).forEach(ev => {
+        const top = minToPx(ev.startMinutes);
+        const h   = Math.max(18, (ev.durationMinutes || 60) / 60 * CAL_HOUR_PX);
+        if (top >= GRID_H || top + h <= 0) return;
+        const blk = document.createElement('div');
+        blk.className = 'cal-event-block outlook-block';
+        blk.style.top    = Math.max(0, top) + 'px';
+        blk.style.height = h + 'px';
+        blk.innerHTML    = `<strong>${ev.startTime}</strong> ${ev.subject}`;
+        blk.title        = ev.subject;
+        col.appendChild(blk);
+      });
+    }
+
+    // VoiceMap timed cards (have scheduled_time)
+    (nodeBucket[iso] || []).filter(({ node }) => !!node.scheduled_time).forEach(({ node, kind }) => {
+      const [hh, mm] = node.scheduled_time.split(':').map(Number);
+      const startMin = hh * 60 + mm;
+      const dur      = node.task_minutes || 60;
+      const top      = minToPx(startMin);
+      if (top >= GRID_H || top + (dur / 60 * CAL_HOUR_PX) <= 0) return;
+      const blk = document.createElement('div');
+      blk.className = 'cal-event-block cal-card-event cal-card' +
+        (node.status === 'done' ? ' status-done' : '') +
+        (kind === 'deferred' ? ' cal-card-deferred' : '');
+      blk.style.top    = Math.max(0, top) + 'px';
+      blk.style.height = Math.max(20, dur / 60 * CAL_HOUR_PX) + 'px';
+      blk.dataset.calCardId = node.id;
+      blk.dataset.calKind   = kind;
+      blk.textContent = (kind === 'deferred' ? '⏳ ' : '') + node.label;
+      col.appendChild(blk);
+    });
+
+    hourBody.appendChild(col);
   });
 
+  hourScroll.appendChild(hourBody);
+  grid.appendChild(hourScroll);
+
+  // Wire + buttons
   grid.addEventListener('click', e => {
     const addBtn = e.target.closest('[data-cal-add]');
     if (addBtn) startCalAdd(addBtn.dataset.calAdd);
+    const card = e.target.closest('.cal-allday-card, .cal-event-block.cal-card-event');
+    if (card?.dataset.calCardId) showScheduleModal(card.dataset.calCardId);
   }, { once: true });
+
+  // Auto-scroll to show current time (today) or 8 am otherwise
+  requestAnimationFrame(() => {
+    const now    = new Date();
+    const nowMin = now.getHours() * 60 + now.getMinutes();
+    const target = todayISO >= toISODate(weekDays[0]) && todayISO <= toISODate(weekDays[6])
+      ? minToPx(nowMin) - 80
+      : minToPx(8 * 60) - 40;
+    hourScroll.scrollTop = Math.max(0, target);
+  });
 
   initCalendarDrag();
 }
@@ -7981,10 +8049,12 @@ function queueNode(nodeId) {
   showToast('📋 Added to schedule queue');
 }
 
-function scheduleNode(nodeId, isoDate) {
+function scheduleNode(nodeId, isoDate, isoTime) {
   const node = session.nodes.find(n => n.id === nodeId);
   if (!node) return;
   node.scheduled_date = isoDate || null;
+  if (isoTime !== undefined) node.scheduled_time = isoTime || null;
+  if (!isoDate) node.scheduled_time = null; // clear time when removing date
   node.last_modified = new Date().toISOString();
   saveSession();
   if (calVisible) renderCalendar();
@@ -8029,6 +8099,7 @@ function showScheduleModal(nodeId) {
   const node = session.nodes.find(n => n.id === nodeId);
   document.getElementById('scheduleDateInput').value =
     node?.scheduled_date || toISODate(new Date());
+  document.getElementById('scheduleTimeInput').value = node?.scheduled_time || '';
   document.getElementById('scheduleModal').classList.remove('hidden');
 }
 
@@ -8066,7 +8137,7 @@ function onCalTouchStart(e) {
     card,
     cardId,
     kind:     card.dataset.calKind || 'scheduled',
-    fromDate: card.closest('.cal-day-col')?.dataset.calDate,
+    fromDate: card.closest('[data-cal-date]')?.dataset.calDate,
     startX:   t.clientX,
     startY:   t.clientY,
     phase:    'pending',
@@ -8107,10 +8178,10 @@ function onCalTouchMove(e) {
   ghost.style.visibility = 'hidden';
   const el = document.elementFromPoint(t.clientX, t.clientY);
   ghost.style.visibility = '';
-  document.querySelectorAll('.cal-day-col').forEach(c => c.classList.remove('cal-drop-active'));
+  document.querySelectorAll('.cal-hour-col, .cal-allday-cell').forEach(c => c.classList.remove('cal-drop-active'));
   document.getElementById('calSidebar')?.classList.remove('cal-drop-active');
 
-  const col = el?.closest('.cal-day-col');
+  const col = el?.closest('.cal-hour-col, .cal-allday-cell');
   const sidebar = el?.closest('#calSidebar');
   if (col) {
     col.classList.add('cal-drop-active');
@@ -8152,7 +8223,7 @@ function onCalTouchEnd() {
   calDragState = null;
   if (ghost) ghost.remove();
   card.classList.remove('dragging');
-  document.querySelectorAll('.cal-day-col').forEach(c => c.classList.remove('cal-drop-active'));
+  document.querySelectorAll('.cal-hour-col, .cal-allday-cell').forEach(c => c.classList.remove('cal-drop-active'));
   document.getElementById('calSidebar')?.classList.remove('cal-drop-active');
 
   if (phase === 'pending') {
@@ -8282,6 +8353,7 @@ function computeTimeBlockSchedule(blockId) {
       const mins = tasks[ti].task_minutes || avgMins;
       if (placed > 0 && used + mins > blockMins) break;
       tasks[ti].scheduled_date    = slot;
+      tasks[ti].scheduled_time    = block.tb_start_time || null;
       tasks[ti].needs_scheduling  = false;
       tasks[ti].last_modified     = new Date().toISOString();
       used += mins; placed++; ti++;
@@ -9684,8 +9756,18 @@ function _icalParse(text) {
         const v = val.trim();
         cur.allDay    = isDate || v.length === 8;
         cur.start     = _icalParseDate(v);
-        cur.startTime = (cur.allDay || !cur.start) ? '' :
-          new Date(cur.start).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
+        if (!cur.allDay && cur.start) {
+          const dt = new Date(cur.start);
+          cur.startMinutes = dt.getHours() * 60 + dt.getMinutes();
+          cur.startTime    = dt.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
+        } else {
+          cur.startTime = '';
+        }
+
+      } else if (prop === 'DTEND') {
+        const v = val.trim();
+        const endISO = _icalParseDate(v);
+        if (endISO) cur.end = endISO;
       }
     } catch { /* skip malformed property */ }
   }
@@ -9703,6 +9785,14 @@ function _icalBucket(events) {
     const iso = ev.start.slice(0, 10);
     const d   = new Date(iso + 'T00:00:00');
     if (d < winStart || d > winEnd) continue;
+    // Compute duration for hourly grid positioning
+    if (!ev.allDay && ev.end && ev.startMinutes !== undefined) {
+      const endDt = new Date(ev.end);
+      const endMinutes = endDt.getHours() * 60 + endDt.getMinutes();
+      ev.durationMinutes = Math.max(15, endMinutes - ev.startMinutes);
+    } else if (!ev.allDay && ev.startMinutes !== undefined) {
+      ev.durationMinutes = 60; // default 1 hour
+    }
     (out[iso] = out[iso] || []).push(ev);
   }
   // Sort each day by time
@@ -9982,11 +10072,23 @@ async function _olFetchEvents() {
     const fmtTime = iso => new Date(iso).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
     for (const ev of (data.value || [])) {
       const iso = (ev.start.dateTime || ev.start.date).slice(0, 10);
-      (_outlookEvents[iso] = _outlookEvents[iso] || []).push({
+      const entry = {
         subject:   ev.subject || '(No title)',
         startTime: ev.start.dateTime ? fmtTime(ev.start.dateTime) : '',
         allDay:    !ev.start.dateTime
-      });
+      };
+      if (!entry.allDay && ev.start.dateTime) {
+        const startDt = new Date(ev.start.dateTime);
+        entry.startMinutes = startDt.getHours() * 60 + startDt.getMinutes();
+        if (ev.end?.dateTime) {
+          const endDt = new Date(ev.end.dateTime);
+          const endMin = endDt.getHours() * 60 + endDt.getMinutes();
+          entry.durationMinutes = Math.max(15, endMin - entry.startMinutes);
+        } else {
+          entry.durationMinutes = 60;
+        }
+      }
+      (_outlookEvents[iso] = _outlookEvents[iso] || []).push(entry);
     }
     if (calVisible) renderCalendarWeek();
   } catch (err) {
@@ -10460,7 +10562,7 @@ function initVoiceMode() {
 }
 
 // ─── INIT ───────────────────────────────────────────────────────────────────
-const BUILD_TS = 'build:2026-03-31T19:30'; // bumped each deploy — confirms fresh load
+const BUILD_TS = 'build:2026-04-01T12:00'; // bumped each deploy — confirms fresh load
 
 async function initApp() {
   // Show immediately with localStorage data
@@ -10731,23 +10833,48 @@ document.addEventListener('DOMContentLoaded', () => {
     cur.push({ key: '', label: '', type: 'text' });
     _renderLogModalFields(cur, _readLogModalTitleField(), _readLogModalYearlyField());
   });
-  // Calendar navigation
+  // Calendar navigation — on narrow screens ‹/› navigate day-by-day; on wide screens week-by-week
   document.getElementById('calPrevBtn').addEventListener('click', () => {
-    calWeekStart = new Date(calWeekStart); calWeekStart.setDate(calWeekStart.getDate() - 7);
-    renderCalendar(); if (_icalVisible && _icalGetUrl()) _icalFetch();
+    if (window.innerWidth < 768) {
+      calDayOffset--;
+      if (calDayOffset < 0) {
+        calDayOffset = 6;
+        calWeekStart = new Date(calWeekStart); calWeekStart.setDate(calWeekStart.getDate() - 7);
+        if (_icalVisible && _icalGetUrl()) _icalFetch();
+      }
+    } else {
+      calWeekStart = new Date(calWeekStart); calWeekStart.setDate(calWeekStart.getDate() - 7);
+      if (_icalVisible && _icalGetUrl()) _icalFetch();
+    }
+    renderCalendar();
   });
   document.getElementById('calNextBtn').addEventListener('click', () => {
-    calWeekStart = new Date(calWeekStart); calWeekStart.setDate(calWeekStart.getDate() + 7);
-    renderCalendar(); if (_icalVisible && _icalGetUrl()) _icalFetch();
+    if (window.innerWidth < 768) {
+      calDayOffset++;
+      if (calDayOffset > 6) {
+        calDayOffset = 0;
+        calWeekStart = new Date(calWeekStart); calWeekStart.setDate(calWeekStart.getDate() + 7);
+        if (_icalVisible && _icalGetUrl()) _icalFetch();
+      }
+    } else {
+      calWeekStart = new Date(calWeekStart); calWeekStart.setDate(calWeekStart.getDate() + 7);
+      if (_icalVisible && _icalGetUrl()) _icalFetch();
+    }
+    renderCalendar();
   });
   document.getElementById('calTodayBtn').addEventListener('click', () => {
-    calWeekStart = getWeekMonday(new Date()); renderCalendar();
+    calWeekStart = getWeekMonday(new Date());
+    // Set calDayOffset to match today's day-of-week (Mon=0…Sun=6)
+    const todayDow = new Date().getDay(); // 0=Sun…6=Sat
+    calDayOffset = todayDow === 0 ? 6 : todayDow - 1; // convert to Mon=0…Sun=6
+    renderCalendar();
     if (_icalVisible && _icalGetUrl()) _icalFetch();
   });
   // Schedule modal
   document.getElementById('scheduleConfirmBtn').addEventListener('click', () => {
-    const val = document.getElementById('scheduleDateInput').value;
-    if (val && schedPendingNodeId) { scheduleNode(schedPendingNodeId, val); hideScheduleModal(); }
+    const val  = document.getElementById('scheduleDateInput').value;
+    const time = document.getElementById('scheduleTimeInput').value;
+    if (val && schedPendingNodeId) { scheduleNode(schedPendingNodeId, val, time || null); hideScheduleModal(); }
   });
   document.getElementById('scheduleRemoveBtn').addEventListener('click', () => {
     if (schedPendingNodeId) { scheduleNode(schedPendingNodeId, null); hideScheduleModal(); }
