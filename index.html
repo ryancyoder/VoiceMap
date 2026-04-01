@@ -606,7 +606,28 @@
     .status-text.processing { color: #f59e0b; }
     .status-text.error      { color: var(--accent); }
 
-    /* ── Keyboard input ───────────────────────────────────────── */
+    /* ── Record bar — slim variant for calendar / board / etc. ── */
+    .record-bar--slim {
+      padding: 5px 16px calc(var(--safe-bottom) + 5px);
+      flex-direction: row;
+      justify-content: center;
+      gap: 12px;
+    }
+    .record-bar--slim .live-text {
+      flex: 1; text-align: left; font-size: 11px; min-height: 0;
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+    .record-bar--slim .record-row { gap: 10px; }
+    .record-bar--slim .record-btn {
+      width: 32px; height: 32px; font-size: 14px;
+      box-shadow: 0 2px 8px rgba(226,75,74,0.28);
+    }
+    .record-bar--slim .paste-btn,
+    .record-bar--slim .camera-btn  { display: none; }
+    .record-bar--slim .status-text { display: none; }
+    .record-bar--slim .keyboard-toggle-btn { display: none; }
+    .record-bar--slim .keyboard-row { display: none !important; }
+    .record-bar--slim #syncStatus  { display: none !important; }
     .keyboard-toggle-btn {
       width: 100%; padding: 7px 16px; border-radius: 20px;
       background: none; border: 1px solid var(--border);
@@ -7673,6 +7694,7 @@ function toISODate(date) {
 
 function showCalendar() {
   dismissCardPanel();
+  document.querySelector('.record-bar').classList.add('record-bar--slim');
   if (mmVisible)     hideMindMap();
   if (kbVisible)     hideKanban();
   if (tbVisible)     hideTimeBlockView();
@@ -7688,6 +7710,7 @@ function showCalendar() {
 
 function hideCalendar() {
   calVisible = false;
+  document.querySelector('.record-bar').classList.remove('record-bar--slim');
   document.getElementById('calView').classList.add('hidden');
   document.getElementById('cvBody').style.display = '';
   setViewTab('cards');
@@ -10663,7 +10686,7 @@ function initVoiceMode() {
 }
 
 // ─── INIT ───────────────────────────────────────────────────────────────────
-const BUILD_TS = 'build:2026-04-01T13:30'; // bumped each deploy — confirms fresh load
+const BUILD_TS = 'build:2026-04-01T14:00'; // bumped each deploy — confirms fresh load
 
 async function initApp() {
   // Show immediately with localStorage data
