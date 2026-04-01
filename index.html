@@ -1715,6 +1715,9 @@
       padding: 5px 9px; font-size: 11px; font-weight: 600;
       color: var(--accent); cursor: pointer; font-family: var(--font);
     }
+    .cal-today-btn.active {
+      background: var(--accent); color: #fff;
+    }
     .cal-body {
       flex: 1; display: flex; min-height: 0; overflow: hidden;
     }
@@ -1722,21 +1725,34 @@
       flex: 7; display: flex; flex-direction: column; min-height: 0; overflow: hidden;
     }
     .cal-sidebar {
-      flex: 1; flex-shrink: 0; display: flex; flex-direction: column;
+      flex-shrink: 0; display: flex; flex-direction: column;
       border-right: 2px solid var(--accent);
       background: rgba(226,75,74,0.06);
+      width: 90px; transition: width 0.2s ease;
+      overflow: hidden;
     }
+    .cal-sidebar.collapsed { width: 22px; }
     .cal-sidebar-hdr {
-      padding: 8px 8px 6px;
+      padding: 8px 6px 6px;
       font-size: 12px; font-weight: 800;
       color: var(--accent);
       border-bottom: 0.5px solid var(--border); flex-shrink: 0;
       letter-spacing: 0.3px;
+      display: flex; align-items: center; justify-content: space-between; gap: 4px;
+      white-space: nowrap; overflow: hidden;
     }
+    .cal-sidebar-toggle {
+      background: none; border: none; color: var(--accent);
+      font-size: 10px; cursor: pointer; padding: 0; flex-shrink: 0;
+      line-height: 1;
+    }
+    .cal-sidebar.collapsed .cal-sidebar-hdr { justify-content: center; }
+    .cal-sidebar.collapsed .cal-sidebar-label { display: none; }
     .cal-sidebar-cards {
       flex: 1; overflow-y: auto; padding: 4px;
       display: flex; flex-direction: column; gap: 4px; min-height: 0;
     }
+    .cal-sidebar.collapsed .cal-sidebar-cards { display: none; }
     .cal-sidebar.cal-drop-active {
       background: rgba(226,75,74,0.16);
     }
@@ -2162,12 +2178,16 @@
       <span class="cal-week-label" id="calWeekLabel"></span>
       <button class="cal-nav-btn" id="calNextBtn">›</button>
       <button class="cal-today-btn" id="calTodayBtn">Today</button>
+      <button class="cal-today-btn" id="calWeekdaysBtn" title="Toggle weekdays only">M–F</button>
       <button class="outlook-toggle-btn" id="olToggleBtn" style="display:none" title="Toggle Outlook events">📅 Outlook</button>
       <button class="ical-toggle-btn" id="icalToggleBtn" style="display:none" title="Toggle calendar feed">📆 Feed</button>
     </div>
     <div class="cal-body" id="calBody">
       <div class="cal-sidebar" id="calSidebar">
-        <div class="cal-sidebar-hdr">📋 Queue</div>
+        <div class="cal-sidebar-hdr">
+          <span class="cal-sidebar-label">📋 Queue</span>
+          <button class="cal-sidebar-toggle" id="calSidebarToggle" title="Collapse queue">◀</button>
+        </div>
         <div class="cal-sidebar-cards" id="calSidebarCards"></div>
       </div>
       <div class="cal-right">
@@ -4916,9 +4936,11 @@ let mmVisible        = false;
 let kbVisible        = false;
 let calVisible       = false;
 let cardSortOrder    = 'manual'; // 'manual' | 'alpha' | 'count' — shared by cards + board views
-let calWeekStart     = null; // Date: Monday of displayed week
-let calDayOffset     = 0;    // 0=Mon…6=Sun — single-day mode for narrow screens
-let calDragState     = null;
+let calWeekStart      = null;  // Date: Monday of displayed week
+let calDayOffset      = 0;     // 0=Mon…6=Sun — single-day mode for narrow screens
+let calWeekdaysOnly   = localStorage.getItem('voicemap_cal_weekdays') === '1';
+let calSidebarCollapsed = localStorage.getItem('voicemap_cal_sidebar_collapsed') === '1';
+let calDragState      = null;
 let mmHideDeferred   = false;
 let mmHideArchived   = false;
 let mmFocusNodeId    = null;
@@ -7716,8 +7738,9 @@ function renderCalendarWeek() {
     weekDays.push(d);
   }
 
-  // On narrow screens show only the active day; on wide screens show all 7
-  const dayIndices = isMobile ? [calDayOffset] : [0,1,2,3,4,5,6];
+  // On narrow screens show only the active day; on wide screens show 5 or 7 days
+  const fullIndices = calWeekdaysOnly ? [0,1,2,3,4] : [0,1,2,3,4,5,6];
+  const dayIndices  = isMobile ? [Math.min(calDayOffset, fullIndices.length - 1)] : fullIndices;
 
   // Week / day label in nav bar
   const fmt  = d => d.toLocaleDateString('en-US', { month:'short', day:'numeric' });
@@ -10640,7 +10663,7 @@ function initVoiceMode() {
 }
 
 // ─── INIT ───────────────────────────────────────────────────────────────────
-const BUILD_TS = 'build:2026-04-01T13:00'; // bumped each deploy — confirms fresh load
+const BUILD_TS = 'build:2026-04-01T13:30'; // bumped each deploy — confirms fresh load
 
 async function initApp() {
   // Show immediately with localStorage data
@@ -10948,6 +10971,30 @@ document.addEventListener('DOMContentLoaded', () => {
     renderCalendar();
     if (_icalVisible && _icalGetUrl()) _icalFetch();
   });
+  // Weekdays-only toggle
+  document.getElementById('calWeekdaysBtn').addEventListener('click', () => {
+    calWeekdaysOnly = !calWeekdaysOnly;
+    localStorage.setItem('voicemap_cal_weekdays', calWeekdaysOnly ? '1' : '0');
+    document.getElementById('calWeekdaysBtn').classList.toggle('active', calWeekdaysOnly);
+    renderCalendar();
+  });
+  document.getElementById('calWeekdaysBtn').classList.toggle('active', calWeekdaysOnly);
+  // Sidebar collapse toggle
+  (function _initCalSidebar() {
+    const sidebar = document.getElementById('calSidebar');
+    const btn     = document.getElementById('calSidebarToggle');
+    function _applyCollapsed() {
+      sidebar.classList.toggle('collapsed', calSidebarCollapsed);
+      btn.textContent = calSidebarCollapsed ? '▶' : '◀';
+      btn.title       = calSidebarCollapsed ? 'Expand queue' : 'Collapse queue';
+    }
+    _applyCollapsed();
+    btn.addEventListener('click', () => {
+      calSidebarCollapsed = !calSidebarCollapsed;
+      localStorage.setItem('voicemap_cal_sidebar_collapsed', calSidebarCollapsed ? '1' : '0');
+      _applyCollapsed();
+    });
+  })();
   // Schedule modal
   document.getElementById('scheduleConfirmBtn').addEventListener('click', () => {
     const val  = document.getElementById('scheduleDateInput').value;
