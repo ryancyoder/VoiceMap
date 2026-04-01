@@ -1682,14 +1682,9 @@
       flex: 1; overflow-y: auto; padding: 14px;
       -webkit-overflow-scrolling: touch;
     }
-    .kb-detail-summary {
-      font-size: 13px; line-height: 1.6; color: var(--text);
+    .kb-detail-panel .card-summary {
+      padding: 0; color: var(--text); font-size: 13px; line-height: 1.6;
     }
-    .kb-detail-summary h1,.kb-detail-summary h2,.kb-detail-summary h3 {
-      font-size: 13px; font-weight: 700; margin: 10px 0 4px;
-    }
-    .kb-detail-summary ul,.kb-detail-summary ol { padding-left: 18px; margin: 4px 0; }
-    .kb-detail-summary li { margin: 2px 0; }
     .kb-detail-meta {
       margin-top: 14px; padding-top: 12px;
       border-top: 0.5px solid var(--border);
@@ -2257,7 +2252,7 @@
       <button class="kb-detail-open-btn" id="kbDetailOpenBtn">Open →</button>
     </div>
     <div class="kb-detail-body">
-      <div class="kb-detail-summary" id="kbDetailSummary"></div>
+      <div class="kb-detail-summary card-summary" id="kbDetailSummary"></div>
       <div class="kb-detail-meta" id="kbDetailMeta"></div>
     </div>
   </div>
@@ -10813,7 +10808,7 @@ function initVoiceMode() {
 }
 
 // ─── INIT ───────────────────────────────────────────────────────────────────
-const BUILD_TS = 'build:2026-04-01T15:00'; // bumped each deploy — confirms fresh load
+const BUILD_TS = 'build:2026-04-01T15:15'; // bumped each deploy — confirms fresh load
 
 async function initApp() {
   // Show immediately with localStorage data
