@@ -6766,11 +6766,19 @@ async function pushToGist() {
     gistId = await findExistingVoiceMapGist(token);
     if (gistId) localStorage.setItem(GITHUB_GIST_STORE, gistId);
   }
-  const content = JSON.stringify(buildSyncPayload());
-  const body    = JSON.stringify({
+  // Capture timestamp before the fetch so we can stamp session.meta on success
+  const syncedAt = new Date().toISOString();
+  const payload  = {
+    session: session.session,
+    date:    session.date,
+    nodes:   session.nodes,
+    images:  Object.assign({}, imageCache),
+    meta:    { tool: 'VoiceMap', version: '0.3', synced: syncedAt }
+  };
+  const body = JSON.stringify({
     description: 'VoiceMap session',
     public: false,
-    files: { 'voicemap.json': { content } }
+    files: { 'voicemap.json': { content: JSON.stringify(payload) } }
   });
   try {
     let res;
@@ -6785,8 +6793,13 @@ async function pushToGist() {
         localStorage.setItem(GITHUB_GIST_STORE, data.id);
       }
     }
-    if (res.ok) updateSyncStatus('☁️ pushed');
-    else showToast('GitHub sync failed (' + res.status + ')');
+    if (res.ok) {
+      // Update session.meta so pullFromGist knows this device is already up to date
+      session.meta = { tool: 'VoiceMap', version: '0.3', synced: syncedAt };
+      updateSyncStatus('☁️ pushed');
+    } else {
+      showToast('GitHub sync failed (' + res.status + ')');
+    }
   } catch (e) {
     showToast('GitHub sync error: ' + e.message);
   }
@@ -6817,13 +6830,23 @@ async function pullFromGist() {
       updateSyncStatus('☁️ up to date');
       return;
     }
-    session = data;
+    // Merge: any nodes modified locally after our last sync that aren't in the
+    // remote payload are preserved (handles both devices adding nodes concurrently)
+    const locallyNewNodes = session.nodes.filter(n =>
+      new Date(n.last_modified || 0) > localDate &&
+      !data.nodes.find(r => r.id === n.id)
+    );
+    session.nodes   = data.nodes.concat(locallyNewNodes);
+    session.session = data.session;
+    session.meta    = data.meta;
     if (data.images && typeof data.images === 'object') {
       for (const [id, url] of Object.entries(data.images)) {
         await saveImageToDB(id, url);
       }
     }
-    saveSession();
+    // Save locally without scheduling a push — we just pulled, nothing new to push
+    try { localStorage.setItem(SESSION_STORE, JSON.stringify(session)); } catch {}
+    saveSessionToDB();
     updateNavBar();
     renderCards();
     showToast('Synced from GitHub ✓');
@@ -10844,7 +10867,7 @@ function initVoiceMode() {
 }
 
 // ─── INIT ───────────────────────────────────────────────────────────────────
-const BUILD_TS = 'build:2026-04-01T16:00'; // bumped each deploy — confirms fresh load
+const BUILD_TS = 'build:2026-04-02T10:00'; // bumped each deploy — confirms fresh load
 
 async function initApp() {
   // Show immediately with localStorage data
