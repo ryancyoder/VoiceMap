@@ -1218,6 +1218,8 @@
       font-size: 13px; font-weight: 600; color: var(--text);
       white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 140px;
     }
+    .mm-node.leaf-wide { width: auto !important; min-width: 160px; max-width: 380px; }
+    .mm-node.leaf-wide .mm-node-title { white-space: normal; overflow: visible; text-overflow: clip; max-width: none; line-height: 1.4; }
     .mm-node-meta { font-size: 11px; color: var(--muted); margin-top: 3px; }
     .mm-node-thumb { width: 100%; height: 60px; object-fit: cover; border-radius: 6px; margin-top: 6px; }
     .mm-collapse-btn {
@@ -5344,6 +5346,7 @@ let calSidebarCollapsed = localStorage.getItem('voicemap_cal_sidebar_collapsed')
 let calDragState      = null;
 let mmHideDeferred   = false;
 let mmHideArchived   = false;
+let mmLeafWide       = localStorage.getItem('voicemap_mm_leaf_wide') === '1';
 let mmFocusNodeId    = null;
 let mmPanelPinned    = false;
 let mmRootSortOrder  = 'manual'; // 'manual' | 'alpha' | 'count'
@@ -5624,16 +5627,17 @@ function renderMindMap() {
     const children    = nodes.filter(c => c.parent_id === n.id).length;
     const allChildren = session.nodes.filter(c => c.parent_id === n.id).length;
     const isCollapsed = mmCollapsed.has(n.id);
-    const selected = mmSelectedId === n.id ? ' selected' : '';
-    const done     = n.status === 'done' ? ' status-done' : '';
+    const selected  = mmSelectedId === n.id ? ' selected' : '';
+    const done      = n.status === 'done' ? ' status-done' : '';
     const collapsed = isCollapsed ? ' mm-node-collapsed' : '';
+    const leafWide  = (mmLeafWide && !children) ? ' leaf-wide' : '';
     const meta = [
       allChildren ? `${isCollapsed ? '▶ ' : ''}${allChildren} sub-card${allChildren !== 1 ? 's' : ''}` : '',
       n.deferred ? `⏳ ${formatDeferDate(n.deferredUntil)}` : '',
       n.archived ? '📁 archived' : '',
       n.pinned   ? '📌' : ''
     ].filter(Boolean).join(' · ');
-    return `<div class="mm-node${selected}${done}${collapsed}"
+    return `<div class="mm-node${selected}${done}${collapsed}${leafWide}"
          id="mmn-${esc(n.id)}" data-mmid="${esc(n.id)}"
          style="left:${x}px;top:${y}px;width:${MM_W}px">
       <div class="mm-node-title">${esc(n.label)}</div>
@@ -11149,7 +11153,7 @@ function initVoiceMode() {
 }
 
 // ─── INIT ───────────────────────────────────────────────────────────────────
-const BUILD_TS = 'build:2026-04-02T12:30'; // bumped each deploy — confirms fresh load
+const BUILD_TS = 'build:2026-04-02T13:00'; // bumped each deploy — confirms fresh load
 
 async function initApp() {
   // Show immediately with localStorage data
@@ -11508,6 +11512,13 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('mmFilterArchived').classList.toggle('active', mmHideArchived);
     renderMindMap();
   });
+  document.getElementById('mmFilterLeafWide').addEventListener('click', () => {
+    mmLeafWide = !mmLeafWide;
+    localStorage.setItem('voicemap_mm_leaf_wide', mmLeafWide ? '1' : '0');
+    document.getElementById('mmFilterLeafWide').classList.toggle('active', mmLeafWide);
+    renderMindMap();
+  });
+  document.getElementById('mmFilterLeafWide').classList.toggle('active', mmLeafWide);
   document.getElementById('mmBackBtn').addEventListener('click', hideMindMap);
   document.getElementById('mmTabMap').addEventListener('click', cycleMmRootSort);
   document.getElementById('mmKbBtn').addEventListener('click', () => { hideMindMap(); showKanban(); });
@@ -12018,6 +12029,7 @@ document.addEventListener('DOMContentLoaded', () => {
     <div class="mm-filter-bar" id="mmFilterBar">
       <button class="mm-filter-pill" id="mmFilterDeferred">⏳ Hide Deferred</button>
       <button class="mm-filter-pill" id="mmFilterArchived">📁 Hide Archived</button>
+      <button class="mm-filter-pill" id="mmFilterLeafWide">↔ Full titles</button>
     </div>
     <div class="mm-recording-bar" id="mmRecordingBar">
       <div class="mm-rec-dot"></div>
