@@ -4506,6 +4506,7 @@ function initExternalDrop() {
 
   document.addEventListener('dragenter', e => {
     if (!isExternal(e)) return;
+    if (e.target.closest?.('.att-drop-zone')) return; // att zone handles its own
     e.preventDefault();
     dragDepth++;
     if (dragDepth === 1) {
@@ -4517,18 +4518,21 @@ function initExternalDrop() {
 
   document.addEventListener('dragover', e => {
     if (!isExternal(e)) return;
+    if (e.target.closest?.('.att-drop-zone')) return; // att zone handles its own
     e.preventDefault();
     e.dataTransfer.dropEffect = 'copy';
   });
 
   document.addEventListener('dragleave', e => {
     if (!isExternal(e)) return;
+    if (e.target.closest?.('.att-drop-zone')) return; // att zone handles its own
     dragDepth--;
     if (dragDepth <= 0) { dragDepth = 0; overlay.classList.remove('active'); }
   });
 
   document.addEventListener('drop', async e => {
     if (!isExternal(e)) return;
+    if (e.target.closest?.('.att-drop-zone')) { dragDepth = 0; overlay.classList.remove('active'); return; } // att zone handles its own
     e.preventDefault();
     dragDepth = 0;
     overlay.classList.remove('active');
@@ -11145,7 +11149,7 @@ function initVoiceMode() {
 }
 
 // ─── INIT ───────────────────────────────────────────────────────────────────
-const BUILD_TS = 'build:2026-04-02T12:00'; // bumped each deploy — confirms fresh load
+const BUILD_TS = 'build:2026-04-02T12:30'; // bumped each deploy — confirms fresh load
 
 async function initApp() {
   // Show immediately with localStorage data
