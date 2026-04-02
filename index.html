@@ -115,7 +115,10 @@
       border-radius: var(--radius);
       box-shadow: 0 8px 28px rgba(0,0,0,0.13);
       min-width: 168px;
-      overflow: hidden;
+      max-height: calc(100dvh - 80px - env(safe-area-inset-bottom));
+      overflow-x: hidden;
+      overflow-y: auto;
+      -webkit-overflow-scrolling: touch;
       display: none;
       z-index: 100;
     }
@@ -10867,7 +10870,7 @@ function initVoiceMode() {
 }
 
 // ─── INIT ───────────────────────────────────────────────────────────────────
-const BUILD_TS = 'build:2026-04-02T10:00'; // bumped each deploy — confirms fresh load
+const BUILD_TS = 'build:2026-04-02T10:30'; // bumped each deploy — confirms fresh load
 
 async function initApp() {
   // Show immediately with localStorage data
