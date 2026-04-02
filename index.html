@@ -3729,6 +3729,8 @@ function renderCards(animDir) {
       cards = [...cards].sort((a, b) => a.label.localeCompare(b.label));
     } else if (cardSortOrder === 'count') {
       cards = [...cards].sort((a, b) => childrenOf(b.id).length - childrenOf(a.id).length);
+    } else if (cardSortOrder === 'modified') {
+      cards = [...cards].sort((a, b) => new Date(b.last_modified || b.created || 0) - new Date(a.last_modified || a.created || 0));
     }
   }
 
@@ -5275,13 +5277,13 @@ function initMmTileDrag() {
   }, { capture: true });
 }
 
-const CARD_SORT_CYCLE  = ['manual', 'alpha', 'count'];
-const CARD_SORT_TOASTS = { manual: 'Sort: manual order', alpha: 'Sort: A → Z', count: 'Sort: by child count' };
+const CARD_SORT_CYCLE  = ['manual', 'alpha', 'count', 'modified'];
+const CARD_SORT_TOASTS = { manual: 'Sort: manual order', alpha: 'Sort: A → Z', count: 'Sort: by child count', modified: 'Sort: recently modified' };
 
 function cycleCardSort() {
   const idx = CARD_SORT_CYCLE.indexOf(cardSortOrder);
   cardSortOrder = CARD_SORT_CYCLE[(idx + 1) % CARD_SORT_CYCLE.length];
-  const suffix = cardSortOrder === 'alpha' ? ' A→Z' : cardSortOrder === 'count' ? ' By #' : '';
+  const suffix = cardSortOrder === 'alpha' ? ' A→Z' : cardSortOrder === 'count' ? ' By #' : cardSortOrder === 'modified' ? ' Recent' : '';
   document.getElementById('tabCards').textContent = '≡ Cards' + suffix;
   document.getElementById('tabBoard').textContent = '⊞ Board' + suffix;
   showToast(CARD_SORT_TOASTS[cardSortOrder]);
@@ -10870,7 +10872,7 @@ function initVoiceMode() {
 }
 
 // ─── INIT ───────────────────────────────────────────────────────────────────
-const BUILD_TS = 'build:2026-04-02T10:30'; // bumped each deploy — confirms fresh load
+const BUILD_TS = 'build:2026-04-02T11:00'; // bumped each deploy — confirms fresh load
 
 async function initApp() {
   // Show immediately with localStorage data
