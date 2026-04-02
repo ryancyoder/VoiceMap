@@ -2162,6 +2162,48 @@
     .log-add-field-btn        { padding: 6px 14px; border-radius: 8px; background: var(--border);
                                  color: var(--text); font-size: 13px; border: none; cursor: pointer;
                                  margin-top: 4px; }
+
+    /* ── Attachments ─────────────────────────────────────────── */
+    .att-section { margin-top: 14px; }
+    .att-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px; }
+    .att-label { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; color: var(--muted); }
+    .att-pick-btn { font-size: 12px; background: var(--surface); border: 0.5px solid var(--border);
+                    color: var(--text); border-radius: 6px; padding: 3px 9px; cursor: pointer; }
+    .att-drop-zone { border: 1.5px dashed var(--border); border-radius: 8px; min-height: 40px;
+                     padding: 4px 6px; outline: none; transition: background 0.15s, border-color 0.15s; }
+    .att-drop-zone:focus { border-color: var(--accent); }
+    .att-drop-zone.drag-over { background: rgba(0,122,255,0.06); border-color: var(--accent); }
+    .att-hint { font-size: 11px; color: var(--muted); text-align: center; padding: 8px 0; line-height: 1.4; }
+    .att-item { display: flex; align-items: center; gap: 8px; padding: 6px 4px;
+                border-bottom: 0.5px solid var(--border); }
+    .att-item:last-child { border-bottom: none; }
+    .att-icon { font-size: 17px; flex-shrink: 0; }
+    .att-info { flex: 1; min-width: 0; }
+    .att-name { font-size: 13px; color: var(--accent); cursor: pointer;
+                white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .att-size { font-size: 11px; color: var(--muted); }
+    .att-del { background: none; border: none; color: var(--muted); font-size: 15px;
+               padding: 2px 4px; cursor: pointer; flex-shrink: 0; line-height: 1; }
+    .att-del:active { color: #ff3b30; }
+    .att-thumb { width: 100%; border-radius: 6px; margin: 6px 0 2px;
+                 max-height: 140px; object-fit: contain; display: block;
+                 border: 0.5px solid var(--border); cursor: pointer; }
+    /* Attachment text viewer modal */
+    .att-view-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.55);
+                        z-index: 2000; display: flex; align-items: flex-end; justify-content: center; }
+    .att-view-sheet { background: var(--surface); border-radius: 16px 16px 0 0;
+                      width: 100%; max-width: 640px; max-height: 80dvh;
+                      display: flex; flex-direction: column;
+                      padding-bottom: calc(env(safe-area-inset-bottom) + 8px); }
+    .att-view-hdr { display: flex; align-items: center; padding: 14px 16px 10px;
+                    border-bottom: 0.5px solid var(--border); gap: 10px; }
+    .att-view-title { flex: 1; font-size: 15px; font-weight: 700;
+                      white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .att-view-close { background: none; border: none; font-size: 18px;
+                      color: var(--muted); cursor: pointer; padding: 0 4px; }
+    .att-view-body { flex: 1; overflow-y: auto; padding: 12px 16px;
+                     font-size: 13px; line-height: 1.6; white-space: pre-wrap;
+                     word-break: break-word; color: var(--text); font-family: var(--font); }
   </style>
 </head>
 <body>
@@ -2263,6 +2305,7 @@
     <div class="kb-detail-body">
       <div class="kb-detail-summary card-summary" id="kbDetailSummary"></div>
       <div class="kb-detail-meta" id="kbDetailMeta"></div>
+      <div id="kbAttachments" class="att-section"></div>
     </div>
   </div>
 
@@ -5045,6 +5088,233 @@ function mdToHtml(text) {
   return out.join('');
 }
 
+// ─── ATTACHMENTS ─────────────────────────────────────────────────────────────
+
+function _attIsText(type, name) {
+  return type.startsWith('text/') || type === 'application/json' ||
+         /\.(md|txt|csv|json|eml|xml|yaml|yml|log)$/i.test(name || '');
+}
+
+function _attFormatBytes(b) {
+  if (b < 1024) return b + ' B';
+  if (b < 1024*1024) return (b/1024).toFixed(1) + ' KB';
+  return (b/1024/1024).toFixed(1) + ' MB';
+}
+
+function _attIcon(type) {
+  if (type.startsWith('image/'))      return '🖼';
+  if (type === 'application/pdf')     return '📄';
+  if (type.startsWith('text/'))       return '📝';
+  if (type.includes('word'))          return '📝';
+  return '📎';
+}
+
+function _readFileAsAtt(file) {
+  return new Promise(resolve => {
+    const reader = new FileReader();
+    const asText = _attIsText(file.type, file.name);
+    reader.onload = e => resolve({
+      id: makeId(), name: file.name,
+      type: file.type || 'application/octet-stream',
+      size: file.size, content: e.target.result,
+      created: new Date().toISOString()
+    });
+    asText ? reader.readAsText(file) : reader.readAsDataURL(file);
+  });
+}
+
+function _addAtt(nodeId, att) {
+  const node = session.nodes.find(n => n.id === nodeId);
+  if (!node) return;
+  if (!node.attachments) node.attachments = [];
+  node.attachments.push(att);
+  node.last_modified = new Date().toISOString();
+  saveSession();
+}
+
+function _removeAtt(nodeId, attId) {
+  const node = session.nodes.find(n => n.id === nodeId);
+  if (!node?.attachments) return;
+  node.attachments = node.attachments.filter(a => a.id !== attId);
+  node.last_modified = new Date().toISOString();
+  saveSession();
+}
+
+function _openAtt(att) {
+  if (_attIsText(att.type, att.name)) {
+    // Show inline text viewer modal
+    const overlay = document.createElement('div');
+    overlay.className = 'att-view-overlay';
+    overlay.innerHTML = `
+      <div class="att-view-sheet">
+        <div class="att-view-hdr">
+          <span class="att-view-title">${att.name}</span>
+          <button class="att-view-close">✕</button>
+        </div>
+        <div class="att-view-body">${att.content.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')}</div>
+      </div>`;
+    overlay.querySelector('.att-view-close').onclick = () => overlay.remove();
+    overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove(); });
+    document.body.appendChild(overlay);
+  } else if (att.type.startsWith('image/')) {
+    // Open image in new tab
+    const w = window.open('');
+    if (w) w.document.write(`<img src="${att.content}" style="max-width:100%;display:block;margin:auto">`);
+  } else {
+    // PDF or other binary — decode base64 and open as blob
+    try {
+      const base64 = att.content.split(',')[1] || att.content;
+      const byteStr = atob(base64);
+      const ab = new ArrayBuffer(byteStr.length);
+      const ia = new Uint8Array(ab);
+      for (let i = 0; i < byteStr.length; i++) ia[i] = byteStr.charCodeAt(i);
+      const blob = new Blob([ab], { type: att.type });
+      window.open(URL.createObjectURL(blob), '_blank');
+    } catch { showToast('Cannot preview this file type'); }
+  }
+}
+
+async function _handleAttDrop(e, nodeId, containerEl) {
+  e.preventDefault();
+  const files = Array.from(e.dataTransfer?.files || []);
+  if (files.length) {
+    for (const f of files) { _addAtt(nodeId, await _readFileAsAtt(f)); }
+    renderAttachments(nodeId, containerEl);
+    return;
+  }
+  // Plain text drop (e.g. email body dragged as text)
+  const text = e.dataTransfer?.getData('text/plain') || e.dataTransfer?.getData('text') || '';
+  if (text.trim()) {
+    _addAtt(nodeId, {
+      id: makeId(), name: 'Dropped text · ' + new Date().toLocaleDateString(),
+      type: 'text/plain', size: text.length, content: text,
+      created: new Date().toISOString()
+    });
+    renderAttachments(nodeId, containerEl);
+  }
+}
+
+async function _handleAttPaste(e, nodeId, containerEl) {
+  e.preventDefault();
+  const items = Array.from(e.clipboardData?.items || []);
+  let added = false;
+  for (const item of items) {
+    if (item.kind === 'file') {
+      const f = item.getAsFile();
+      if (f) { _addAtt(nodeId, await _readFileAsAtt(f)); added = true; }
+    }
+  }
+  if (!added) {
+    // Fall back to plain text
+    const text = e.clipboardData?.getData('text/plain') || '';
+    if (text.trim()) {
+      _addAtt(nodeId, {
+        id: makeId(), name: 'Pasted · ' + new Date().toLocaleDateString(),
+        type: 'text/plain', size: text.length, content: text,
+        created: new Date().toISOString()
+      });
+      added = true;
+    }
+  }
+  if (added) renderAttachments(nodeId, containerEl);
+}
+
+function renderAttachments(nodeId, containerEl) {
+  const node = session.nodes.find(n => n.id === nodeId);
+  const atts = node?.attachments || [];
+  containerEl.innerHTML = '';
+
+  // Header row
+  const hdr = document.createElement('div');
+  hdr.className = 'att-header';
+  const lbl = document.createElement('span');
+  lbl.className = 'att-label';
+  lbl.textContent = 'Attachments' + (atts.length ? ` (${atts.length})` : '');
+  const pickBtn = document.createElement('button');
+  pickBtn.className = 'att-pick-btn';
+  pickBtn.textContent = '📎 Add file';
+  pickBtn.onclick = () => {
+    const inp = document.createElement('input');
+    inp.type = 'file'; inp.multiple = true;
+    inp.onchange = async () => {
+      for (const f of inp.files) { _addAtt(nodeId, await _readFileAsAtt(f)); }
+      renderAttachments(nodeId, containerEl);
+    };
+    inp.click();
+  };
+  hdr.appendChild(lbl);
+  hdr.appendChild(pickBtn);
+  containerEl.appendChild(hdr);
+
+  // Drop zone (also handles paste when focused)
+  const zone = document.createElement('div');
+  zone.className = 'att-drop-zone';
+  zone.tabIndex = 0;
+
+  zone.addEventListener('dragover',  e => { e.preventDefault(); zone.classList.add('drag-over'); });
+  zone.addEventListener('dragleave', ()  => zone.classList.remove('drag-over'));
+  zone.addEventListener('drop',      e  => { zone.classList.remove('drag-over'); _handleAttDrop(e, nodeId, containerEl); });
+  zone.addEventListener('paste',     e  => _handleAttPaste(e, nodeId, containerEl));
+
+  if (atts.length === 0) {
+    const hint = document.createElement('div');
+    hint.className = 'att-hint';
+    hint.textContent = 'Drop files here, or tap "Add file"\nFocus here and paste (⌘V) to attach copied content';
+    zone.appendChild(hint);
+  } else {
+    for (const att of atts) {
+      const item = document.createElement('div');
+      item.className = 'att-item';
+
+      const icon = document.createElement('span');
+      icon.className = 'att-icon';
+      icon.textContent = _attIcon(att.type);
+
+      const info = document.createElement('div');
+      info.className = 'att-info';
+
+      const nm = document.createElement('div');
+      nm.className = 'att-name';
+      nm.textContent = att.name;
+      nm.title = att.name;
+      nm.onclick = () => _openAtt(att);
+
+      const sz = document.createElement('div');
+      sz.className = 'att-size';
+      sz.textContent = _attFormatBytes(att.size);
+
+      info.appendChild(nm);
+      // Inline image thumbnail
+      if (att.type.startsWith('image/')) {
+        const img = document.createElement('img');
+        img.className = 'att-thumb';
+        img.src = att.content;
+        img.onclick = () => _openAtt(att);
+        info.appendChild(img);
+      }
+      info.appendChild(sz);
+
+      const del = document.createElement('button');
+      del.className = 'att-del';
+      del.textContent = '✕';
+      del.title = 'Remove attachment';
+      del.onclick = e => {
+        e.stopPropagation();
+        if (confirm('Remove "' + att.name + '"?')) {
+          _removeAtt(nodeId, att.id);
+          renderAttachments(nodeId, containerEl);
+        }
+      };
+
+      item.appendChild(icon);
+      item.appendChild(info);
+      item.appendChild(del);
+      zone.appendChild(item);
+    }
+  }
+  containerEl.appendChild(zone);
+}
+
 // ─── MIND MAP ────────────────────────────────────────────────────────────────
 const MM_W   = 160;   // node width
 const MM_H   = 52;    // node height (no image)
@@ -5451,6 +5721,8 @@ function selectMmNode(nodeId, scroll = true) {
   document.getElementById('mmSimplifyBtn').style.display = children ? '' : 'none';
   // Show Add Parent only for root-level nodes
   document.getElementById('mmAddParentBtn').style.display = node.parent_id ? 'none' : '';
+
+  renderAttachments(nodeId, document.getElementById('mmAttachments'));
 }
 
 function mmZoomToCard(nodeId) {
@@ -9738,6 +10010,7 @@ function showKbDetail(nodeId) {
     hideKbDetail();
     navigateInto(node.id, node.label);
   };
+  renderAttachments(nodeId, document.getElementById('kbAttachments'));
   const panel = document.getElementById('kbDetailPanel');
   const scrim  = document.getElementById('kbDetailScrim');
   panel.classList.remove('hidden');
@@ -10872,7 +11145,7 @@ function initVoiceMode() {
 }
 
 // ─── INIT ───────────────────────────────────────────────────────────────────
-const BUILD_TS = 'build:2026-04-02T11:00'; // bumped each deploy — confirms fresh load
+const BUILD_TS = 'build:2026-04-02T12:00'; // bumped each deploy — confirms fresh load
 
 async function initApp() {
   // Show immediately with localStorage data
@@ -11767,6 +12040,7 @@ document.addEventListener('DOMContentLoaded', () => {
       <div class="mm-panel-title" id="mmPanelTitle"></div>
       <div class="mm-panel-meta" id="mmPanelMeta"></div>
       <div class="mm-panel-summary" id="mmPanelSummary"></div>
+      <div id="mmAttachments" class="att-section" style="padding:0 12px 4px"></div>
       <div class="mm-panel-actions">
         <button class="mm-panel-btn" id="mmAddParentBtn">⬆ Add Parent Node</button>
         <button class="mm-panel-btn" id="mmRefileBtn">↗ Re-file with AI</button>
