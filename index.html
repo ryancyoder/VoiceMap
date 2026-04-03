@@ -85,6 +85,19 @@
     /* ── Menu ─────────────────────────────────────────────────── */
     .menu-wrap { position: relative; flex-shrink: 0; }
 
+    .undo-btn {
+      font-size: 18px;
+      color: var(--muted);
+      background: none;
+      border: none;
+      padding: 4px 5px;
+      cursor: pointer;
+      flex-shrink: 0;
+      -webkit-tap-highlight-color: transparent;
+      transition: color 0.15s;
+    }
+    .undo-btn:disabled { opacity: 0.25; cursor: default; }
+    .undo-btn:not(:disabled):active { color: var(--accent); }
     .search-btn {
       font-size: 20px;
       color: var(--muted);
@@ -2216,6 +2229,8 @@
   <div class="nav-bar">
     <button class="back-btn" id="backBtn">‹ Back</button>
     <div class="nav-title" id="navTitle">Home</div>
+    <button class="undo-btn" id="undoBtn" title="Undo (⌘Z)" disabled>↩</button>
+    <button class="undo-btn" id="redoBtn" title="Redo (⌘⇧Z)" disabled>↪</button>
     <button class="search-btn" id="searchBtn" title="Quick Find (Cmd+K)">🔍</button>
     <div class="menu-wrap">
       <button class="menu-btn" id="menuBtn">···</button>
@@ -2833,6 +2848,12 @@ function loadTokenFromDB() {
 }
 
 function saveSession() {
+  if (!_undoing) {
+    _undoStack.push(JSON.stringify(session.nodes));
+    if (_undoStack.length > UNDO_MAX) _undoStack.shift();
+    _redoStack.length = 0;
+    _undoUpdateButtons();
+  }
   // Sync localStorage backup (text only, no images)
   try { localStorage.setItem(SESSION_STORE, JSON.stringify(session)); } catch {}
   // Async IndexedDB save (fire and forget)
@@ -2847,6 +2868,52 @@ function loadSavedSessionSync() {
     if (raw) { const s = JSON.parse(raw); if (Array.isArray(s.nodes)) return s; }
   } catch {}
   return null;
+}
+
+// ─── UNDO / REDO ─────────────────────────────────────────────────────────────
+const UNDO_MAX   = 50;
+const _undoStack = [];
+const _redoStack = [];
+let   _undoing   = false;
+
+function _undoUpdateButtons() {
+  const u = document.getElementById('undoBtn');
+  const r = document.getElementById('redoBtn');
+  if (u) u.disabled = !_undoStack.length;
+  if (r) r.disabled = !_redoStack.length;
+}
+
+function undoAction() {
+  if (!_undoStack.length) return;
+  _redoStack.push(JSON.stringify(session.nodes));
+  session.nodes = JSON.parse(_undoStack.pop());
+  _undoing = true;
+  saveSession();
+  _undoing = false;
+  _undoRerender();
+  _undoUpdateButtons();
+  showToast('↩ Undo');
+}
+
+function redoAction() {
+  if (!_redoStack.length) return;
+  _undoStack.push(JSON.stringify(session.nodes));
+  session.nodes = JSON.parse(_redoStack.pop());
+  _undoing = true;
+  saveSession();
+  _undoing = false;
+  _undoRerender();
+  _undoUpdateButtons();
+  showToast('↪ Redo');
+}
+
+function _undoRerender() {
+  if (mmSelectedId && !session.nodes.find(n => n.id === mmSelectedId)) {
+    mmSelectedId = null;
+    document.getElementById('mmPanel')?.classList.add('hidden');
+  }
+  if (mmVisible) renderMindMap();
+  renderCards();
 }
 
 // ─── STATE ──────────────────────────────────────────────────────────────────
@@ -11153,7 +11220,7 @@ function initVoiceMode() {
 }
 
 // ─── INIT ───────────────────────────────────────────────────────────────────
-const BUILD_TS = 'build:2026-04-02T14:00'; // bumped each deploy — confirms fresh load
+const BUILD_TS = 'build:2026-04-02T14:30'; // bumped each deploy — confirms fresh load
 
 async function initApp() {
   // Show immediately with localStorage data
@@ -11248,6 +11315,8 @@ document.addEventListener('DOMContentLoaded', () => {
   });
   document.getElementById('pasteBtn').addEventListener('click', pasteAsNode);
   document.getElementById('backBtn').addEventListener('click', navigateBack);
+  document.getElementById('undoBtn').addEventListener('click', undoAction);
+  document.getElementById('redoBtn').addEventListener('click', redoAction);
   document.getElementById('editFieldSave').addEventListener('click', () => {
     const text = document.getElementById('editFieldInput').value.trim();
     if (pendingTaskMinutes) {
@@ -11624,6 +11693,16 @@ document.addEventListener('DOMContentLoaded', () => {
   // Safari's built-in scroll-to-top/bottom and page-navigation handlers.
   // Also handles Cmd+K (Quick Find) globally from any view.
   document.addEventListener('keydown', e => {
+    // Cmd+Z = Undo, Cmd+Shift+Z = Redo
+    if ((e.metaKey || e.ctrlKey) && e.code === 'KeyZ') {
+      const tag = document.activeElement?.tagName?.toLowerCase();
+      if (tag !== 'input' && tag !== 'textarea' && !document.activeElement?.isContentEditable) {
+        e.preventDefault();
+        e.shiftKey ? redoAction() : undoAction();
+        return;
+      }
+    }
+
     // Cmd+K = Quick Find (works from any view)
     if ((e.metaKey || e.ctrlKey) && e.code === 'KeyK') {
       e.preventDefault();
