@@ -5594,6 +5594,7 @@ function hideMmRootGrid() {
   document.getElementById('mmRootGrid').style.display = 'none';
   document.getElementById('mmCanvasWrap').style.display = '';
   document.getElementById('mmFitBtn').style.display = '';
+  document.getElementById('mmFilterBar').style.display = '';
 }
 
 function renderMindMap() {
@@ -5771,7 +5772,6 @@ function mmFocusOnNode(nodeId) {
   const node = session.nodes.find(n => n.id === nodeId);
   document.getElementById('mmFocusLabel').textContent = node?.label || '';
   document.getElementById('mmFocusBar').classList.add('visible');
-  document.getElementById('mmFilterBar').style.display = 'none';
   hideMmRootGrid();
   mmTransform = { x: 40, y: 40, scale: 1 };
   renderMindMap();
@@ -11153,7 +11153,7 @@ function initVoiceMode() {
 }
 
 // ─── INIT ───────────────────────────────────────────────────────────────────
-const BUILD_TS = 'build:2026-04-02T13:00'; // bumped each deploy — confirms fresh load
+const BUILD_TS = 'build:2026-04-02T13:30'; // bumped each deploy — confirms fresh load
 
 async function initApp() {
   // Show immediately with localStorage data
