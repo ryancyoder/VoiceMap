@@ -5471,9 +5471,11 @@ function buildMindMapLayout() {
        .forEach(n => lay(n.id, 0));
 
   const allPos = Object.values(pos);
+  // When leaf-wide mode is on, leaf nodes can expand up to 900px instead of MM_W
+  const leafExtraW = mmLeafWide ? (900 - MM_W) : 0;
   return {
     pos,
-    svgW: Math.max(...allPos.map(p => p.x)) + MM_W + MM_PAD,
+    svgW: Math.max(...allPos.map(p => p.x)) + MM_W + MM_PAD + leafExtraW,
     svgH: Math.max(...allPos.map(p => p.y)) + MM_HI + MM_PAD
   };
 }
@@ -11220,7 +11222,7 @@ function initVoiceMode() {
 }
 
 // ─── INIT ───────────────────────────────────────────────────────────────────
-const BUILD_TS = 'build:2026-04-02T14:30'; // bumped each deploy — confirms fresh load
+const BUILD_TS = 'build:2026-04-02T15:00'; // bumped each deploy — confirms fresh load
 
 async function initApp() {
   // Show immediately with localStorage data
